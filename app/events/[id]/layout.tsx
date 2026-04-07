@@ -163,7 +163,7 @@ export default function EventLayout({ children }: { children: React.ReactNode })
                 }}
               >
                 <span>{item.icon}</span>
-                <span>{item.icon}</span>
+                <span>{item.label}</span>
               </button>
             ))}
           </nav>
