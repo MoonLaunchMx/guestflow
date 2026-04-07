@@ -1,65 +1,256 @@
-import Image from "next/image";
+'use client'
 
-export default function Home() {
+import { useState } from 'react'
+import { supabase } from '@/lib/supabase'
+
+export default function AuthPage() {
+  const [mode, setMode] = useState<'login' | 'register'>('login')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [name, setName] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+
+  const handleSubmit = async () => {
+    setLoading(true)
+    setError('')
+    setSuccess('')
+
+    if (mode === 'register') {
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: { data: { full_name: name } }
+      })
+      if (error) setError(error.message)
+      else setSuccess('¡Cuenta creada! Revisa tu email para confirmar.')
+    } else {
+      const { error } = await supabase.auth.signInWithPassword({ email, password })
+      if (error) setError('Email o contraseña incorrectos')
+      else window.location.href = '/dashboard'
+    }
+
+    setLoading(false)
+  }
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div style={{
+      minHeight: '100vh',
+      background: '#ffffff',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      fontFamily: 'Georgia, serif',
+      padding: '20px'
+    }}>
+      <div style={{
+        width: '100%',
+        maxWidth: '420px',
+      }}>
+        {/* Logo */}
+        <div style={{ textAlign: 'center', marginBottom: '48px' }}>
+          <div style={{
+            fontSize: '28px',
+            fontWeight: '700',
+            color: '#0a0a0a',
+            letterSpacing: '-0.5px',
+            fontFamily: 'Georgia, serif'
+          }}>
+            Guest<span style={{ color: '#48C9B0' }}>Flow</span>
+          </div>
+          <div style={{
+            fontSize: '13px',
+            color: '#999',
+            marginTop: '6px',
+            letterSpacing: '1.5px',
+            textTransform: 'uppercase',
+            fontFamily: 'system-ui, sans-serif'
+          }}>
+            Gestión de invitados
+          </div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+
+        {/* Card */}
+        <div style={{
+          background: '#ffffff',
+          border: '1px solid #e8e8e8',
+          borderRadius: '16px',
+          padding: '40px',
+          boxShadow: '0 4px 24px rgba(0,0,0,0.06)',
+        }}>
+          {/* Tabs */}
+          <div style={{
+            display: 'flex',
+            marginBottom: '32px',
+            background: '#f2f2f2',
+            borderRadius: '8px',
+            padding: '4px',
+          }}>
+            {(['login', 'register'] as const).map((tab) => (
+              <button
+                key={tab}
+                onClick={() => { setMode(tab); setError(''); setSuccess('') }}
+                style={{
+                  flex: 1,
+                  padding: '8px',
+                  border: 'none',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontFamily: 'system-ui, sans-serif',
+                  fontWeight: mode === tab ? '600' : '400',
+                  background: mode === tab ? '#48C9B0' : 'transparent',
+                  color: mode === tab ? '#ffffff' : '#888',
+                  transition: 'all 0.2s',
+                }}
+              >
+                {tab === 'login' ? 'Iniciar sesión' : 'Registrarse'}
+              </button>
+            ))}
+          </div>
+
+          {/* Fields */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {mode === 'register' && (
+              <div>
+                <label style={{ display: 'block', fontSize: '13px', color: '#555', marginBottom: '6px', fontFamily: 'system-ui, sans-serif' }}>
+                  Nombre completo
+                </label>
+                <input
+                  type="text"
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  placeholder="Ana García"
+                  style={{
+                    width: '100%',
+                    padding: '12px 14px',
+                    background: '#f8f8f8',
+                    border: '1px solid #e0e0e0',
+                    borderRadius: '8px',
+                    color: '#0a0a0a',
+                    fontSize: '15px',
+                    fontFamily: 'system-ui, sans-serif',
+                    outline: 'none',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+            )}
+
+            <div>
+              <label style={{ display: 'block', fontSize: '13px', color: '#555', marginBottom: '6px', fontFamily: 'system-ui, sans-serif' }}>
+                Email
+              </label>
+              <input
+                type="email"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                placeholder="ana@ejemplo.com"
+                style={{
+                  width: '100%',
+                  padding: '12px 14px',
+                  background: '#f8f8f8',
+                  border: '1px solid #e0e0e0',
+                  borderRadius: '8px',
+                  color: '#0a0a0a',
+                  fontSize: '15px',
+                  fontFamily: 'system-ui, sans-serif',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
+
+            <div>
+              <label style={{ display: 'block', fontSize: '13px', color: '#555', marginBottom: '6px', fontFamily: 'system-ui, sans-serif' }}>
+                Contraseña
+              </label>
+              <input
+                type="password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                placeholder="••••••••"
+                onKeyDown={e => e.key === 'Enter' && handleSubmit()}
+                style={{
+                  width: '100%',
+                  padding: '12px 14px',
+                  background: '#f8f8f8',
+                  border: '1px solid #e0e0e0',
+                  borderRadius: '8px',
+                  color: '#0a0a0a',
+                  fontSize: '15px',
+                  fontFamily: 'system-ui, sans-serif',
+                  outline: 'none',
+                  boxSizing: 'border-box',
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Error / Success */}
+          {error && (
+            <div style={{
+              marginTop: '16px',
+              padding: '12px',
+              background: '#fff0f0',
+              border: '1px solid #ffc0c0',
+              borderRadius: '8px',
+              color: '#cc3333',
+              fontSize: '13px',
+              fontFamily: 'system-ui, sans-serif',
+            }}>
+              {error}
+            </div>
+          )}
+          {success && (
+            <div style={{
+              marginTop: '16px',
+              padding: '12px',
+              background: '#f0fff6',
+              border: '1px solid #a0e0c0',
+              borderRadius: '8px',
+              color: '#2a7a50',
+              fontSize: '13px',
+              fontFamily: 'system-ui, sans-serif',
+            }}>
+              {success}
+            </div>
+          )}
+
+          {/* Button */}
+          <button
+            onClick={handleSubmit}
+            disabled={loading}
+            style={{
+              width: '100%',
+              marginTop: '24px',
+              padding: '14px',
+              background: loading ? '#a0e0d8' : '#48C9B0',
+              border: 'none',
+              borderRadius: '8px',
+              color: '#ffffff',
+              fontSize: '15px',
+              fontWeight: '600',
+              fontFamily: 'system-ui, sans-serif',
+              cursor: loading ? 'not-allowed' : 'pointer',
+              transition: 'background 0.2s',
+            }}
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            {loading ? 'Cargando...' : mode === 'login' ? 'Entrar' : 'Crear cuenta'}
+          </button>
         </div>
-      </main>
+
+        <div style={{
+          textAlign: 'center',
+          marginTop: '24px',
+          fontSize: '12px',
+          color: '#bbb',
+          fontFamily: 'system-ui, sans-serif',
+        }}>
+          GuestFlow · Para wedding planners en LATAM
+        </div>
+      </div>
     </div>
-  );
+  )
 }
