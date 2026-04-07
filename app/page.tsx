@@ -117,7 +117,7 @@ export default function AuthPage() {
         </div>
 
         <div style={{ textAlign: 'center', marginTop: '24px', fontSize: '12px', color: '#bbb', fontFamily: 'system-ui, sans-serif' }}>
-          GuestFlow · Para wedding planners en LATAM
+          GuestFlow · Para todo tipo de organizadores de eventos
         </div>
       </div>
     </div>
