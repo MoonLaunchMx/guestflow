@@ -12,12 +12,28 @@ type Event = {
   total_guests: number
 }
 
+type Stats = {
+  activeEvents: number
+  totalGuests: number
+  confirmed: number
+  declined: number
+  pending: number
+}
+
 export default function Dashboard() {
   const [events, setEvents] = useState<Event[]>([])
+  const [stats, setStats] = useState<Stats>({
+    activeEvents: 0,
+    totalGuests: 0,
+    confirmed: 0,
+    declined: 0,
+    pending: 0,
+  })
   const [loading, setLoading] = useState(true)
   const [userEmail, setUserEmail] = useState('')
+  const [sortAsc, setSortAsc] = useState(true)
 
-  useEffect(() => { checkAuth(); loadEvents() }, [])
+  useEffect(() => { checkAuth(); loadData() }, [])
 
   const checkAuth = async () => {
     const { data: { user } } = await supabase.auth.getUser()
@@ -25,12 +41,27 @@ export default function Dashboard() {
     setUserEmail(user.email || '')
   }
 
-  const loadEvents = async () => {
-    const { data, error } = await supabase
-      .from('events')
-      .select('id, name, event_date, venue, total_guests')
-      .order('event_date', { ascending: true })
-    if (!error && data) setEvents(data)
+  const loadData = async () => {
+    const [{ data: eventsData, error: eventsError }, { data: guestsData }] = await Promise.all([
+      supabase.from('events').select('id, name, event_date, venue, total_guests').order('event_date', { ascending: true }),
+      supabase.from('guests').select('rsvp_status'),
+    ])
+
+    if (!eventsError && eventsData) {
+      setEvents(eventsData)
+
+      const today = new Date()
+      today.setHours(0, 0, 0, 0)
+
+      const activeEvents = eventsData.filter(e => e.event_date && new Date(e.event_date) >= today).length
+      const confirmed    = guestsData?.filter(g => g.rsvp_status === 'confirmed').length ?? 0
+      const declined     = guestsData?.filter(g => g.rsvp_status === 'declined').length ?? 0
+      const pending      = guestsData?.filter(g => g.rsvp_status === 'pending').length ?? 0
+      const totalGuests  = guestsData?.length ?? 0
+
+      setStats({ activeEvents, totalGuests, confirmed, declined, pending })
+    }
+
     setLoading(false)
   }
 
@@ -41,76 +72,157 @@ export default function Dashboard() {
 
   const formatDate = (dateStr: string) => {
     if (!dateStr) return '—'
-    return new Date(dateStr).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })
+    return new Date(dateStr).toLocaleDateString('es-MX', {
+      day: 'numeric', month: 'long', year: 'numeric',
+    })
   }
 
+  const sortedEvents = [...events].sort((a, b) => {
+    const dateA = a.event_date ? new Date(a.event_date).getTime() : 0
+    const dateB = b.event_date ? new Date(b.event_date).getTime() : 0
+    return sortAsc ? dateA - dateB : dateB - dateA
+  })
+
   return (
-    <div style={{ minHeight: '100vh', background: '#ffffff', fontFamily: 'system-ui, sans-serif', color: '#1D1E20' }}>
+    <div className="flex h-screen flex-col overflow-hidden bg-[#f8f8f8] font-sans text-[#1D1E20]">
 
-      {/* Header */}
-      <div style={{ borderBottom: '1px solid #e8e8e8', padding: '0 40px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '60px', background: '#ffffff' }}>
-        <div style={{ fontSize: '20px', fontWeight: '700', fontFamily: 'Georgia, serif', color: '#1D1E20' }}>
-          Guest<span style={{ color: '#48C9B0' }}>Flow</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
-          <span style={{ fontSize: '13px', color: '#888' }}>{userEmail}</span>
-          <button onClick={handleLogout}
-            style={{ padding: '6px 14px', background: 'transparent', border: '1px solid #e0e0e0', borderRadius: '6px', color: '#888', fontSize: '13px', cursor: 'pointer' }}>
-            Salir
-          </button>
-        </div>
-      </div>
-
-      {/* Content */}
-      <div style={{ padding: '40px', maxWidth: '900px', margin: '0 auto' }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '32px' }}>
-          <div>
-            <h1 style={{ fontSize: '24px', fontWeight: '700', margin: '0 0 4px 0', color: '#1D1E20' }}>Mis eventos</h1>
-            <p style={{ fontSize: '14px', color: '#888', margin: 0 }}>
-              {events.length} evento{events.length !== 1 ? 's' : ''} registrado{events.length !== 1 ? 's' : ''}
-            </p>
+      {/* ── Header — fijo ── */}
+      <header className="shrink-0 border-b border-[#e8e8e8] bg-white">
+        <div className="mx-auto flex h-14 max-w-4xl items-center justify-between px-4 sm:h-16 sm:px-6 lg:px-8">
+          <span className="text-lg font-bold sm:text-xl" style={{ fontFamily: 'Georgia, serif' }}>
+            Guest<span className="text-[#48C9B0]">Flow</span>
+          </span>
+          <div className="flex items-center gap-3 sm:gap-5">
+            <span className="hidden truncate text-xs text-[#888] sm:block sm:max-w-[200px] sm:text-sm">
+              {userEmail}
+            </span>
+            <button
+              onClick={handleLogout}
+              className="rounded-md border border-[#e0e0e0] px-3 py-1.5 text-xs text-[#888] transition hover:bg-[#f5f5f5] sm:px-4 sm:text-sm"
+            >
+              Salir
+            </button>
           </div>
-          <button onClick={() => window.location.href = '/events/new'}
-            style={{ padding: '10px 20px', background: '#48C9B0', border: 'none', borderRadius: '8px', color: '#ffffff', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>
-            + Nuevo evento
-          </button>
         </div>
+      </header>
 
-        {loading ? (
-          <div style={{ color: '#888', fontSize: '14px' }}>Cargando...</div>
-        ) : events.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '80px 20px', border: '1px dashed #e0e0e0', borderRadius: '12px' }}>
-            <div style={{ fontSize: '40px', marginBottom: '16px' }}>💍</div>
-            <div style={{ fontSize: '16px', color: '#888', marginBottom: '8px' }}>Aún no tienes eventos</div>
-            <div style={{ fontSize: '13px', color: '#bbb' }}>Crea tu primer evento para empezar a gestionar invitados</div>
+      {/* ── Zona fija: título + métricas ── */}
+      <div className="shrink-0 bg-[#f8f8f8]">
+        <div className="mx-auto max-w-4xl px-4 pt-6 sm:px-6 sm:pt-8 lg:px-8 lg:pt-10">
+
+          {/* Título + botón */}
+          <div className="mb-5 flex items-center justify-between sm:mb-6">
+            <div>
+              <h1 className="text-xl font-bold text-[#1D1E20] sm:text-2xl">Dashboard</h1>
+              <p className="mt-0.5 text-xs text-[#888] sm:text-sm">Resumen general de tus eventos</p>
+            </div>
+            <button
+              onClick={() => window.location.href = '/events/new'}
+              className="rounded-lg bg-[#48C9B0] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#3ab89f] active:scale-95 sm:px-5 sm:py-2.5"
+            >
+              <span className="sm:hidden">+ Nuevo</span>
+              <span className="hidden sm:inline">+ Nuevo evento</span>
+            </button>
           </div>
-        ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {events.map(event => (
-              <div key={event.id}
-                onClick={() => window.location.href = `/events/${event.id}`}
-                style={{ background: '#ffffff', border: '1px solid #e8e8e8', borderRadius: '12px', padding: '20px 24px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', cursor: 'pointer', transition: 'border-color 0.15s, box-shadow 0.15s' }}
-                onMouseEnter={e => { e.currentTarget.style.borderColor = '#48C9B0'; e.currentTarget.style.boxShadow = '0 2px 12px rgba(72,201,176,0.12)' }}
-                onMouseLeave={e => { e.currentTarget.style.borderColor = '#e8e8e8'; e.currentTarget.style.boxShadow = 'none' }}
-              >
-                <div>
-                  <div style={{ fontSize: '16px', fontWeight: '600', marginBottom: '4px', color: '#1D1E20' }}>{event.name}</div>
-                  <div style={{ fontSize: '13px', color: '#888' }}>
-                    {formatDate(event.event_date)}{event.venue ? ` · ${event.venue}` : ''}
-                  </div>
+
+          {/* Métricas */}
+          {!loading && (
+            <div className="mb-5 sm:mb-6">
+              <div className="mb-3 grid grid-cols-2 gap-3 sm:gap-4">
+                <div className="rounded-xl border border-[#e8e8e8] bg-white px-4 py-4 sm:px-5 sm:py-5">
+                  <p className="text-xs text-[#888] sm:text-sm">Eventos activos</p>
+                  <p className="mt-1 text-3xl font-bold text-[#1D1E20] sm:text-4xl">{stats.activeEvents}</p>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                  <div style={{ textAlign: 'right' }}>
-                    <div style={{ fontSize: '20px', fontWeight: '700', color: '#48C9B0' }}>{event.total_guests}</div>
-                    <div style={{ fontSize: '11px', color: '#999' }}>invitados</div>
-                  </div>
-                  <div style={{ color: '#ccc', fontSize: '18px' }}>›</div>
+                <div className="rounded-xl border border-[#e8e8e8] bg-white px-4 py-4 sm:px-5 sm:py-5">
+                  <p className="text-xs text-[#888] sm:text-sm">Total invitados</p>
+                  <p className="mt-1 text-3xl font-bold text-[#1D1E20] sm:text-4xl">{stats.totalGuests}</p>
                 </div>
               </div>
-            ))}
+              <div className="grid grid-cols-3 gap-3 sm:gap-4">
+                <div className="rounded-xl border border-[#e8e8e8] bg-white px-4 py-4 sm:px-5 sm:py-5">
+                  <p className="text-xs text-[#888] sm:text-sm">Confirmados</p>
+                  <p className="mt-1 text-2xl font-bold text-[#48C9B0] sm:text-3xl">{stats.confirmed}</p>
+                </div>
+                <div className="rounded-xl border border-[#e8e8e8] bg-white px-4 py-4 sm:px-5 sm:py-5">
+                  <p className="text-xs text-[#888] sm:text-sm">Pendientes</p>
+                  <p className="mt-1 text-2xl font-bold text-[#F5A623] sm:text-3xl">{stats.pending}</p>
+                </div>
+                <div className="rounded-xl border border-[#e8e8e8] bg-white px-4 py-4 sm:px-5 sm:py-5">
+                  <p className="text-xs text-[#888] sm:text-sm">Cancelados</p>
+                  <p className="mt-1 text-2xl font-bold text-[#E05C5C] sm:text-3xl">{stats.declined}</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Encabezado lista + botón orden */}
+          <div className="flex items-center justify-between pb-3">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-[#888]">
+              Mis eventos · {events.length}
+            </h2>
+            <button
+              onClick={() => setSortAsc(!sortAsc)}
+              className="flex items-center gap-1.5 rounded-lg border border-[#e0e0e0] bg-white px-3 py-1.5 text-xs text-[#888] transition hover:border-[#48C9B0] hover:text-[#48C9B0]"
+            >
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M2 4l4-3 4 3M2 8l4 3 4-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+              {sortAsc ? 'Fecha ↑' : 'Fecha ↓'}
+            </button>
           </div>
-        )}
+
+        </div>
       </div>
+
+      {/* ── Zona scrolleable: solo la lista ── */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-4xl px-4 pb-8 sm:px-6 lg:px-8">
+
+          {loading ? (
+            <div className="text-sm text-[#888]">Cargando...</div>
+
+          ) : sortedEvents.length === 0 ? (
+            <div className="rounded-xl border border-dashed border-[#e0e0e0] px-6 py-16 text-center sm:py-20">
+              <div className="mb-4 text-4xl">💍</div>
+              <p className="text-sm text-[#888] sm:text-base">Aún no tienes eventos</p>
+              <p className="mt-1 text-xs text-[#bbb] sm:text-sm">Crea tu primer evento para empezar a gestionar invitados</p>
+            </div>
+
+          ) : (
+            <div className="flex flex-col gap-3">
+              {sortedEvents.map(event => (
+                <div
+                  key={event.id}
+                  onClick={() => window.location.href = `/events/${event.id}`}
+                  className="group flex cursor-pointer items-center justify-between rounded-xl border border-[#e8e8e8] bg-white px-4 py-4 transition hover:border-[#48C9B0] hover:shadow-[0_2px_12px_rgba(72,201,176,0.12)] active:scale-[0.99] sm:px-6 sm:py-5"
+                >
+                  <div className="min-w-0 flex-1 pr-4">
+                    <p className="truncate text-sm font-semibold text-[#1D1E20] sm:text-base">{event.name}</p>
+                    <p className="mt-0.5 text-xs text-[#888] sm:text-sm">
+                      {formatDate(event.event_date)}
+                      {event.venue && (
+                        <>
+                          <span className="hidden sm:inline"> · {event.venue}</span>
+                          <span className="block sm:hidden">{event.venue}</span>
+                        </>
+                      )}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-3 sm:gap-4">
+                    <div className="text-right">
+                      <p className="text-lg font-bold text-[#48C9B0] sm:text-xl">{event.total_guests}</p>
+                      <p className="text-[10px] text-[#999] sm:text-xs">invitados</p>
+                    </div>
+                    <span className="text-lg text-[#ccc] transition group-hover:text-[#48C9B0]">›</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+        </div>
+      </div>
+
     </div>
   )
 }

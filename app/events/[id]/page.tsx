@@ -255,9 +255,9 @@ export default function EventPage() {
     URL.revokeObjectURL(url)
   }
 
-  const confirmed = guests.filter(g => g.rsvp_status === 'confirmed').length
-  const pending   = guests.filter(g => g.rsvp_status === 'pending').length
-  const declined  = guests.filter(g => g.rsvp_status === 'declined').length
+  const confirmed  = guests.filter(g => g.rsvp_status === 'confirmed').length
+  const pending    = guests.filter(g => g.rsvp_status === 'pending').length
+  const declined   = guests.filter(g => g.rsvp_status === 'declined').length
   const allSelected = filtered.length > 0 && selected.size === filtered.length
   const someSelected = selected.size > 0
   const formatDate = (d: string) => new Date(d).toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
@@ -266,234 +266,339 @@ export default function EventPage() {
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#ffffff', color: '#1D1E20' }}>
 
-      {/* ── STICKY TOP PANEL ── */}
-      <div style={{ flexShrink: 0, padding: '24px 40px 0', borderBottom: '1px solid #e8e8e8' }}>
-        <div style={{ marginBottom: '20px' }}>
-          <div style={{ display: 'flex', alignItems: 'baseline', gap: '10px', flexWrap: 'wrap' }}>
-            <h1 style={{ fontSize: '24px', fontWeight: '700', margin: '0 0 4px 0', color: '#1D1E20' }}>{event?.name}</h1>
-            {event?.event_type && <div style={{ fontSize: '13px', color: '#888' }}>{EVENT_TYPE_LABELS[event.event_type]}</div>}
+      {/* ══ STICKY TOP PANEL ══ */}
+      <div style={{ flexShrink: 0, borderBottom: '1px solid #e8e8e8' }} className="px-4 pt-4 pb-0 sm:px-6 sm:pt-5 lg:px-10 lg:pt-6">
+
+        {/* Evento info */}
+        <div className="mb-4">
+          <div className="flex flex-wrap items-baseline gap-2">
+            <h1 className="text-lg font-bold text-[#1D1E20] sm:text-xl lg:text-2xl">{event?.name}</h1>
+            {event?.event_type && (
+              <span className="text-xs text-[#888] sm:text-sm">{EVENT_TYPE_LABELS[event.event_type]}</span>
+            )}
           </div>
-          <div style={{ fontSize: '13px', color: '#888' }}>
+          <p className="mt-0.5 text-xs text-[#888] sm:text-sm">
             {event?.event_date ? formatDate(event.event_date) : ''}
             {event?.venue ? ` · ${event.venue}` : ''}
-          </div>
+          </p>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '10px', marginBottom: '20px' }}>
-          {[
-            { label: 'Total',       value: event?.total_guests || 0, color: '#1D1E20' },
-            { label: 'Confirmados', value: confirmed, color: '#2a7a50' },
-            { label: 'Pendientes',  value: pending,   color: '#b8860b' },
-            { label: 'Declinaron',  value: declined,  color: '#cc3333' },
-          ].map(s => (
-            <div key={s.label} style={{ background: '#f8f8f8', border: '1px solid #e8e8e8', borderRadius: '10px', padding: '12px', textAlign: 'center' }}>
-              <div style={{ fontSize: '24px', fontWeight: '700', color: s.color }}>{s.value}</div>
-              <div style={{ fontSize: '11px', color: '#999', marginTop: '2px' }}>{s.label}</div>
-            </div>
-          ))}
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
-          <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Buscar..."
-            style={{ width: '200px', padding: '8px 14px', background: '#f8f8f8', border: '1px solid #e0e0e0', borderRadius: '8px', color: '#1D1E20', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} />
-
-          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+        {/* Stats */}
+          <div className="mb-4 grid grid-cols-4 gap-2">
             {[
-              { key: 'all',       label: `Todos (${guests.length})` },
-              { key: 'confirmed', label: `Confirmados (${confirmed})` },
-              { key: 'pending',   label: `Pendientes (${pending})` },
-              { key: 'declined',  label: `Declinaron (${declined})` },
-            ].map(tab => (
-              <button key={tab.key} onClick={() => setFilter(tab.key as typeof filter)}
-                style={{
-                  padding: '6px 12px', borderRadius: '20px', fontSize: '12px', cursor: 'pointer',
-                  background: filter === tab.key ? '#48C9B0' : 'transparent',
-                  border: `1px solid ${filter === tab.key ? '#48C9B0' : '#e0e0e0'}`,
-                  color: filter === tab.key ? '#fff' : '#666',
-                  fontWeight: filter === tab.key ? '600' : '400',
-                }}>
-                {tab.label}
-              </button>
+              { label: 'Total',      value: event?.total_guests || 0, color: '#1D1E20' },
+              { label: 'Conf.',      value: confirmed, color: '#2a7a50' },
+              { label: 'Pend.',      value: pending,   color: '#b8860b' },
+              { label: 'Decl.',      value: declined,  color: '#cc3333' },
+            ].map(s => (
+              <div key={s.label} className="rounded-xl border border-[#e8e8e8] bg-[#f8f8f8] p-2 text-center">
+                <div className="text-lg font-bold sm:text-xl" style={{ color: s.color }}>{s.value}</div>
+                <div className="text-[10px] text-[#999]">{s.label}</div>
+              </div>
             ))}
           </div>
 
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: '8px', alignItems: 'center' }}>
+        {/* Buscador + filtros + acciones */}
+        <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
+
+          {/* Buscador — 100% en mobile, fijo en desktop */}
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="🔍 Buscar..."
+            className="w-full rounded-lg border border-[#e0e0e0] bg-[#f8f8f8] px-3 py-2 text-sm text-[#1D1E20] outline-none sm:w-48"
+          />
+
+          {/* Filtros abreviados — una línea sin scroll */}
+            <div className="flex gap-1.5">
+              {[
+                { key: 'all',       label: 'Todos' },
+                { key: 'confirmed', label: 'Conf.' },
+                { key: 'pending',   label: 'Pend.' },
+                { key: 'declined',  label: 'Dec.' },
+              ].map(tab => (
+                <button
+                  key={tab.key}
+                  onClick={() => setFilter(tab.key as typeof filter)}
+                  className={`shrink-0 rounded-full border px-3 py-1 text-xs transition
+                    ${filter === tab.key
+                      ? 'border-[#48C9B0] bg-[#48C9B0] font-semibold text-white'
+                      : 'border-[#e0e0e0] text-[#666] hover:border-[#48C9B0] hover:text-[#48C9B0]'
+                    }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+          {/* Acciones — se empujan a la derecha en desktop */}
+          <div className="flex items-center gap-2 sm:ml-auto">
             {someSelected && (
-              <div style={{ position: 'relative' }} ref={bulkMenuRef}>
-                <button onClick={() => setShowBulkMenu(!showBulkMenu)}
-                  style={{ padding: '8px 14px', background: '#f0fdfb', border: '1px solid #48C9B0', borderRadius: '8px', color: '#1a9e88', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
-                  {selected.size} seleccionados ▾
+              <div className="relative" ref={bulkMenuRef}>
+                <button
+                  onClick={() => setShowBulkMenu(!showBulkMenu)}
+                  className="rounded-lg border border-[#48C9B0] bg-[#f0fdfb] px-3 py-1.5 text-xs font-semibold text-[#1a9e88]"
+                >
+                  {selected.size} selec. ▾
                 </button>
                 {showBulkMenu && (
-                  <div style={{ position: 'absolute', top: '100%', right: 0, marginTop: '4px', background: '#fff', border: '1px solid #e8e8e8', borderRadius: '8px', padding: '4px', zIndex: 50, minWidth: '210px', boxShadow: '0 4px 16px rgba(0,0,0,0.1)' }}>
-                    <button onClick={bulkWhatsApp} style={{ width: '100%', padding: '8px 12px', background: 'transparent', border: 'none', color: '#25D366', fontSize: '13px', cursor: 'pointer', textAlign: 'left', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="#25D366"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
+                  <div className="absolute right-0 top-full z-50 mt-1 min-w-[200px] rounded-xl border border-[#e8e8e8] bg-white p-1 shadow-lg">
+                    <button onClick={bulkWhatsApp} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-[#25D366] hover:bg-[#f0fdfb]">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="#25D366"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
                       Enviar WhatsApp
                     </button>
-                    <div style={{ height: '1px', background: '#f0f0f0', margin: '4px 0' }} />
-                    <button onClick={() => bulkUpdateStatus('confirmed')} style={{ width: '100%', padding: '8px 12px', background: 'transparent', border: 'none', color: '#2a7a50', fontSize: '13px', cursor: 'pointer', textAlign: 'left', borderRadius: '6px' }}>✓ Marcar confirmados</button>
-                    <button onClick={() => bulkUpdateStatus('declined')} style={{ width: '100%', padding: '8px 12px', background: 'transparent', border: 'none', color: '#cc3333', fontSize: '13px', cursor: 'pointer', textAlign: 'left', borderRadius: '6px' }}>✕ Marcar declinados</button>
-                    <button onClick={() => bulkUpdateStatus('pending')} style={{ width: '100%', padding: '8px 12px', background: 'transparent', border: 'none', color: '#b8860b', fontSize: '13px', cursor: 'pointer', textAlign: 'left', borderRadius: '6px' }}>◷ Marcar pendientes</button>
-                    <div style={{ height: '1px', background: '#f0f0f0', margin: '4px 0' }} />
-                    <button onClick={bulkDelete} style={{ width: '100%', padding: '8px 12px', background: 'transparent', border: 'none', color: '#cc3333', fontSize: '13px', cursor: 'pointer', textAlign: 'left', borderRadius: '6px' }}>🗑 Eliminar seleccionados</button>
+                    <div className="my-1 h-px bg-[#f0f0f0]" />
+                    <button onClick={() => bulkUpdateStatus('confirmed')} className="w-full rounded-lg px-3 py-2 text-left text-xs text-[#2a7a50] hover:bg-[#f0fff6]">✓ Marcar confirmados</button>
+                    <button onClick={() => bulkUpdateStatus('declined')}  className="w-full rounded-lg px-3 py-2 text-left text-xs text-[#cc3333] hover:bg-[#fff0f0]">✕ Marcar declinados</button>
+                    <button onClick={() => bulkUpdateStatus('pending')}   className="w-full rounded-lg px-3 py-2 text-left text-xs text-[#b8860b] hover:bg-[#fffbf0]">◷ Marcar pendientes</button>
+                    <div className="my-1 h-px bg-[#f0f0f0]" />
+                    <button onClick={bulkDelete} className="w-full rounded-lg px-3 py-2 text-left text-xs text-[#cc3333] hover:bg-[#fff0f0]">🗑 Eliminar seleccionados</button>
                   </div>
                 )}
               </div>
             )}
-            <button onClick={() => { setCsvError(''); setCsvSuccess(''); setShowCsvModal(true) }}
-              style={{ padding: '8px 14px', background: 'transparent', border: '1px solid #e0e0e0', borderRadius: '8px', color: '#666', fontSize: '13px', cursor: 'pointer' }}>
+
+            {/* CSV — oculto en mobile */}
+            <button
+              onClick={() => { setCsvError(''); setCsvSuccess(''); setShowCsvModal(true) }}
+              className="hidden rounded-lg border border-[#e0e0e0] px-3 py-1.5 text-xs text-[#666] transition hover:border-[#48C9B0] hover:text-[#48C9B0] sm:block"
+            >
               📂 Importar CSV
             </button>
-            <button onClick={() => { resetForm(); setShowModal(true) }}
-              style={{ padding: '8px 16px', background: '#48C9B0', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
-              + Agregar invitado
+
+            <button
+              onClick={() => { resetForm(); setShowModal(true) }}
+              className="rounded-lg bg-[#48C9B0] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#3ab89f] sm:px-4 sm:text-sm"
+            >
+              + Agregar
             </button>
           </div>
         </div>
       </div>
 
-      {/* ── GUEST LIST ── */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 40px 40px' }}>
+      {/* ══ GUEST LIST ══ */}
+      <div style={{ flex: 1, overflowY: 'auto' }} className="px-4 pb-6 pt-3 sm:px-6 lg:px-10">
         {loading ? (
-          <div style={{ color: '#999', fontSize: '14px', paddingTop: '20px' }}>Cargando...</div>
+          <p className="pt-5 text-sm text-[#999]">Cargando...</p>
         ) : filtered.length === 0 ? (
-          <div style={{ textAlign: 'center', padding: '60px 20px', border: '1px dashed #e0e0e0', borderRadius: '12px', marginTop: '20px' }}>
-            <div style={{ fontSize: '32px', marginBottom: '12px' }}>👥</div>
-            <div style={{ fontSize: '15px', color: '#888', marginBottom: '6px' }}>{guests.length === 0 ? 'Aún no hay invitados' : 'Sin resultados'}</div>
-            <div style={{ fontSize: '13px', color: '#bbb' }}>{guests.length === 0 ? 'Agrega tu primer invitado o importa un CSV' : 'Intenta con otro filtro'}</div>
+          <div className="mt-5 rounded-xl border border-dashed border-[#e0e0e0] px-6 py-14 text-center">
+            <div className="mb-3 text-3xl">👥</div>
+            <p className="text-sm text-[#888]">{guests.length === 0 ? 'Aún no hay invitados' : 'Sin resultados'}</p>
+            <p className="mt-1 text-xs text-[#bbb]">{guests.length === 0 ? 'Agrega tu primer invitado o importa un CSV' : 'Intenta con otro filtro'}</p>
           </div>
         ) : (
-          <div style={{ border: '1px solid #e8e8e8', borderRadius: '10px', overflow: 'hidden' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '40px 2fr 1.5fr 1.5fr 1.5fr 140px 40px', padding: '8px 16px', background: '#f8f8f8', borderBottom: '1px solid #e8e8e8', alignItems: 'center' }}>
-              <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} style={{ cursor: 'pointer', accentColor: '#48C9B0' }} />
-              {['Nombre', 'Notas', 'Email', 'Teléfono', 'Status', ''].map(h => (
-                <div key={h} style={{ fontSize: '11px', color: '#aaa', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{h}</div>
-              ))}
-            </div>
+          <>
+        {/* ── MOBILE: cards ── */}
+          <div className="flex flex-col gap-2 sm:hidden">
+            {filtered.map(guest => (
+              <div key={guest.id} className="rounded-xl border border-[#e8e8e8] bg-white px-3 py-3">
+                <div className="flex items-center gap-2">
 
-            {filtered.map((guest, i) => (
-              <div key={guest.id}
-                style={{
-                  display: 'grid', gridTemplateColumns: '40px 2fr 1.5fr 1.5fr 1.5fr 140px 40px',
-                  padding: '10px 16px', alignItems: 'center',
-                  borderBottom: i < filtered.length - 1 ? '1px solid #f0f0f0' : 'none',
-                  background: selected.has(guest.id) ? '#f0fdfb' : i % 2 === 0 ? '#fff' : '#fafafa',
-                }}
-                onMouseEnter={e => { if (!selected.has(guest.id)) e.currentTarget.style.background = '#f5f5f5' }}
-                onMouseLeave={e => { if (!selected.has(guest.id)) e.currentTarget.style.background = i % 2 === 0 ? '#fff' : '#fafafa' }}
-              >
-                <input type="checkbox" checked={selected.has(guest.id)} onChange={() => toggleSelect(guest.id)} style={{ cursor: 'pointer', accentColor: '#48C9B0' }} />
-
-                <div onClick={() => openEdit(guest)}
-                  style={{ fontSize: '14px', fontWeight: '600', color: '#1D1E20', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  {guest.name}
-                  {guest.party_size > 1 && <span style={{ fontSize: '11px', color: '#aaa', fontWeight: '400' }}>+{guest.party_size - 1}</span>}
-                  <span style={{ fontSize: '11px', color: '#ccc' }}>✏️</span>
-                </div>
-
-                <div style={{ fontSize: '12px', color: '#aaa', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={guest.notes || ''}>
-                  {guest.notes || <span style={{ color: '#ddd' }}>—</span>}
-                </div>
-
-                <div style={{ fontSize: '12px', color: '#888', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {guest.email || <span style={{ color: '#ddd' }}>—</span>}
-                </div>
-
-                {/* Teléfono + WhatsApp con dropdown de plantillas */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  {guest.phone ? (
-                    <>
-                      <span style={{ fontSize: '12px', color: '#888' }}>{guest.phone}</span>
-                      <div style={{ position: 'relative' }}>
-                        <button
-                          onClick={() => setShowWaMenu(showWaMenu === guest.id ? null : guest.id)}
-                          style={{ display: 'flex', alignItems: 'center', background: 'transparent', border: 'none', cursor: 'pointer', padding: '2px' }}
-                          title="Enviar WhatsApp"
-                        >
-                          <svg width="15" height="15" viewBox="0 0 24 24" fill="#25D366">
-                            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-                          </svg>
-                        </button>
-                        {showWaMenu === guest.id && (
-                          <div ref={waMenuRef} style={{ position: 'absolute', top: '100%', left: 0, marginTop: '4px', background: '#fff', border: '1px solid #e8e8e8', borderRadius: '8px', padding: '4px', zIndex: 50, minWidth: '220px', boxShadow: '0 4px 16px rgba(0,0,0,0.1)' }}>
-                            {activeTemplates.length === 0 ? (
-                              <div style={{ padding: '10px 12px', fontSize: '12px', color: '#aaa' }}>
-                                No hay plantillas — ve a Configuración
-                              </div>
-                            ) : activeTemplates.map((template, ti) => (
-                              <button key={ti}
-                                onClick={() => {
-                                  window.open(`https://wa.me/${guest.phone!.replace(/\D/g, '')}?text=${buildWaText(guest, ti)}`, '_blank')
-                                  setShowWaMenu(null)
-                                }}
-                                style={{ width: '100%', padding: '8px 12px', background: 'transparent', border: 'none', color: '#1D1E20', fontSize: '12px', cursor: 'pointer', textAlign: 'left', borderRadius: '6px', lineHeight: '1.4' }}
-                                onMouseEnter={e => e.currentTarget.style.background = '#f0fdfb'}
-                                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                              >
-                                <span style={{ fontSize: '10px', color: '#aaa', display: 'block', marginBottom: '2px', fontWeight: '600' }}>PLANTILLA {ti + 1}</span>
-                                {template.length > 60 ? template.substring(0, 60) + '...' : template}
-                              </button>
-                            ))}
-                          </div>
-                        )}
+                  {/* WhatsApp — extremo izquierdo */}
+                  <div className="shrink-0">
+                    {guest.phone ? (
+                      <button
+                        onClick={() => window.open(`https://wa.me/${guest.phone!.replace(/\D/g, '')}?text=${buildWaText(guest)}`, '_blank')}
+                        className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#f0fff8] border border-[#c0f0dc]"
+                      >
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="#25D366">
+                          <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                        </svg>
+                      </button>
+                    ) : (
+                      <div className="h-9 w-9 rounded-xl border border-[#f0f0f0] bg-[#fafafa] flex items-center justify-center">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="#ddd">
+                          <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                        </svg>
                       </div>
-                    </>
-                  ) : (
-                    <span style={{ fontSize: '12px', color: '#ddd' }}>—</span>
-                  )}
+                    )}
+                  </div>
+
+                  {/* Nombre + teléfono — centro, flex-1 */}
+                  <div className="min-w-0 flex-1">
+                    <button
+                      onClick={() => openEdit(guest)}
+                      className="block w-full truncate text-left text-sm font-semibold text-[#1D1E20]"
+                    >
+                      {guest.name}
+                      {guest.party_size > 1 && (
+                        <span className="ml-1 text-xs font-normal text-[#aaa]">+{guest.party_size - 1}</span>
+                      )}
+                    </button>
+                    <p className="mt-0.5 truncate text-xs text-[#aaa]">
+                      {guest.phone || 'Sin teléfono'}
+                    </p>
+                  </div>
+
+                  {/* Status dropdown — centro derecha */}
+                  <div className="shrink-0">
+                    <select
+                      value={guest.rsvp_status}
+                      onChange={e => updateStatus(guest.id, e.target.value as 'pending' | 'confirmed' | 'declined')}
+                      className="cursor-pointer rounded-lg border px-2 py-1.5 text-xs font-semibold outline-none"
+                      style={{
+                        background: STATUS_LABEL[guest.rsvp_status].bg,
+                        borderColor: STATUS_LABEL[guest.rsvp_status].border,
+                        color: STATUS_LABEL[guest.rsvp_status].color,
+                      }}
+                    >
+                      <option value="pending">Pendiente</option>
+                      <option value="confirmed">Confirmado</option>
+                      <option value="declined">Declinó</option>
+                    </select>
+                  </div>
+
+                  {/* Eliminar — extremo derecho */}
+                  <button
+                    onClick={() => deleteGuest(guest.id)}
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#ffe0e0] bg-[#fff5f5]"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#cc3333" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="3 6 5 6 21 6"/>
+                      <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
+                      <path d="M10 11v6M14 11v6"/>
+                      <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
+                    </svg>
+                  </button>
+
                 </div>
-
-                <select value={guest.rsvp_status} onChange={e => updateStatus(guest.id, e.target.value as 'pending' | 'confirmed' | 'declined')}
-                  style={{ padding: '4px 8px', background: STATUS_LABEL[guest.rsvp_status].bg, border: `1px solid ${STATUS_LABEL[guest.rsvp_status].border}`, borderRadius: '6px', color: STATUS_LABEL[guest.rsvp_status].color, fontSize: '11px', fontWeight: '600', cursor: 'pointer', outline: 'none', width: '120px' }}>
-                  <option value="pending">Pendiente</option>
-                  <option value="confirmed">Confirmado</option>
-                  <option value="declined">Declinó</option>
-                </select>
-
-                <button onClick={() => deleteGuest(guest.id)}
-                  style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#cc3333" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
-                    <path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
-                  </svg>
-                </button>
               </div>
             ))}
           </div>
+            {/* ── TABLET / DESKTOP: tabla ── */}
+            <div className="hidden overflow-hidden rounded-xl border border-[#e8e8e8] sm:block">
+              {/* Header tabla */}
+              <div className="grid items-center border-b border-[#e8e8e8] bg-[#f8f8f8] px-4 py-2"
+                style={{ gridTemplateColumns: '40px 2fr 1.5fr 1.5fr 1.5fr 140px 40px' }}>
+                <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} style={{ cursor: 'pointer', accentColor: '#48C9B0' }} />
+                {['Nombre', 'Notas', 'Email', 'Teléfono', 'Status', ''].map(h => (
+                  <div key={h} className="text-[11px] font-semibold uppercase tracking-wide text-[#aaa]">{h}</div>
+                ))}
+              </div>
+
+              {/* Filas */}
+              {filtered.map((guest, i) => (
+                <div
+                  key={guest.id}
+                  className={`grid items-center px-4 py-2.5 transition
+                    ${selected.has(guest.id) ? 'bg-[#f0fdfb]' : i % 2 === 0 ? 'bg-white hover:bg-[#f5f5f5]' : 'bg-[#fafafa] hover:bg-[#f5f5f5]'}
+                    ${i < filtered.length - 1 ? 'border-b border-[#f0f0f0]' : ''}`}
+                  style={{ gridTemplateColumns: '40px 2fr 1.5fr 1.5fr 1.5fr 140px 40px' }}
+                >
+                  <input type="checkbox" checked={selected.has(guest.id)} onChange={() => toggleSelect(guest.id)} style={{ cursor: 'pointer', accentColor: '#48C9B0' }} />
+
+                  <div onClick={() => openEdit(guest)} className="flex cursor-pointer items-center gap-1.5">
+                    <span className="text-sm font-semibold text-[#1D1E20]">{guest.name}</span>
+                    {guest.party_size > 1 && <span className="text-xs text-[#aaa]">+{guest.party_size - 1}</span>}
+                    <span className="text-xs text-[#ddd]">✏️</span>
+                  </div>
+
+                  <div className="overflow-hidden text-ellipsis whitespace-nowrap text-xs text-[#aaa]" title={guest.notes || ''}>
+                    {guest.notes || <span className="text-[#ddd]">—</span>}
+                  </div>
+
+                  <div className="overflow-hidden text-ellipsis whitespace-nowrap text-xs text-[#888]">
+                    {guest.email || <span className="text-[#ddd]">—</span>}
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    {guest.phone ? (
+                      <>
+                        <span className="text-xs text-[#888]">{guest.phone}</span>
+                        <div className="relative">
+                          <button
+                            onClick={() => setShowWaMenu(showWaMenu === guest.id ? null : guest.id)}
+                            className="flex items-center p-0.5"
+                          >
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="#25D366">
+                              <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+                            </svg>
+                          </button>
+                          {showWaMenu === guest.id && (
+                            <div ref={waMenuRef} className="absolute left-0 top-full z-50 mt-1 min-w-[220px] rounded-xl border border-[#e8e8e8] bg-white p-1 shadow-lg">
+                              {activeTemplates.length === 0 ? (
+                                <p className="px-3 py-2.5 text-xs text-[#aaa]">No hay plantillas — ve a Configuración</p>
+                              ) : activeTemplates.map((template, ti) => (
+                                <button
+                                  key={ti}
+                                  onClick={() => {
+                                    window.open(`https://wa.me/${guest.phone!.replace(/\D/g, '')}?text=${buildWaText(guest, ti)}`, '_blank')
+                                    setShowWaMenu(null)
+                                  }}
+                                  className="w-full rounded-lg px-3 py-2 text-left text-xs leading-snug text-[#1D1E20] hover:bg-[#f0fdfb]"
+                                >
+                                  <span className="mb-0.5 block text-[10px] font-semibold text-[#aaa]">PLANTILLA {ti + 1}</span>
+                                  {template.length > 60 ? template.substring(0, 60) + '...' : template}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </>
+                    ) : (
+                      <span className="text-xs text-[#ddd]">—</span>
+                    )}
+                  </div>
+
+                  <select
+                    value={guest.rsvp_status}
+                    onChange={e => updateStatus(guest.id, e.target.value as 'pending' | 'confirmed' | 'declined')}
+                    className="w-[120px] cursor-pointer rounded-md border px-2 py-1 text-xs font-semibold outline-none"
+                    style={{
+                      background: STATUS_LABEL[guest.rsvp_status].bg,
+                      borderColor: STATUS_LABEL[guest.rsvp_status].border,
+                      color: STATUS_LABEL[guest.rsvp_status].color,
+                    }}
+                  >
+                    <option value="pending">Pendiente</option>
+                    <option value="confirmed">Confirmado</option>
+                    <option value="declined">Declinó</option>
+                  </select>
+
+                  <button onClick={() => deleteGuest(guest.id)} className="flex items-center justify-center p-1">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#cc3333" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
+                      <path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
+                    </svg>
+                  </button>
+                </div>
+              ))}
+            </div>
+          </>
         )}
       </div>
 
-      {/* ── MODAL EDITAR ── */}
+      {/* ══ MODAL EDITAR ══ */}
       {editGuest && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '20px' }}>
-          <div style={{ background: '#fff', border: '1px solid #e8e8e8', borderRadius: '16px', padding: '32px', width: '100%', maxWidth: '460px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,0.12)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
-              <h2 style={{ fontSize: '20px', fontWeight: '700', margin: 0, color: '#1D1E20' }}>Editar invitado</h2>
-              <button onClick={() => setEditGuest(null)} style={{ background: 'transparent', border: 'none', color: '#aaa', fontSize: '20px', cursor: 'pointer' }}>✕</button>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md overflow-y-auto rounded-2xl border border-[#e8e8e8] bg-white p-6 shadow-xl sm:p-8" style={{ maxHeight: '90vh' }}>
+            <div className="mb-6 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-[#1D1E20] sm:text-xl">Editar invitado</h2>
+              <button onClick={() => setEditGuest(null)} className="text-xl text-[#aaa]">✕</button>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div className="flex flex-col gap-4">
               <div>
-                <label style={{ display: 'block', fontSize: '13px', color: '#555', fontWeight: '500', marginBottom: '6px' }}>Nombre *</label>
+                <label className="mb-1.5 block text-xs font-medium text-[#555] sm:text-sm">Nombre *</label>
                 <input type="text" value={editName} onChange={e => setEditName(e.target.value)} style={inp} />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '13px', color: '#555', fontWeight: '500', marginBottom: '6px' }}>WhatsApp</label>
+                <label className="mb-1.5 block text-xs font-medium text-[#555] sm:text-sm">WhatsApp</label>
                 <input type="tel" value={editPhone} onChange={e => setEditPhone(e.target.value)} placeholder="+52 81 1234 5678" style={inp} />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '13px', color: '#555', fontWeight: '500', marginBottom: '6px' }}>Email</label>
+                <label className="mb-1.5 block text-xs font-medium text-[#555] sm:text-sm">Email</label>
                 <input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)} placeholder="ana@ejemplo.com" style={inp} />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '13px', color: '#555', fontWeight: '500', marginBottom: '6px' }}>Notas</label>
-                <textarea value={editNotes} onChange={e => setEditNotes(e.target.value)} placeholder="Mesa preferida, restricciones alimentarias..." rows={2}
-                  style={{ ...inp, resize: 'vertical' }} />
+                <label className="mb-1.5 block text-xs font-medium text-[#555] sm:text-sm">Notas</label>
+                <textarea value={editNotes} onChange={e => setEditNotes(e.target.value)} placeholder="Mesa preferida, restricciones..." rows={2} style={{ ...inp, resize: 'vertical' }} />
               </div>
             </div>
-            {editError && <div style={{ marginTop: '12px', padding: '10px', background: '#fff0f0', border: '1px solid #ffc0c0', borderRadius: '8px', color: '#cc3333', fontSize: '13px' }}>{editError}</div>}
-            <div style={{ display: 'flex', gap: '10px', marginTop: '24px' }}>
-              <button onClick={() => setEditGuest(null)} style={{ flex: 1, padding: '12px', background: 'transparent', border: '1px solid #e0e0e0', borderRadius: '8px', color: '#888', fontSize: '14px', cursor: 'pointer' }}>Cancelar</button>
-              <button onClick={handleEditSave} disabled={editSaving} style={{ flex: 2, padding: '12px', background: editSaving ? '#a0e0d8' : '#48C9B0', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '14px', fontWeight: '600', cursor: editSaving ? 'not-allowed' : 'pointer' }}>
+            {editError && <div className="mt-3 rounded-lg border border-[#ffc0c0] bg-[#fff0f0] p-2.5 text-xs text-[#cc3333]">{editError}</div>}
+            <div className="mt-6 flex gap-2.5">
+              <button onClick={() => setEditGuest(null)} className="flex-1 rounded-lg border border-[#e0e0e0] py-3 text-sm text-[#888]">Cancelar</button>
+              <button onClick={handleEditSave} disabled={editSaving} className="flex-[2] rounded-lg bg-[#48C9B0] py-3 text-sm font-semibold text-white disabled:opacity-60">
                 {editSaving ? 'Guardando...' : 'Guardar cambios'}
               </button>
             </div>
@@ -501,37 +606,36 @@ export default function EventPage() {
         </div>
       )}
 
-      {/* ── MODAL AGREGAR ── */}
+      {/* ══ MODAL AGREGAR ══ */}
       {showModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '20px' }}>
-          <div style={{ background: '#fff', border: '1px solid #e8e8e8', borderRadius: '16px', padding: '32px', width: '100%', maxWidth: '460px', maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 8px 32px rgba(0,0,0,0.12)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '24px' }}>
-              <h2 style={{ fontSize: '20px', fontWeight: '700', margin: 0, color: '#1D1E20' }}>Agregar invitado</h2>
-              <button onClick={() => setShowModal(false)} style={{ background: 'transparent', border: 'none', color: '#aaa', fontSize: '20px', cursor: 'pointer' }}>✕</button>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md overflow-y-auto rounded-2xl border border-[#e8e8e8] bg-white p-6 shadow-xl sm:p-8" style={{ maxHeight: '90vh' }}>
+            <div className="mb-6 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-[#1D1E20] sm:text-xl">Agregar invitado</h2>
+              <button onClick={() => setShowModal(false)} className="text-xl text-[#aaa]">✕</button>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div className="flex flex-col gap-4">
               <div>
-                <label style={{ display: 'block', fontSize: '13px', color: '#555', fontWeight: '500', marginBottom: '6px' }}>Nombre *</label>
+                <label className="mb-1.5 block text-xs font-medium text-[#555] sm:text-sm">Nombre *</label>
                 <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Ana García" style={inp} />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '13px', color: '#555', fontWeight: '500', marginBottom: '6px' }}>WhatsApp <span style={{ color: '#ccc', fontWeight: '400' }}>(opcional)</span></label>
+                <label className="mb-1.5 block text-xs font-medium text-[#555] sm:text-sm">WhatsApp <span className="font-normal text-[#ccc]">(opcional)</span></label>
                 <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+52 81 1234 5678" style={inp} />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '13px', color: '#555', fontWeight: '500', marginBottom: '6px' }}>Email <span style={{ color: '#ccc', fontWeight: '400' }}>(opcional)</span></label>
+                <label className="mb-1.5 block text-xs font-medium text-[#555] sm:text-sm">Email <span className="font-normal text-[#ccc]">(opcional)</span></label>
                 <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="ana@ejemplo.com" style={inp} />
               </div>
               <div>
-                <label style={{ display: 'block', fontSize: '13px', color: '#555', fontWeight: '500', marginBottom: '6px' }}>Notas <span style={{ color: '#ccc', fontWeight: '400' }}>(opcional)</span></label>
-                <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Mesa preferida, restricciones alimentarias..." rows={2}
-                  style={{ ...inp, resize: 'vertical' }} />
+                <label className="mb-1.5 block text-xs font-medium text-[#555] sm:text-sm">Notas <span className="font-normal text-[#ccc]">(opcional)</span></label>
+                <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Mesa preferida, restricciones..." rows={2} style={{ ...inp, resize: 'vertical' }} />
               </div>
             </div>
-            {formError && <div style={{ marginTop: '12px', padding: '10px', background: '#fff0f0', border: '1px solid #ffc0c0', borderRadius: '8px', color: '#cc3333', fontSize: '13px' }}>{formError}</div>}
-            <div style={{ display: 'flex', gap: '10px', marginTop: '24px' }}>
-              <button onClick={() => setShowModal(false)} style={{ flex: 1, padding: '12px', background: 'transparent', border: '1px solid #e0e0e0', borderRadius: '8px', color: '#888', fontSize: '14px', cursor: 'pointer' }}>Cancelar</button>
-              <button onClick={handleAddGuest} disabled={saving} style={{ flex: 2, padding: '12px', background: saving ? '#a0e0d8' : '#48C9B0', border: 'none', borderRadius: '8px', color: '#fff', fontSize: '14px', fontWeight: '600', cursor: saving ? 'not-allowed' : 'pointer' }}>
+            {formError && <div className="mt-3 rounded-lg border border-[#ffc0c0] bg-[#fff0f0] p-2.5 text-xs text-[#cc3333]">{formError}</div>}
+            <div className="mt-6 flex gap-2.5">
+              <button onClick={() => setShowModal(false)} className="flex-1 rounded-lg border border-[#e0e0e0] py-3 text-sm text-[#888]">Cancelar</button>
+              <button onClick={handleAddGuest} disabled={saving} className="flex-[2] rounded-lg bg-[#48C9B0] py-3 text-sm font-semibold text-white disabled:opacity-60">
                 {saving ? 'Guardando...' : 'Agregar invitado'}
               </button>
             </div>
@@ -539,50 +643,49 @@ export default function EventPage() {
         </div>
       )}
 
-      {/* ── MODAL CSV ── */}
+      {/* ══ MODAL CSV ══ */}
       {showCsvModal && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: '20px' }}>
-          <div style={{ background: '#fff', border: '1px solid #e8e8e8', borderRadius: '16px', padding: '32px', width: '100%', maxWidth: '480px', boxShadow: '0 8px 32px rgba(0,0,0,0.12)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '20px' }}>
-              <h2 style={{ fontSize: '20px', fontWeight: '700', margin: 0, color: '#1D1E20' }}>Importar invitados</h2>
-              <button onClick={() => setShowCsvModal(false)} style={{ background: 'transparent', border: 'none', color: '#aaa', fontSize: '20px', cursor: 'pointer' }}>✕</button>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-lg rounded-2xl border border-[#e8e8e8] bg-white p-6 shadow-xl sm:p-8">
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-[#1D1E20] sm:text-xl">Importar invitados</h2>
+              <button onClick={() => setShowCsvModal(false)} className="text-xl text-[#aaa]">✕</button>
             </div>
-            <div style={{ marginBottom: '24px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
-                <div style={{ width: '24px', height: '24px', background: '#48C9B0', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: '700', color: '#fff', flexShrink: 0 }}>1</div>
-                <span style={{ fontSize: '15px', fontWeight: '600', color: '#1D1E20' }}>Descarga la plantilla</span>
+            <div className="mb-6">
+              <div className="mb-2 flex items-center gap-2.5">
+                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#48C9B0] text-xs font-bold text-white">1</div>
+                <span className="text-sm font-semibold text-[#1D1E20]">Descarga la plantilla</span>
               </div>
-              <p style={{ fontSize: '13px', color: '#666', margin: '0 0 12px 34px', lineHeight: '1.5' }}>Descarga el archivo, llénalo en Excel o Google Sheets y guárdalo como CSV.</p>
-              <div style={{ marginLeft: '34px', background: '#f8f8f8', border: '1px solid #e8e8e8', borderRadius: '8px', padding: '12px', marginBottom: '12px' }}>
-                <div style={{ fontSize: '12px', color: '#888', fontFamily: 'monospace', lineHeight: '1.8' }}>
-                  <span style={{ color: '#b8860b', fontWeight: '600' }}>nombre</span> — obligatorio<br/>
-                  <span style={{ color: '#48C9B0', fontWeight: '600' }}>telefono</span> — WhatsApp (opcional)<br/>
-                  <span style={{ color: '#48C9B0', fontWeight: '600' }}>email</span> — correo (opcional)
-                </div>
+              <p className="mb-3 ml-8 text-xs leading-relaxed text-[#666]">Llénala en Excel o Google Sheets y guárdala como CSV.</p>
+              <div className="mb-3 ml-8 rounded-lg border border-[#e8e8e8] bg-[#f8f8f8] p-3 font-mono text-xs leading-relaxed">
+                <span className="font-semibold text-[#b8860b]">nombre</span> — obligatorio<br/>
+                <span className="font-semibold text-[#48C9B0]">telefono</span> — WhatsApp (opcional)<br/>
+                <span className="font-semibold text-[#48C9B0]">email</span> — correo (opcional)
               </div>
-              <button onClick={downloadTemplate} style={{ marginLeft: '34px', padding: '8px 16px', background: 'transparent', border: '1px solid #48C9B0', borderRadius: '8px', color: '#1a9e88', fontSize: '13px', cursor: 'pointer' }}>
+              <button onClick={downloadTemplate} className="ml-8 rounded-lg border border-[#48C9B0] px-4 py-2 text-xs text-[#1a9e88] transition hover:bg-[#f0fdfb]">
                 ⬇️ Descargar plantilla CSV
               </button>
             </div>
-            <div style={{ borderTop: '1px solid #f0f0f0', marginBottom: '24px' }} />
+            <div className="mb-6 border-t border-[#f0f0f0]" />
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
-                <div style={{ width: '24px', height: '24px', background: '#48C9B0', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '12px', fontWeight: '700', color: '#fff', flexShrink: 0 }}>2</div>
-                <span style={{ fontSize: '15px', fontWeight: '600', color: '#1D1E20' }}>Sube tu archivo</span>
+              <div className="mb-2 flex items-center gap-2.5">
+                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#48C9B0] text-xs font-bold text-white">2</div>
+                <span className="text-sm font-semibold text-[#1D1E20]">Sube tu archivo</span>
               </div>
-              {csvError && <div style={{ marginLeft: '34px', marginBottom: '12px', padding: '10px', background: '#fff0f0', border: '1px solid #ffc0c0', borderRadius: '8px', color: '#cc3333', fontSize: '13px' }}>{csvError}</div>}
-              {csvSuccess && <div style={{ marginLeft: '34px', marginBottom: '12px', padding: '10px', background: '#f0fff6', border: '1px solid #a0e0c0', borderRadius: '8px', color: '#2a7a50', fontSize: '13px' }}>{csvSuccess}</div>}
-              <label style={{ marginLeft: '34px', display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '10px 20px', background: '#48C9B0', borderRadius: '8px', color: '#fff', fontSize: '14px', fontWeight: '600', cursor: 'pointer' }}>
+              {csvError   && <div className="mb-3 ml-8 rounded-lg border border-[#ffc0c0] bg-[#fff0f0] p-2.5 text-xs text-[#cc3333]">{csvError}</div>}
+              {csvSuccess && <div className="mb-3 ml-8 rounded-lg border border-[#a0e0c0] bg-[#f0fff6] p-2.5 text-xs text-[#2a7a50]">{csvSuccess}</div>}
+              <label className="ml-8 inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[#48C9B0] px-4 py-2 text-xs font-semibold text-white">
                 📁 Seleccionar archivo CSV
-                <input ref={fileRef} type="file" accept=".csv,.txt" onChange={handleCSV} style={{ display: 'none' }} />
+                <input ref={fileRef} type="file" accept=".csv,.txt" onChange={handleCSV} className="hidden" />
               </label>
             </div>
-            <div style={{ marginTop: '24px', textAlign: 'right' }}>
-              <button onClick={() => setShowCsvModal(false)} style={{ padding: '8px 20px', background: 'transparent', border: '1px solid #e0e0e0', borderRadius: '8px', color: '#888', fontSize: '13px', cursor: 'pointer' }}>Cerrar</button>
+            <div className="mt-6 text-right">
+              <button onClick={() => setShowCsvModal(false)} className="rounded-lg border border-[#e0e0e0] px-5 py-2 text-xs text-[#888]">Cerrar</button>
             </div>
           </div>
         </div>
       )}
+
     </div>
   )
 }

@@ -13,12 +13,12 @@ const EVENT_TYPES = [
 ]
 
 export default function NewEvent() {
-  const [name, setName] = useState('')
-  const [date, setDate] = useState('')
-  const [venue, setVenue] = useState('')
+  const [name, setName]           = useState('')
+  const [date, setDate]           = useState('')
+  const [venue, setVenue]         = useState('')
   const [eventType, setEventType] = useState('')
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
+  const [loading, setLoading]     = useState(false)
+  const [error, setError]         = useState('')
 
   const handleCreate = async () => {
     if (!name || !date || !eventType) {
@@ -36,85 +36,121 @@ export default function NewEvent() {
     else window.location.href = '/dashboard'
   }
 
-  const inp = {
-    width: '100%', padding: '12px 14px', background: '#f8f8f8',
-    border: '1px solid #e0e0e0', borderRadius: '8px',
-    color: '#1D1E20', fontSize: '15px', outline: 'none',
-    boxSizing: 'border-box' as const,
-  }
-
   return (
-    <div style={{ minHeight: '100vh', background: '#ffffff', fontFamily: 'system-ui, sans-serif', color: '#1D1E20' }}>
+    <div className="min-h-screen bg-white font-sans text-[#1D1E20]">
 
-      {/* Header */}
-      <div style={{ borderBottom: '1px solid #e8e8e8', padding: '0 40px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', height: '60px', background: '#ffffff' }}>
-        <div style={{ fontSize: '20px', fontWeight: '700', fontFamily: 'Georgia, serif' }}>
-          Guest<span style={{ color: '#48C9B0' }}>Flow</span>
+      {/* ── Header ── */}
+      <header className="border-b border-[#e8e8e8] bg-white">
+        <div className="mx-auto flex h-14 max-w-lg items-center justify-between px-4 sm:h-16 sm:px-6">
+          <span className="text-lg font-bold sm:text-xl" style={{ fontFamily: 'Georgia, serif' }}>
+            Guest<span className="text-[#48C9B0]">Flow</span>
+          </span>
+          <button
+            onClick={() => window.location.href = '/dashboard'}
+            className="rounded-md border border-[#e0e0e0] px-3 py-1.5 text-xs text-[#888] transition hover:bg-[#f5f5f5] sm:px-4 sm:text-sm"
+          >
+            ← Volver
+          </button>
         </div>
-        <button onClick={() => window.location.href = '/dashboard'}
-          style={{ padding: '6px 14px', background: 'transparent', border: '1px solid #e0e0e0', borderRadius: '6px', color: '#888', fontSize: '13px', cursor: 'pointer' }}>
-          ← Volver
-        </button>
-      </div>
+      </header>
 
-      <div style={{ padding: '40px', maxWidth: '520px', margin: '0 auto' }}>
-        <h1 style={{ fontSize: '24px', fontWeight: '700', marginBottom: '8px', color: '#1D1E20' }}>Nuevo evento</h1>
-        <p style={{ fontSize: '14px', color: '#888', marginBottom: '32px' }}>Ingresa los datos básicos del evento</p>
+      {/* ── Contenido ── */}
+      <main className="mx-auto max-w-lg px-4 py-6 sm:px-6 sm:py-10">
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        <h1 className="text-xl font-bold text-[#1D1E20] sm:text-2xl">Nuevo evento</h1>
+        <p className="mt-1 text-sm text-[#888]">Ingresa los datos básicos del evento</p>
 
+        <div className="mt-6 flex flex-col gap-5 sm:mt-8">
+
+          {/* Tipo de evento */}
           <div>
-            <label style={{ display: 'block', fontSize: '13px', color: '#555', fontWeight: '500', marginBottom: '10px' }}>Tipo de evento *</label>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+            <label className="mb-2.5 block text-xs font-semibold text-[#555] sm:text-sm">
+              Tipo de evento *
+            </label>
+            <div className="grid grid-cols-2 gap-2">
               {EVENT_TYPES.map(type => (
-                <button key={type.value} onClick={() => setEventType(type.value)}
-                  style={{
-                    padding: '12px', cursor: 'pointer', textAlign: 'left', fontSize: '13px',
-                    background: eventType === type.value ? '#f0fdfb' : '#f8f8f8',
-                    border: `1px solid ${eventType === type.value ? '#48C9B0' : '#e0e0e0'}`,
-                    borderRadius: '8px',
-                    color: eventType === type.value ? '#1a9e88' : '#555',
-                    fontWeight: eventType === type.value ? '600' : '400',
-                  }}>
+                <button
+                  key={type.value}
+                  onClick={() => setEventType(type.value)}
+                  className={`rounded-lg border px-3 py-3 text-left text-xs transition sm:text-sm
+                    ${eventType === type.value
+                      ? 'border-[#48C9B0] bg-[#f0fdfb] font-semibold text-[#1a9e88]'
+                      : 'border-[#e0e0e0] bg-[#f8f8f8] text-[#555] hover:border-[#48C9B0] hover:text-[#1a9e88]'
+                    }`}
+                >
                   {type.label}
                 </button>
               ))}
             </div>
           </div>
 
+          {/* Nombre */}
           <div>
-            <label style={{ display: 'block', fontSize: '13px', color: '#555', fontWeight: '500', marginBottom: '6px' }}>Nombre del evento *</label>
-            <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Boda Ana & Carlos" style={inp} />
+            <label className="mb-1.5 block text-xs font-semibold text-[#555] sm:text-sm">
+              Nombre del evento *
+            </label>
+            <input
+              type="text"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder="Boda Ana & Carlos"
+              className="w-full rounded-lg border border-[#e0e0e0] bg-[#f8f8f8] px-3 py-3 text-sm text-[#1D1E20] outline-none transition focus:border-[#48C9B0] sm:text-base"
+            />
           </div>
 
+          {/* Fecha */}
           <div>
-            <label style={{ display: 'block', fontSize: '13px', color: '#555', fontWeight: '500', marginBottom: '6px' }}>Fecha del evento *</label>
-            <input type="date" value={date} onChange={e => setDate(e.target.value)} style={{ ...inp, colorScheme: 'light' }} />
+            <label className="mb-1.5 block text-xs font-semibold text-[#555] sm:text-sm">
+              Fecha del evento *
+            </label>
+            <input
+              type="date"
+              value={date}
+              onChange={e => setDate(e.target.value)}
+              style={{ colorScheme: 'light' }}
+              className="w-full rounded-lg border border-[#e0e0e0] bg-[#f8f8f8] px-3 py-3 text-sm text-[#1D1E20] outline-none transition focus:border-[#48C9B0] sm:text-base"
+            />
           </div>
 
+          {/* Venue */}
           <div>
-            <label style={{ display: 'block', fontSize: '13px', color: '#555', fontWeight: '500', marginBottom: '6px' }}>Venue <span style={{ color: '#ccc', fontWeight: '400' }}>(opcional)</span></label>
-            <input type="text" value={venue} onChange={e => setVenue(e.target.value)} placeholder="Hacienda San Miguel" style={inp} />
+            <label className="mb-1.5 block text-xs font-semibold text-[#555] sm:text-sm">
+              Venue <span className="font-normal text-[#ccc]">(opcional)</span>
+            </label>
+            <input
+              type="text"
+              value={venue}
+              onChange={e => setVenue(e.target.value)}
+              placeholder="Hacienda San Miguel"
+              className="w-full rounded-lg border border-[#e0e0e0] bg-[#f8f8f8] px-3 py-3 text-sm text-[#1D1E20] outline-none transition focus:border-[#48C9B0] sm:text-base"
+            />
           </div>
         </div>
 
+        {/* Error */}
         {error && (
-          <div style={{ marginTop: '20px', padding: '12px', background: '#fff0f0', border: '1px solid #ffc0c0', borderRadius: '8px', color: '#cc3333', fontSize: '13px' }}>
+          <div className="mt-4 rounded-lg border border-[#ffc0c0] bg-[#fff0f0] p-3 text-xs text-[#cc3333] sm:text-sm">
             {error}
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: '12px', marginTop: '32px' }}>
-          <button onClick={() => window.location.href = '/dashboard'}
-            style={{ flex: 1, padding: '14px', background: 'transparent', border: '1px solid #e0e0e0', borderRadius: '8px', color: '#888', fontSize: '15px', cursor: 'pointer' }}>
+        {/* Botones */}
+        <div className="mt-6 flex gap-3 sm:mt-8">
+          <button
+            onClick={() => window.location.href = '/dashboard'}
+            className="flex-1 rounded-lg border border-[#e0e0e0] py-3.5 text-sm text-[#888] transition hover:bg-[#f5f5f5]"
+          >
             Cancelar
           </button>
-          <button onClick={handleCreate} disabled={loading}
-            style={{ flex: 2, padding: '14px', background: loading ? '#a0e0d8' : '#48C9B0', border: 'none', borderRadius: '8px', color: '#ffffff', fontSize: '15px', fontWeight: '600', cursor: loading ? 'not-allowed' : 'pointer' }}>
+          <button
+            onClick={handleCreate}
+            disabled={loading}
+            className="flex-[2] rounded-lg bg-[#48C9B0] py-3.5 text-sm font-semibold text-white transition hover:bg-[#3ab89f] disabled:opacity-60"
+          >
             {loading ? 'Creando...' : 'Crear evento'}
           </button>
         </div>
-      </div>
+      </main>
     </div>
   )
 }
