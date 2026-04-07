@@ -62,7 +62,7 @@ const NAV_ITEMS = [
     icon: (
       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="12" cy="12" r="3"/>
-        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
       </svg>
     ),
   },
@@ -106,20 +106,16 @@ export default function EventLayout({ children }: { children: React.ReactNode })
 
       {/* ══ TOP NAV ══ */}
       <header className="flex h-14 shrink-0 items-center justify-between border-b border-[#e8e8e8] bg-white px-4 sm:h-16 sm:px-6">
-
-        {/* Logo */}
         <span className="text-lg font-bold sm:text-xl" style={{ fontFamily: 'Georgia, serif' }}>
           Guest<span className="text-[#48C9B0]">Flow</span>
         </span>
 
-        {/* Centro: nombre del evento — visible en tablet/desktop */}
         {event && (
           <span className="hidden max-w-[240px] truncate text-sm font-semibold text-[#1D1E20] sm:block lg:max-w-sm">
             {event.name}
           </span>
         )}
 
-        {/* Derecha: botón hamburger (tablet) + volver (siempre) */}
         <div className="flex items-center gap-3">
           <button
             onClick={() => router.push('/dashboard')}
@@ -127,7 +123,7 @@ export default function EventLayout({ children }: { children: React.ReactNode })
           >
             ← Mis eventos
           </button>
-          {/* Hamburger — solo tablet (sm), en desktop el sidebar siempre está visible */}
+          {/* Hamburger — solo tablet */}
           <button
             onClick={() => setDrawerOpen(!drawerOpen)}
             className="hidden h-8 w-8 items-center justify-center rounded-md border border-[#e0e0e0] text-[#888] transition hover:border-[#48C9B0] hover:text-[#48C9B0] sm:flex lg:hidden"
@@ -144,10 +140,8 @@ export default function EventLayout({ children }: { children: React.ReactNode })
       {/* ══ BODY ══ */}
       <div className="flex min-h-0 flex-1 overflow-hidden">
 
-        {/* ══ SIDEBAR — solo desktop (lg+) ══ */}
+        {/* ══ SIDEBAR — solo desktop ══ */}
         <aside className="hidden w-56 shrink-0 flex-col overflow-y-auto border-r border-[#e8e8e8] bg-[#f8f5f0] lg:flex">
-
-          {/* Info del evento */}
           <div className="border-b border-[#e8e8e8] px-4 py-5">
             {event?.event_type && (
               <p className="mb-1 text-[11px] text-[#999]">
@@ -164,8 +158,6 @@ export default function EventLayout({ children }: { children: React.ReactNode })
               <p className="mt-0.5 text-[11px] text-[#aaa]">📍 {event.venue}</p>
             )}
           </div>
-
-          {/* Nav items */}
           <nav className="flex-1 py-2">
             {NAV_ITEMS.map(item => (
               <button
@@ -184,15 +176,13 @@ export default function EventLayout({ children }: { children: React.ReactNode })
           </nav>
         </aside>
 
-        {/* ══ DRAWER — tablet (sm a lg) ══ */}
+        {/* ══ DRAWER — tablet ══ */}
         {drawerOpen && (
           <>
-            {/* Overlay */}
             <div
               onClick={() => setDrawerOpen(false)}
               className="fixed inset-0 top-14 z-40 bg-black/30 lg:hidden"
             />
-            {/* Panel */}
             <div className="fixed left-0 top-14 z-50 flex h-[calc(100vh-56px)] w-56 flex-col overflow-y-auto border-r border-[#e8e8e8] bg-[#f8f5f0] shadow-lg lg:hidden">
               <div className="border-b border-[#e8e8e8] px-4 py-5">
                 {event?.event_type && (
@@ -245,7 +235,7 @@ export default function EventLayout({ children }: { children: React.ReactNode })
             className={`flex flex-1 flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition
               ${isActive(item.path)
                 ? 'text-[#48C9B0]'
-                : 'text-[#aaa] hover:text-[#888]'
+                : 'text-[#bbb] hover:text-[#888]'
               }`}
           >
             <span className={isActive(item.path) ? 'text-[#48C9B0]' : 'text-[#bbb]'}>

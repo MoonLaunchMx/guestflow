@@ -38,160 +38,132 @@ export default function AlbumPage() {
     a.click()
   }
 
-  const cardStyle = {
-    background: '#fafafa',
-    border: '1px solid #e8e8e8',
-    borderRadius: '12px',
-    padding: '20px',
-  }
-
-  const numberStyle = {
-    width: '28px', height: '28px',
-    background: '#48C9B0', borderRadius: '50%',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    fontSize: '13px', fontWeight: '700', color: '#fff', marginBottom: '12px',
-  }
-
-  const titleStyle = {
-    fontSize: '14px', fontWeight: '600',
-    color: '#1D1E20', margin: '0 0 6px 0',
-  }
-
-  const descStyle = {
-    fontSize: '12px', color: '#888',
-    margin: '0', lineHeight: '1.5',
-  }
-
   return (
-    <div style={{ height: '100%', overflowY: 'auto', background: '#ffffff' }}>
-      <div style={{ padding: '28px 40px 60px' }}>
+    <div className="h-full overflow-y-auto bg-white">
+      <div className="px-4 py-6 sm:px-6 sm:py-7 lg:px-10 lg:py-8">
 
-        <div style={{ marginBottom: '28px' }}>
-          <h1 style={{ fontSize: '22px', fontWeight: '700', margin: '0 0 6px 0', color: '#1D1E20' }}>Álbum de fotos</h1>
-          <p style={{ fontSize: '13px', color: '#888', margin: 0 }}>
-            Sigue estos 3 pasos para compartir el álbum con tus invitados
+        {/* Header */}
+        <div className="mb-6">
+          <h1 className="text-lg font-bold text-[#1D1E20] sm:text-xl">Álbum de fotos</h1>
+          <p className="mt-0.5 text-xs text-[#888] sm:text-sm">
+            Sigue estos pasos para compartir el álbum con tus invitados
           </p>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '16px', alignItems: 'start' }}>
+        {/* Grid: 1 col mobile, 2 col tablet, 2 col desktop (paso 1+2 arriba, 3+4 abajo) */}
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:gap-5">
 
-{/* Paso 1 */}
-          <div style={cardStyle}>
-            <div style={numberStyle}>1</div>
-            <h2 style={titleStyle}>Crea tu álbum compartido</h2>
-            <p style={descStyle}>
-              Elige una app para crear tu álbum y activa la opción de colaboración para que tus invitados puedan subir fotos.
+          {/* ── Paso 1 ── */}
+          <div className="rounded-xl border border-[#e8e8e8] bg-[#fafafa] p-4 sm:p-5">
+            <div className="mb-3 flex h-7 w-7 items-center justify-center rounded-full bg-[#48C9B0] text-xs font-bold text-white">1</div>
+            <h2 className="mb-1.5 text-sm font-semibold text-[#1D1E20]">Crea tu álbum compartido</h2>
+            <p className="mb-4 text-xs leading-relaxed text-[#888]">
+              Elige una app, activa la colaboración para que tus invitados puedan subir fotos.
             </p>
-            <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <div style={{ padding: '10px 12px', background: '#fff', border: '1px solid #e0e0e0', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div>
-                  <div style={{ fontSize: '12px', fontWeight: '600', color: '#1D1E20' }}>📸 Google Photos</div>
-                  <div style={{ fontSize: '11px', color: '#888' }}>Gratis · Android e iPhone</div>
+            <div className="flex flex-col gap-2">
+              {[
+                { icon: '📸', name: 'Google Photos', desc: 'Gratis · Android e iPhone', color: '#888', url: 'https://www.youtube.com/results?search_query=como+crear+album+compartido+google+photos' },
+                { icon: '🍎', name: 'iCloud',         desc: 'Gratis · Solo iPhone',      color: '#888', url: 'https://www.youtube.com/results?search_query=como+crear+album+compartido+icloud+fotos' },
+                { icon: '📦', name: 'Dropbox',        desc: 'Implica costo · Android e iPhone', color: '#b8860b', url: 'https://www.youtube.com/results?search_query=como+crear+carpeta+compartida+dropbox' },
+              ].map(app => (
+                <div key={app.name} className="flex items-center justify-between rounded-lg border border-[#e0e0e0] bg-white px-3 py-2.5">
+                  <div>
+                    <p className="text-xs font-semibold text-[#1D1E20]">{app.icon} {app.name}</p>
+                    <p className="text-[11px]" style={{ color: app.color }}>{app.desc}</p>
+                  </div>
+                  <button
+                    onClick={() => window.open(app.url, '_blank')}
+                    className="rounded-md border border-[#48C9B0] px-2.5 py-1 text-[11px] font-semibold text-[#1a9e88] transition hover:bg-[#f0fdfb]"
+                  >
+                    Tutorial
+                  </button>
                 </div>
-                <button
-                  onClick={() => window.open('https://www.youtube.com/results?search_query=como+crear+album+compartido+google+photos', '_blank')}
-                  style={{ padding: '5px 10px', background: 'transparent', border: '1px solid #48C9B0', borderRadius: '6px', color: '#1a9e88', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}>
-                  Tutorial
-                </button>
-              </div>
-              <div style={{ padding: '10px 12px', background: '#fff', border: '1px solid #e0e0e0', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div>
-                  <div style={{ fontSize: '12px', fontWeight: '600', color: '#1D1E20' }}>🍎 iCloud</div>
-                  <div style={{ fontSize: '11px', color: '#888' }}>Gratis · Solo iPhone</div>
-                </div>
-                <button
-                  onClick={() => window.open('https://www.youtube.com/results?search_query=como+crear+album+compartido+icloud+fotos', '_blank')}
-                  style={{ padding: '5px 10px', background: 'transparent', border: '1px solid #48C9B0', borderRadius: '6px', color: '#1a9e88', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}>
-                  Tutorial
-                </button>
-              </div>
-              <div style={{ padding: '10px 12px', background: '#fff', border: '1px solid #e0e0e0', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div>
-                  <div style={{ fontSize: '12px', fontWeight: '600', color: '#1D1E20' }}>📦 Dropbox</div>
-                  <div style={{ fontSize: '11px', color: '#b8860b' }}>Implica costo · Android e iPhone</div>
-                </div>
-                <button
-                  onClick={() => window.open('https://www.youtube.com/results?search_query=como+crear+carpeta+compartida+dropbox', '_blank')}
-                  style={{ padding: '5px 10px', background: 'transparent', border: '1px solid #48C9B0', borderRadius: '6px', color: '#1a9e88', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}>
-                  Tutorial
-                </button>
-              </div>
+              ))}
             </div>
           </div>
 
-          {/* Paso 2 */}
-          <div style={cardStyle}>
-            <div style={numberStyle}>2</div>
-            <h2 style={titleStyle}>Pega el link aquí</h2>
-            <p style={descStyle}>
-              Copia el link del álbum compartido y pégalo abajo. Funciona con Google Photos, iCloud, Dropbox y OneDrive.
+          {/* ── Paso 2 ── */}
+          <div className="rounded-xl border border-[#e8e8e8] bg-[#fafafa] p-4 sm:p-5">
+            <div className="mb-3 flex h-7 w-7 items-center justify-center rounded-full bg-[#48C9B0] text-xs font-bold text-white">2</div>
+            <h2 className="mb-1.5 text-sm font-semibold text-[#1D1E20]">Pega el link aquí</h2>
+            <p className="mb-4 text-xs leading-relaxed text-[#888]">
+              Copia el link del álbum compartido y pégalo abajo, una ves copiado asegurate de guardarlo. Funciona con Google Photos, iCloud, Dropbox y OneDrive.
             </p>
-            <div style={{ marginTop: '12px' }}>
-              <textarea
-                value={albumUrl}
-                onChange={e => setAlbumUrl(e.target.value)}
-                placeholder="https://photos.google.com/share/..."
-                rows={2}
-                style={{ width: '100%', padding: '10px 12px', background: '#fff', border: '1px solid #e0e0e0', borderRadius: '8px', color: '#1D1E20', fontSize: '13px', outline: 'none', boxSizing: 'border-box', resize: 'none', lineHeight: '1.5' }}
-              />
-              <button onClick={handleSave} disabled={saving}
-                style={{ marginTop: '8px', width: '100%', padding: '10px', background: saved ? '#f0fdfb' : saving ? '#a0e0d8' : '#48C9B0', border: saved ? '1px solid #48C9B0' : 'none', borderRadius: '8px', color: saved ? '#1a9e88' : '#fff', fontSize: '13px', fontWeight: '600', cursor: saving ? 'not-allowed' : 'pointer' }}>
-                {saved ? '✓ Link guardado' : saving ? 'Guardando...' : 'Guardar link'}
-              </button>
-            </div>
+            <textarea
+              value={albumUrl}
+              onChange={e => setAlbumUrl(e.target.value)}
+              placeholder="https://photos.google.com/share/..."
+              rows={3}
+              className="w-full resize-none rounded-lg border border-[#e0e0e0] bg-white px-3 py-2.5 text-xs leading-relaxed text-[#1D1E20] outline-none transition focus:border-[#48C9B0]"
+            />
+            <button
+              onClick={handleSave}
+              disabled={saving}
+              className={`mt-2 w-full rounded-lg py-2.5 text-sm font-semibold transition
+                ${saved
+                  ? 'border border-[#48C9B0] bg-[#f0fdfb] text-[#1a9e88]'
+                  : saving
+                    ? 'bg-[#a0e0d8] text-white'
+                    : 'bg-[#48C9B0] text-white hover:bg-[#3ab89f]'
+                } disabled:cursor-not-allowed`}
+            >
+              {saved ? '✓ Link guardado' : saving ? 'Guardando...' : 'Guardar link'}
+            </button>
           </div>
 
-          {/* Paso 3 */}
-          <div style={cardStyle}>
-            <div style={numberStyle}>3</div>
-            <h2 style={titleStyle}>Comparte el QR</h2>
-            <p style={descStyle}>
+          {/* ── Paso 3 ── */}
+          <div className="rounded-xl border border-[#e8e8e8] bg-[#fafafa] p-4 sm:p-5">
+            <div className="mb-3 flex h-7 w-7 items-center justify-center rounded-full bg-[#48C9B0] text-xs font-bold text-white">3</div>
+            <h2 className="mb-1.5 text-sm font-semibold text-[#1D1E20]">Comparte el QR</h2>
+            <p className="mb-4 text-xs leading-relaxed text-[#888]">
               {albumUrl
                 ? 'Tu QR está listo. Descárgalo e imprímelo o compártelo por WhatsApp.'
                 : 'El QR aparecerá aquí una vez que guardes el link.'}
             </p>
             {albumUrl ? (
-              <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
-                <div style={{ padding: '16px', background: '#fff', border: '1px solid #e8e8e8', borderRadius: '12px' }}>
+              <div className="flex flex-col items-center gap-3">
+                <div className="rounded-xl border border-[#e8e8e8] bg-white p-4">
                   <QRCodeCanvas value={albumUrl} size={140} />
                 </div>
-                <button onClick={downloadQR}
-                  style={{ width: '100%', padding: '10px', background: 'transparent', border: '1px solid #48C9B0', borderRadius: '8px', color: '#1a9e88', fontSize: '13px', fontWeight: '600', cursor: 'pointer' }}>
+                <button
+                  onClick={downloadQR}
+                  className="w-full rounded-lg border border-[#48C9B0] py-2.5 text-sm font-semibold text-[#1a9e88] transition hover:bg-[#f0fdfb]"
+                >
                   ⬇️ Descargar QR
                 </button>
               </div>
             ) : (
-              <div style={{ marginTop: '12px', textAlign: 'center', padding: '24px', border: '1px dashed #e0e0e0', borderRadius: '8px' }}>
-                <div style={{ fontSize: '28px', marginBottom: '6px' }}>📱</div>
-                <div style={{ fontSize: '12px', color: '#bbb' }}>Primero guarda el link</div>
+              <div className="rounded-xl border border-dashed border-[#e0e0e0] py-8 text-center">
+                <div className="mb-2 text-3xl">📱</div>
+                <p className="text-xs text-[#bbb]">Primero guarda el link</p>
               </div>
             )}
           </div>
 
-{/* Paso 4 */}
-          <div style={cardStyle}>
-            <div style={numberStyle}>4</div>
-            <h2 style={titleStyle}>Diseña e imprime tu QR</h2>
-            <p style={descStyle}>
-              Descarga el QR y personalízalo en Canva para que combine con la decoración de tu evento. Después imprímelo y colócalo en mesas, entrada o invitaciones.
+          {/* ── Paso 4 ── */}
+          <div className="rounded-xl border border-[#e8e8e8] bg-[#fafafa] p-4 sm:p-5">
+            <div className="mb-3 flex h-7 w-7 items-center justify-center rounded-full bg-[#48C9B0] text-xs font-bold text-white">4</div>
+            <h2 className="mb-1.5 text-sm font-semibold text-[#1D1E20]">Diseña e imprime tu QR</h2>
+            <p className="mb-4 text-xs leading-relaxed text-[#888]">
+              Descarga el QR y personalízalo en Canva para que combine con la decoración. Imprímelo y colócalo en mesas, entrada o invitaciones.
             </p>
-            <div style={{ marginTop: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              <div style={{ padding: '10px 12px', background: '#fff', border: '1px solid #e0e0e0', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <div>
-                  <div style={{ fontSize: '12px', fontWeight: '600', color: '#1D1E20' }}>🎨 Canva</div>
-                  <div style={{ fontSize: '11px', color: '#888' }}>Gratis · Muy fácil de usar</div>
-                </div>
-                <button
-                  onClick={() => window.open('https://www.canva.com', '_blank')}
-                  style={{ padding: '5px 10px', background: 'transparent', border: '1px solid #48C9B0', borderRadius: '6px', color: '#1a9e88', fontSize: '11px', fontWeight: '600', cursor: 'pointer' }}>
-                  Abrir
-                </button>
+            <div className="flex items-center justify-between rounded-lg border border-[#e0e0e0] bg-white px-3 py-2.5">
+              <div>
+                <p className="text-xs font-semibold text-[#1D1E20]">🎨 Canva</p>
+                <p className="text-[11px] text-[#888]">Gratis · Muy fácil de usar</p>
               </div>
+              <button
+                onClick={() => window.open('https://www.canva.com', '_blank')}
+                className="rounded-md border border-[#48C9B0] px-2.5 py-1 text-[11px] font-semibold text-[#1a9e88] transition hover:bg-[#f0fdfb]"
+              >
+                Abrir
+              </button>
             </div>
-            <div style={{ marginTop: '12px', padding: '10px 12px', background: '#f0fdfb', border: '1px solid #a0e0d8', borderRadius: '8px', fontSize: '11px', color: '#1a9e88', lineHeight: '1.5' }}>
-              💡 Tip: En Canva busca "QR code" en plantillas para encontrar diseños listos para bodas y eventos.
+            <div className="mt-3 rounded-lg border border-[#a0e0d8] bg-[#f0fdfb] px-3 py-2.5 text-[11px] leading-relaxed text-[#1a9e88]">
+              💡 En Canva busca "QR code" en plantillas para encontrar diseños listos para bodas y eventos.
             </div>
           </div>
+
         </div>
       </div>
     </div>

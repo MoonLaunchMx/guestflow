@@ -48,6 +48,19 @@ const inp: React.CSSProperties = {
   fontSize: '14px', outline: 'none', boxSizing: 'border-box',
 }
 
+const WA_ICON = (
+  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
+)
+
+const TRASH_ICON = (
+  <>
+    <polyline points="3 6 5 6 21 6"/>
+    <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
+    <path d="M10 11v6M14 11v6"/>
+    <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
+  </>
+)
+
 export default function EventPage() {
   const { id } = useParams()
   const [event, setEvent] = useState<Event | null>(null)
@@ -74,7 +87,9 @@ export default function EventPage() {
 
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [showBulkMenu, setShowBulkMenu] = useState(false)
+  const [mobileSelectMode, setMobileSelectMode] = useState(false)
   const bulkMenuRef = useRef<HTMLDivElement>(null)
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const [showWaMenu, setShowWaMenu] = useState<string | null>(null)
   const waMenuRef = useRef<HTMLDivElement>(null)
@@ -107,6 +122,22 @@ export default function EventPage() {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
+  const handleLongPressStart = (guestId: string) => {
+    longPressTimer.current = setTimeout(() => {
+      setMobileSelectMode(true)
+      setSelected(new Set([guestId]))
+    }, 500)
+  }
+
+  const handleLongPressEnd = () => {
+    if (longPressTimer.current) clearTimeout(longPressTimer.current)
+  }
+
+  const exitMobileSelect = () => {
+    setMobileSelectMode(false)
+    setSelected(new Set())
+  }
+
   const loadEvent = async () => {
     const { data } = await supabase.from('events').select('*').eq('id', id).single()
     if (data) setEvent(data)
@@ -133,6 +164,7 @@ export default function EventPage() {
   }
 
   const openEdit = (guest: Guest) => {
+    if (mobileSelectMode) return
     setEditGuest(guest)
     setEditName(guest.name)
     setEditPhone(guest.phone || '')
@@ -174,7 +206,7 @@ export default function EventPage() {
     const ids = Array.from(selected)
     await supabase.from('guests').update({ rsvp_status: status }).in('id', ids)
     setGuests(prev => prev.map(g => selected.has(g.id) ? { ...g, rsvp_status: status } : g))
-    setSelected(new Set()); setShowBulkMenu(false)
+    setSelected(new Set()); setShowBulkMenu(false); setMobileSelectMode(false)
   }
 
   const bulkDelete = async () => {
@@ -185,7 +217,7 @@ export default function EventPage() {
       await supabase.rpc('decrement_guests', { event_id_input: id })
     setGuests(prev => prev.filter(g => !selected.has(g.id)))
     setEvent(prev => prev ? { ...prev, total_guests: Math.max(0, prev.total_guests - ids.length) } : prev)
-    setSelected(new Set()); setShowBulkMenu(false)
+    setSelected(new Set()); setShowBulkMenu(false); setMobileSelectMode(false)
   }
 
   const buildWaText = (guest: Guest, templateIndex = 0) => encodeURIComponent(
@@ -255,12 +287,12 @@ export default function EventPage() {
     URL.revokeObjectURL(url)
   }
 
-  const confirmed  = guests.filter(g => g.rsvp_status === 'confirmed').length
-  const pending    = guests.filter(g => g.rsvp_status === 'pending').length
-  const declined   = guests.filter(g => g.rsvp_status === 'declined').length
+  const confirmed   = guests.filter(g => g.rsvp_status === 'confirmed').length
+  const pending     = guests.filter(g => g.rsvp_status === 'pending').length
+  const declined    = guests.filter(g => g.rsvp_status === 'declined').length
   const allSelected = filtered.length > 0 && selected.size === filtered.length
   const someSelected = selected.size > 0
-  const formatDate = (d: string) => new Date(d).toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+  const formatDate  = (d: string) => new Date(d).toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
   const activeTemplates = event?.message_templates?.filter(t => t.trim()) || []
 
   return (
@@ -283,25 +315,25 @@ export default function EventPage() {
           </p>
         </div>
 
-        {/* Stats */}
-          <div className="mb-4 grid grid-cols-4 gap-2">
-            {[
-              { label: 'Total',      value: event?.total_guests || 0, color: '#1D1E20' },
-              { label: 'Conf.',      value: confirmed, color: '#2a7a50' },
-              { label: 'Pend.',      value: pending,   color: '#b8860b' },
-              { label: 'Decl.',      value: declined,  color: '#cc3333' },
-            ].map(s => (
-              <div key={s.label} className="rounded-xl border border-[#e8e8e8] bg-[#f8f8f8] p-2 text-center">
-                <div className="text-lg font-bold sm:text-xl" style={{ color: s.color }}>{s.value}</div>
-                <div className="text-[10px] text-[#999]">{s.label}</div>
-              </div>
-            ))}
-          </div>
+        {/* Stats — 1 fila siempre */}
+        <div className="mb-4 grid grid-cols-4 gap-2">
+          {[
+            { label: 'Total', value: event?.total_guests || 0, color: '#1D1E20' },
+            { label: 'Conf.', value: confirmed, color: '#2a7a50' },
+            { label: 'Pend.', value: pending,   color: '#b8860b' },
+            { label: 'Decl.', value: declined,  color: '#cc3333' },
+          ].map(s => (
+            <div key={s.label} className="rounded-xl border border-[#e8e8e8] bg-[#f8f8f8] p-2 text-center">
+              <div className="text-lg font-bold sm:text-xl" style={{ color: s.color }}>{s.value}</div>
+              <div className="text-[10px] text-[#999]">{s.label}</div>
+            </div>
+          ))}
+        </div>
 
         {/* Buscador + filtros + acciones */}
         <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center sm:gap-2">
 
-          {/* Buscador — 100% en mobile, fijo en desktop */}
+          {/* Buscador — 100% ancho */}
           <input
             type="text"
             value={search}
@@ -310,8 +342,9 @@ export default function EventPage() {
             className="w-full rounded-lg border border-[#e0e0e0] bg-[#f8f8f8] px-3 py-2 text-sm text-[#1D1E20] outline-none sm:w-48"
           />
 
-          {/* Filtros abreviados — una línea sin scroll */}
-            <div className="flex gap-1.5">
+          {/* Filtros + botón en la misma fila */}
+          <div className="flex items-center gap-1.5">
+            <div className="flex flex-1 gap-1.5">
               {[
                 { key: 'all',       label: 'Todos' },
                 { key: 'confirmed', label: 'Conf.' },
@@ -332,47 +365,45 @@ export default function EventPage() {
               ))}
             </div>
 
-          {/* Acciones — se empujan a la derecha en desktop */}
-          <div className="flex items-center gap-2 sm:ml-auto">
-            {someSelected && (
-              <div className="relative" ref={bulkMenuRef}>
-                <button
-                  onClick={() => setShowBulkMenu(!showBulkMenu)}
-                  className="rounded-lg border border-[#48C9B0] bg-[#f0fdfb] px-3 py-1.5 text-xs font-semibold text-[#1a9e88]"
-                >
-                  {selected.size} selec. ▾
-                </button>
-                {showBulkMenu && (
-                  <div className="absolute right-0 top-full z-50 mt-1 min-w-[200px] rounded-xl border border-[#e8e8e8] bg-white p-1 shadow-lg">
-                    <button onClick={bulkWhatsApp} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-[#25D366] hover:bg-[#f0fdfb]">
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="#25D366"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-                      Enviar WhatsApp
-                    </button>
-                    <div className="my-1 h-px bg-[#f0f0f0]" />
-                    <button onClick={() => bulkUpdateStatus('confirmed')} className="w-full rounded-lg px-3 py-2 text-left text-xs text-[#2a7a50] hover:bg-[#f0fff6]">✓ Marcar confirmados</button>
-                    <button onClick={() => bulkUpdateStatus('declined')}  className="w-full rounded-lg px-3 py-2 text-left text-xs text-[#cc3333] hover:bg-[#fff0f0]">✕ Marcar declinados</button>
-                    <button onClick={() => bulkUpdateStatus('pending')}   className="w-full rounded-lg px-3 py-2 text-left text-xs text-[#b8860b] hover:bg-[#fffbf0]">◷ Marcar pendientes</button>
-                    <div className="my-1 h-px bg-[#f0f0f0]" />
-                    <button onClick={bulkDelete} className="w-full rounded-lg px-3 py-2 text-left text-xs text-[#cc3333] hover:bg-[#fff0f0]">🗑 Eliminar seleccionados</button>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* CSV — oculto en mobile */}
-            <button
-              onClick={() => { setCsvError(''); setCsvSuccess(''); setShowCsvModal(true) }}
-              className="hidden rounded-lg border border-[#e0e0e0] px-3 py-1.5 text-xs text-[#666] transition hover:border-[#48C9B0] hover:text-[#48C9B0] sm:block"
-            >
-              📂 Importar CSV
-            </button>
-
-            <button
-              onClick={() => { resetForm(); setShowModal(true) }}
-              className="rounded-lg bg-[#48C9B0] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#3ab89f] sm:px-4 sm:text-sm"
-            >
-              + Agregar
-            </button>
+            {/* Acciones */}
+            <div className="flex shrink-0 items-center gap-2">
+              {someSelected && (
+                <div className="relative" ref={bulkMenuRef}>
+                  <button
+                    onClick={() => setShowBulkMenu(!showBulkMenu)}
+                    className="rounded-lg border border-[#48C9B0] bg-[#f0fdfb] px-3 py-1.5 text-xs font-semibold text-[#1a9e88]"
+                  >
+                    {selected.size} selec. ▾
+                  </button>
+                  {showBulkMenu && (
+                    <div className="absolute right-0 top-full z-50 mt-1 min-w-[200px] rounded-xl border border-[#e8e8e8] bg-white p-1 shadow-lg">
+                      <button onClick={bulkWhatsApp} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-[#25D366] hover:bg-[#f0fdfb]">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="#25D366">{WA_ICON}</svg>
+                        Enviar WhatsApp
+                      </button>
+                      <div className="my-1 h-px bg-[#f0f0f0]" />
+                      <button onClick={() => bulkUpdateStatus('confirmed')} className="w-full rounded-lg px-3 py-2 text-left text-xs text-[#2a7a50] hover:bg-[#f0fff6]">✓ Marcar confirmados</button>
+                      <button onClick={() => bulkUpdateStatus('declined')}  className="w-full rounded-lg px-3 py-2 text-left text-xs text-[#cc3333] hover:bg-[#fff0f0]">✕ Marcar declinados</button>
+                      <button onClick={() => bulkUpdateStatus('pending')}   className="w-full rounded-lg px-3 py-2 text-left text-xs text-[#b8860b] hover:bg-[#fffbf0]">◷ Marcar pendientes</button>
+                      <div className="my-1 h-px bg-[#f0f0f0]" />
+                      <button onClick={bulkDelete} className="w-full rounded-lg px-3 py-2 text-left text-xs text-[#cc3333] hover:bg-[#fff0f0]">🗑 Eliminar seleccionados</button>
+                    </div>
+                  )}
+                </div>
+              )}
+              <button
+                onClick={() => { setCsvError(''); setCsvSuccess(''); setShowCsvModal(true) }}
+                className="hidden rounded-lg border border-[#e0e0e0] px-3 py-1.5 text-xs text-[#666] transition hover:border-[#48C9B0] hover:text-[#48C9B0] sm:block"
+              >
+                📂 Importar CSV
+              </button>
+              <button
+                onClick={() => { resetForm(); setShowModal(true) }}
+                className="rounded-lg bg-[#48C9B0] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#3ab89f] sm:px-4 sm:text-sm"
+              >
+                + Agregar
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -389,86 +420,121 @@ export default function EventPage() {
           </div>
         ) : (
           <>
-        {/* ── MOBILE: cards ── */}
-          <div className="flex flex-col gap-2 sm:hidden">
-            {filtered.map(guest => (
-              <div key={guest.id} className="rounded-xl border border-[#e8e8e8] bg-white px-3 py-3">
-                <div className="flex items-center gap-2">
+            {/* ── MOBILE: cards ── */}
+            <div className="flex flex-col gap-2 sm:hidden">
 
-                  {/* WhatsApp — extremo izquierdo */}
-                  <div className="shrink-0">
-                    {guest.phone ? (
-                      <button
-                        onClick={() => window.open(`https://wa.me/${guest.phone!.replace(/\D/g, '')}?text=${buildWaText(guest)}`, '_blank')}
-                        className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#f0fff8] border border-[#c0f0dc]"
-                      >
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="#25D366">
-                          <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-                        </svg>
-                      </button>
-                    ) : (
-                      <div className="h-9 w-9 rounded-xl border border-[#f0f0f0] bg-[#fafafa] flex items-center justify-center">
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="#ddd">
-                          <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-                        </svg>
+              {/* Banner modo selección */}
+              {mobileSelectMode && (
+                <div className="flex items-center justify-between rounded-xl border border-[#48C9B0] bg-[#f0fdfb] px-4 py-2.5">
+                  <span className="text-xs font-semibold text-[#1a9e88]">
+                    {selected.size} seleccionado{selected.size !== 1 ? 's' : ''}
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <button onClick={() => bulkUpdateStatus('confirmed')} className="rounded-lg bg-[#f0fff6] px-2.5 py-1 text-xs font-semibold text-[#2a7a50]">✓ Conf.</button>
+                    <button onClick={() => bulkUpdateStatus('pending')}   className="rounded-lg bg-[#fffbf0] px-2.5 py-1 text-xs font-semibold text-[#b8860b]">◷ Pend.</button>
+                    <button onClick={() => bulkUpdateStatus('declined')}  className="rounded-lg bg-[#fff0f0] px-2.5 py-1 text-xs font-semibold text-[#cc3333]">✕ Dec.</button>
+                    <button onClick={exitMobileSelect} className="ml-1 text-xs text-[#aaa]">Cancelar</button>
+                  </div>
+                </div>
+              )}
+
+              {filtered.map(guest => (
+                <div
+                  key={guest.id}
+                  className={`rounded-xl border bg-white px-3 py-3 transition
+                    ${mobileSelectMode && selected.has(guest.id)
+                      ? 'border-[#48C9B0] bg-[#f0fdfb]'
+                      : 'border-[#e8e8e8]'
+                    }`}
+                  onTouchStart={() => handleLongPressStart(guest.id)}
+                  onTouchEnd={handleLongPressEnd}
+                  onTouchMove={handleLongPressEnd}
+                >
+                  <div className="flex items-center gap-2">
+
+                    {/* Checkbox — solo en modo selección */}
+                    {mobileSelectMode && (
+                      <input
+                        type="checkbox"
+                        checked={selected.has(guest.id)}
+                        onChange={() => toggleSelect(guest.id)}
+                        className="h-4 w-4 shrink-0 accent-[#48C9B0]"
+                      />
+                    )}
+
+                    {/* WhatsApp — extremo izquierdo */}
+                    {!mobileSelectMode && (
+                      <div className="shrink-0">
+                        {guest.phone ? (
+                          <button
+                            onClick={() => window.open(`https://wa.me/${guest.phone!.replace(/\D/g, '')}?text=${buildWaText(guest)}`, '_blank')}
+                            className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#c0f0dc] bg-[#f0fff8]"
+                          >
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="#25D366">{WA_ICON}</svg>
+                          </button>
+                        ) : (
+                          <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#f0f0f0] bg-[#fafafa]">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="#ddd">{WA_ICON}</svg>
+                          </div>
+                        )}
                       </div>
                     )}
+
+                    {/* Nombre + teléfono */}
+                    <div className="min-w-0 flex-1">
+                      <button
+                        onClick={() => openEdit(guest)}
+                        className="block w-full truncate text-left text-sm font-semibold text-[#1D1E20]"
+                      >
+                        {guest.name}
+                        {guest.party_size > 1 && (
+                          <span className="ml-1 text-xs font-normal text-[#aaa]">+{guest.party_size - 1}</span>
+                        )}
+                      </button>
+                      <p className="mt-0.5 truncate text-xs text-[#aaa]">
+                        {guest.phone || 'Sin teléfono'}
+                      </p>
+                    </div>
+
+                    {/* Status dropdown — siempre visible, deshabilitado en modo selección */}
+                    <div className="shrink-0">
+                      <select
+                        value={guest.rsvp_status}
+                        onChange={e => !mobileSelectMode && updateStatus(guest.id, e.target.value as 'pending' | 'confirmed' | 'declined')}
+                        disabled={mobileSelectMode}
+                        className="rounded-lg border px-2 py-1.5 text-xs font-semibold outline-none"
+                        style={{
+                          background: STATUS_LABEL[guest.rsvp_status].bg,
+                          borderColor: STATUS_LABEL[guest.rsvp_status].border,
+                          color: STATUS_LABEL[guest.rsvp_status].color,
+                          cursor: mobileSelectMode ? 'default' : 'pointer',
+                          opacity: mobileSelectMode ? 0.7 : 1,
+                        }}
+                      >
+                        <option value="pending">Pendiente</option>
+                        <option value="confirmed">Confirmado</option>
+                        <option value="declined">Declinó</option>
+                      </select>
+                    </div>
+
+                    {/* Eliminar */}
+                    {!mobileSelectMode && (
+                      <button
+                        onClick={() => deleteGuest(guest.id)}
+                        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#ffe0e0] bg-[#fff5f5]"
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#cc3333" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          {TRASH_ICON}
+                        </svg>
+                      </button>
+                    )}
                   </div>
-
-                  {/* Nombre + teléfono — centro, flex-1 */}
-                  <div className="min-w-0 flex-1">
-                    <button
-                      onClick={() => openEdit(guest)}
-                      className="block w-full truncate text-left text-sm font-semibold text-[#1D1E20]"
-                    >
-                      {guest.name}
-                      {guest.party_size > 1 && (
-                        <span className="ml-1 text-xs font-normal text-[#aaa]">+{guest.party_size - 1}</span>
-                      )}
-                    </button>
-                    <p className="mt-0.5 truncate text-xs text-[#aaa]">
-                      {guest.phone || 'Sin teléfono'}
-                    </p>
-                  </div>
-
-                  {/* Status dropdown — centro derecha */}
-                  <div className="shrink-0">
-                    <select
-                      value={guest.rsvp_status}
-                      onChange={e => updateStatus(guest.id, e.target.value as 'pending' | 'confirmed' | 'declined')}
-                      className="cursor-pointer rounded-lg border px-2 py-1.5 text-xs font-semibold outline-none"
-                      style={{
-                        background: STATUS_LABEL[guest.rsvp_status].bg,
-                        borderColor: STATUS_LABEL[guest.rsvp_status].border,
-                        color: STATUS_LABEL[guest.rsvp_status].color,
-                      }}
-                    >
-                      <option value="pending">Pendiente</option>
-                      <option value="confirmed">Confirmado</option>
-                      <option value="declined">Declinó</option>
-                    </select>
-                  </div>
-
-                  {/* Eliminar — extremo derecho */}
-                  <button
-                    onClick={() => deleteGuest(guest.id)}
-                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#ffe0e0] bg-[#fff5f5]"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#cc3333" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="3 6 5 6 21 6"/>
-                      <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
-                      <path d="M10 11v6M14 11v6"/>
-                      <path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
-                    </svg>
-                  </button>
-
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+
             {/* ── TABLET / DESKTOP: tabla ── */}
             <div className="hidden overflow-hidden rounded-xl border border-[#e8e8e8] sm:block">
-              {/* Header tabla */}
               <div className="grid items-center border-b border-[#e8e8e8] bg-[#f8f8f8] px-4 py-2"
                 style={{ gridTemplateColumns: '40px 2fr 1.5fr 1.5fr 1.5fr 140px 40px' }}>
                 <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} style={{ cursor: 'pointer', accentColor: '#48C9B0' }} />
@@ -476,8 +542,6 @@ export default function EventPage() {
                   <div key={h} className="text-[11px] font-semibold uppercase tracking-wide text-[#aaa]">{h}</div>
                 ))}
               </div>
-
-              {/* Filas */}
               {filtered.map((guest, i) => (
                 <div
                   key={guest.id}
@@ -487,45 +551,32 @@ export default function EventPage() {
                   style={{ gridTemplateColumns: '40px 2fr 1.5fr 1.5fr 1.5fr 140px 40px' }}
                 >
                   <input type="checkbox" checked={selected.has(guest.id)} onChange={() => toggleSelect(guest.id)} style={{ cursor: 'pointer', accentColor: '#48C9B0' }} />
-
                   <div onClick={() => openEdit(guest)} className="flex cursor-pointer items-center gap-1.5">
                     <span className="text-sm font-semibold text-[#1D1E20]">{guest.name}</span>
                     {guest.party_size > 1 && <span className="text-xs text-[#aaa]">+{guest.party_size - 1}</span>}
                     <span className="text-xs text-[#ddd]">✏️</span>
                   </div>
-
                   <div className="overflow-hidden text-ellipsis whitespace-nowrap text-xs text-[#aaa]" title={guest.notes || ''}>
                     {guest.notes || <span className="text-[#ddd]">—</span>}
                   </div>
-
                   <div className="overflow-hidden text-ellipsis whitespace-nowrap text-xs text-[#888]">
                     {guest.email || <span className="text-[#ddd]">—</span>}
                   </div>
-
                   <div className="flex items-center gap-1.5">
                     {guest.phone ? (
                       <>
                         <span className="text-xs text-[#888]">{guest.phone}</span>
                         <div className="relative">
-                          <button
-                            onClick={() => setShowWaMenu(showWaMenu === guest.id ? null : guest.id)}
-                            className="flex items-center p-0.5"
-                          >
-                            <svg width="15" height="15" viewBox="0 0 24 24" fill="#25D366">
-                              <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-                            </svg>
+                          <button onClick={() => setShowWaMenu(showWaMenu === guest.id ? null : guest.id)} className="flex items-center p-0.5">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="#25D366">{WA_ICON}</svg>
                           </button>
                           {showWaMenu === guest.id && (
                             <div ref={waMenuRef} className="absolute left-0 top-full z-50 mt-1 min-w-[220px] rounded-xl border border-[#e8e8e8] bg-white p-1 shadow-lg">
                               {activeTemplates.length === 0 ? (
                                 <p className="px-3 py-2.5 text-xs text-[#aaa]">No hay plantillas — ve a Configuración</p>
                               ) : activeTemplates.map((template, ti) => (
-                                <button
-                                  key={ti}
-                                  onClick={() => {
-                                    window.open(`https://wa.me/${guest.phone!.replace(/\D/g, '')}?text=${buildWaText(guest, ti)}`, '_blank')
-                                    setShowWaMenu(null)
-                                  }}
+                                <button key={ti}
+                                  onClick={() => { window.open(`https://wa.me/${guest.phone!.replace(/\D/g, '')}?text=${buildWaText(guest, ti)}`, '_blank'); setShowWaMenu(null) }}
                                   className="w-full rounded-lg px-3 py-2 text-left text-xs leading-snug text-[#1D1E20] hover:bg-[#f0fdfb]"
                                 >
                                   <span className="mb-0.5 block text-[10px] font-semibold text-[#aaa]">PLANTILLA {ti + 1}</span>
@@ -540,7 +591,6 @@ export default function EventPage() {
                       <span className="text-xs text-[#ddd]">—</span>
                     )}
                   </div>
-
                   <select
                     value={guest.rsvp_status}
                     onChange={e => updateStatus(guest.id, e.target.value as 'pending' | 'confirmed' | 'declined')}
@@ -555,11 +605,9 @@ export default function EventPage() {
                     <option value="confirmed">Confirmado</option>
                     <option value="declined">Declinó</option>
                   </select>
-
                   <button onClick={() => deleteGuest(guest.id)} className="flex items-center justify-center p-1">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#cc3333" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/>
-                      <path d="M10 11v6M14 11v6"/><path d="M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2"/>
+                      {TRASH_ICON}
                     </svg>
                   </button>
                 </div>
