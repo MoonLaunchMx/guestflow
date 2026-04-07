@@ -162,7 +162,7 @@ export default function EventLayout({ children }: { children: React.ReactNode })
                   textAlign: 'left',
                 }}
               >
-                <span>{item.icon}</span>
+                {item.icon}
                 <span>{item.label}</span>
               </button>
             ))}
