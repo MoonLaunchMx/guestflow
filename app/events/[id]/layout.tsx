@@ -105,7 +105,7 @@ export default function EventLayout({ children }: { children: React.ReactNode })
     <div className="flex h-screen flex-col overflow-hidden bg-white font-sans text-[#1D1E20]">
 
       {/* ══ TOP NAV ══ */}
-      <header className="flex h-14 shrink-0 items-center justify-between border-b border-[#e8e8e8] bg-white px-4 sm:h-16 sm:px-6">
+      <header className="hidden h-14 shrink-0 items-center justify-between border-b border-[#e8e8e8] bg-white px-4 sm:h-16 sm:px-6">
         <span className="text-lg font-bold sm:text-xl" style={{ fontFamily: 'Georgia, serif' }}>
           Guest<span className="text-[#48C9B0]">Flow</span>
         </span>

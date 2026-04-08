@@ -433,6 +433,7 @@ export default function EventPage() {
                     <button onClick={() => bulkUpdateStatus('confirmed')} className="rounded-lg bg-[#f0fff6] px-2.5 py-1 text-xs font-semibold text-[#2a7a50]">✓ Conf.</button>
                     <button onClick={() => bulkUpdateStatus('pending')}   className="rounded-lg bg-[#fffbf0] px-2.5 py-1 text-xs font-semibold text-[#b8860b]">◷ Pend.</button>
                     <button onClick={() => bulkUpdateStatus('declined')}  className="rounded-lg bg-[#fff0f0] px-2.5 py-1 text-xs font-semibold text-[#cc3333]">✕ Dec.</button>
+                    <button onClick={bulkDelete} className="rounded-lg bg-[#fff0f0] px-2.5 py-1 text-xs font-semibold text-[#cc3333]">🗑</button>
                     <button onClick={exitMobileSelect} className="ml-1 text-xs text-[#aaa]">Cancelar</button>
                   </div>
                 </div>
