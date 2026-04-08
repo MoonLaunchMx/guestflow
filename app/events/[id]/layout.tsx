@@ -104,18 +104,28 @@ export default function EventLayout({ children }: { children: React.ReactNode })
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-white font-sans text-[#1D1E20]">
 
-      {/* ══ TOP NAV ══ */}
-      <header className="hidden h-14 shrink-0 items-center justify-between border-b border-[#e8e8e8] bg-white px-4 sm:h-16 sm:px-6">
+      {/* ══ MOBILE HEADER — solo nombre del evento ══ */}
+      <header className="flex h-12 shrink-0 items-center border-b border-[#e8e8e8] bg-white px-4 sm:hidden">
+        <p className="truncate text-sm font-bold text-[#1D1E20]">
+          {event?.name || '...'}
+        </p>
+        {event?.event_type && (
+          <span className="ml-2 shrink-0 text-xs text-[#999]">
+            {EVENT_TYPE_LABELS[event.event_type] || ''}
+          </span>
+        )}
+      </header>
+
+      {/* ══ TABLET/DESKTOP HEADER ══ */}
+      <header className="hidden h-14 shrink-0 items-center justify-between border-b border-[#e8e8e8] bg-white px-4 sm:flex sm:h-16 sm:px-6">
         <span className="text-lg font-bold sm:text-xl" style={{ fontFamily: 'Georgia, serif' }}>
           Guest<span className="text-[#48C9B0]">Flow</span>
         </span>
-
         {event && (
           <span className="hidden max-w-[240px] truncate text-sm font-semibold text-[#1D1E20] sm:block lg:max-w-sm">
             {event.name}
           </span>
         )}
-
         <div className="flex items-center gap-3">
           <button
             onClick={() => router.push('/dashboard')}
@@ -123,7 +133,6 @@ export default function EventLayout({ children }: { children: React.ReactNode })
           >
             ← Mis eventos
           </button>
-          {/* Hamburger — solo tablet */}
           <button
             onClick={() => setDrawerOpen(!drawerOpen)}
             className="hidden h-8 w-8 items-center justify-center rounded-md border border-[#e0e0e0] text-[#888] transition hover:border-[#48C9B0] hover:text-[#48C9B0] sm:flex lg:hidden"
@@ -181,9 +190,9 @@ export default function EventLayout({ children }: { children: React.ReactNode })
           <>
             <div
               onClick={() => setDrawerOpen(false)}
-              className="fixed inset-0 top-14 z-40 bg-black/30 lg:hidden"
+              className="fixed inset-0 top-16 z-40 bg-black/30 lg:hidden"
             />
-            <div className="fixed left-0 top-14 z-50 flex h-[calc(100vh-56px)] w-56 flex-col overflow-y-auto border-r border-[#e8e8e8] bg-[#f8f5f0] shadow-lg lg:hidden">
+            <div className="fixed left-0 top-16 z-50 flex h-[calc(100vh-64px)] w-56 flex-col overflow-y-auto border-r border-[#e8e8e8] bg-[#f8f5f0] shadow-lg lg:hidden">
               <div className="border-b border-[#e8e8e8] px-4 py-5">
                 {event?.event_type && (
                   <p className="mb-1 text-[11px] text-[#999]">
