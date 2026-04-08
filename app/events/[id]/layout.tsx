@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, usePathname, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { Users, Images, Music2, Settings } from 'lucide-react'
 
 type Event = {
   id: string
@@ -24,67 +25,31 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
 const NAV_ITEMS = [
   {
     label: 'Invitados',
+    labelMobile: 'Invitados',
     path: '',
-    iconOutline: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-        <circle cx="9" cy="7" r="4"/>
-        <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
-        <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
-      </svg>
-    ),
-    iconFilled: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm8 0a3 3 0 1 0 0-6 3 3 0 0 0 0 6zm-9 2a7 7 0 0 0-7 7v1h14v-1a7 7 0 0 0-7-7zm8-1a5 5 0 0 1 5 5v1h-4v-1a9 9 0 0 0-1.5-5h.5z"/>
-      </svg>
-    ),
+    iconOutline: <Users width={18} height={18} strokeWidth={1.5} />,
+    iconFilled:  <Users width={18} height={18} strokeWidth={2.5} />,
   },
   {
     label: 'Álbum',
+    labelMobile: 'Álbum',
     path: '/album',
-    iconOutline: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="3" y="3" width="18" height="18" rx="2"/>
-        <circle cx="8.5" cy="8.5" r="1.5"/>
-        <polyline points="21 15 16 10 5 21"/>
-      </svg>
-    ),
-    iconFilled: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M5 3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2H5zm0 2h14v8.586l-3-3-5.293 5.293-2.5-2.5L5 16.586V5zm5.5 4a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0z"/>
-      </svg>
-    ),
+    iconOutline: <Images width={18} height={18} strokeWidth={1.5} />,
+    iconFilled:  <Images width={18} height={18} strokeWidth={2.5} />,
   },
   {
     label: 'Playlist',
+    labelMobile: 'Playlist',
     path: '/playlist',
-    iconOutline: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M9 18V5l12-2v13"/>
-        <circle cx="6" cy="18" r="3"/>
-        <circle cx="18" cy="16" r="3"/>
-      </svg>
-    ),
-    iconFilled: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M21 3L9 5v13.09A3 3 0 1 0 12 21V9.15L21 7.5V3zm-3 16a1 1 0 1 1-2 0 1 1 0 0 1 2 0zM6 21a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/>
-      </svg>
-    ),
+    iconOutline: <Music2 width={18} height={18} strokeWidth={1.5} />,
+    iconFilled:  <Music2 width={18} height={18} strokeWidth={2.5} />,
   },
   {
-    label: 'Config',
+    label: 'Configuración',
+    labelMobile: 'Config',
     path: '/configuracion',
-    iconOutline: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="3"/>
-        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-      </svg>
-    ),
-    iconFilled: (
-      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-        <path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8zm-9.9 3A10 10 0 0 1 11 2.05V0h2v2.05A10 10 0 0 1 21.9 11H24v2h-2.1A10 10 0 0 1 13 21.95V24h-2v-2.05A10 10 0 0 1 2.1 13H0v-2h2.1zM12 19a7 7 0 1 0 0-14 7 7 0 0 0 0 14z"/>
-      </svg>
-    ),
+    iconOutline: <Settings width={18} height={18} strokeWidth={1.5} />,
+    iconFilled:  <Settings width={18} height={18} strokeWidth={2.5} />,
   },
 ]
 
@@ -271,7 +236,7 @@ export default function EventLayout({ children }: { children: React.ReactNode })
               ${isActive(item.path) ? 'text-[#48C9B0]' : 'text-[#bbb]'}`}
           >
             {isActive(item.path) ? item.iconFilled : item.iconOutline}
-            <span>{item.label}</span>
+            <span>{item.labelMobile ?? item.label}</span>
           </button>
         ))}
 
@@ -294,7 +259,7 @@ export default function EventLayout({ children }: { children: React.ReactNode })
               ${isActive(item.path) ? 'text-[#48C9B0]' : 'text-[#bbb]'}`}
           >
             {isActive(item.path) ? item.iconFilled : item.iconOutline}
-            <span>{item.label}</span>
+            <span>{item.labelMobile ?? item.label}</span>
           </button>
         ))}
 

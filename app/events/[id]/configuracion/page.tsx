@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 
 const EVENT_TYPES = [
@@ -15,6 +15,7 @@ const EVENT_TYPES = [
 
 export default function ConfiguracionPage() {
   const { id } = useParams()
+  const router = useRouter()
   const [loading, setLoading]               = useState(true)
   const [saving, setSaving]                 = useState(false)
   const [saved, setSaved]                   = useState(false)
@@ -27,6 +28,9 @@ export default function ConfiguracionPage() {
   const [address, setAddress]               = useState('')
   const [templates, setTemplates]           = useState<string[]>(['', '', '', '', ''])
   const [visibleTemplates, setVisibleTemplates] = useState(2)
+  const [showDeleteModal, setShowDeleteModal] = useState(false)
+  const [deleting, setDeleting]             = useState(false)
+  const [deleteError, setDeleteError]       = useState('')
 
   useEffect(() => { loadEvent() }, [])
 
@@ -62,6 +66,26 @@ export default function ConfiguracionPage() {
     setTimeout(() => setSaved(false), 3000)
   }
 
+  const handleDelete = async () => {
+    setDeleting(true)
+    setDeleteError('')
+
+    // Eliminar guests primero, luego wa_messages, luego el evento
+    const { error: errGuests } = await supabase
+      .from('guests').delete().eq('event_id', id)
+    if (errGuests) { setDeleteError('Error eliminando invitados: ' + errGuests.message); setDeleting(false); return }
+
+    const { error: errMsgs } = await supabase
+      .from('wa_messages').delete().eq('event_id', id)
+    if (errMsgs) { setDeleteError('Error eliminando mensajes: ' + errMsgs.message); setDeleting(false); return }
+
+    const { error: errEvent } = await supabase
+      .from('events').delete().eq('id', id)
+    if (errEvent) { setDeleteError('Error eliminando evento: ' + errEvent.message); setDeleting(false); return }
+
+    router.push('/dashboard')
+  }
+
   const updateTemplate = (i: number, value: string) =>
     setTemplates(prev => prev.map((t, idx) => idx === i ? value : t))
 
@@ -69,6 +93,50 @@ export default function ConfiguracionPage() {
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-white">
+
+      {/* ── Modal confirmar eliminación ── */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl">
+            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-50">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#dc2626" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+                <path d="M10 11v6M14 11v6"/>
+                <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+              </svg>
+            </div>
+            <h3 className="mb-1 text-base font-bold text-[#1D1E20]">¿Eliminar este evento?</h3>
+            <p className="mb-1 text-sm text-[#666]">
+              Se eliminarán permanentemente <span className="font-semibold text-[#1D1E20]">{name}</span> y todos sus invitados y mensajes.
+            </p>
+            <p className="mb-5 text-xs text-[#999]">Esta acción no se puede deshacer.</p>
+
+            {deleteError && (
+              <div className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">
+                {deleteError}
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={() => { setShowDeleteModal(false); setDeleteError('') }}
+                disabled={deleting}
+                className="flex-1 rounded-lg border border-[#e0e0e0] py-2.5 text-sm font-medium text-[#666] transition hover:bg-[#f5f5f5] disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex-1 rounded-lg bg-red-500 py-2.5 text-sm font-semibold text-white transition hover:bg-red-600 disabled:opacity-50"
+              >
+                {deleting ? 'Eliminando...' : 'Sí, eliminar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Header sticky ── */}
       <div className="shrink-0 border-b border-[#e8e8e8] bg-white px-4 py-4 sm:px-6 lg:px-8">
@@ -102,7 +170,6 @@ export default function ConfiguracionPage() {
       <div className="flex-1 overflow-y-auto">
         <div className="px-4 py-5 sm:px-6 lg:px-8 lg:py-6">
 
-          {/* Grid: 1 col mobile, 2 col desktop */}
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-5">
 
             {/* ── Datos del evento ── */}
@@ -110,9 +177,7 @@ export default function ConfiguracionPage() {
               <h2 className="mb-4 text-base font-semibold text-[#1D1E20] sm:text-lg">
                 📋 Datos del evento
               </h2>
-
               <div className="flex flex-col gap-3 sm:gap-4">
-
                 <div>
                   <label className="mb-1.5 block text-xs font-medium text-[#555]">Nombre *</label>
                   <input
@@ -123,7 +188,6 @@ export default function ConfiguracionPage() {
                     className="w-full rounded-lg border border-[#d0d0d0] bg-white px-3 py-2.5 text-sm text-[#1D1E20] outline-none transition focus:border-[#48C9B0]"
                   />
                 </div>
-
                 <div>
                   <label className="mb-1.5 block text-xs font-medium text-[#555]">Tipo de evento</label>
                   <div className="grid grid-cols-2 gap-1.5">
@@ -142,7 +206,6 @@ export default function ConfiguracionPage() {
                     ))}
                   </div>
                 </div>
-
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="mb-1.5 block text-xs font-medium text-[#555]">Fecha</label>
@@ -165,7 +228,6 @@ export default function ConfiguracionPage() {
                     />
                   </div>
                 </div>
-
                 <div>
                   <label className="mb-1.5 block text-xs font-medium text-[#555]">Venue</label>
                   <input
@@ -176,7 +238,6 @@ export default function ConfiguracionPage() {
                     className="w-full rounded-lg border border-[#d0d0d0] bg-white px-3 py-2.5 text-sm text-[#1D1E20] outline-none transition focus:border-[#48C9B0]"
                   />
                 </div>
-
                 <div>
                   <label className="mb-1.5 block text-xs font-medium text-[#555]">Dirección exacta</label>
                   <input
@@ -187,7 +248,6 @@ export default function ConfiguracionPage() {
                     className="w-full rounded-lg border border-[#d0d0d0] bg-white px-3 py-2.5 text-sm text-[#1D1E20] outline-none transition focus:border-[#48C9B0]"
                   />
                 </div>
-
               </div>
             </div>
 
@@ -197,11 +257,9 @@ export default function ConfiguracionPage() {
                 💬 Plantillas de WhatsApp
               </h2>
               <p className="mb-3 text-xs text-[#666]">Mensajes pre-escritos para enviar a tus invitados</p>
-
               <div className="mb-4 rounded-lg border border-[#e8e8e8] bg-white px-3 py-2 font-mono text-[11px] text-[#999]">
                 {'{nombre} · {evento} · {fecha} · {hora} · {venue}'}
               </div>
-
               <div className="flex flex-col gap-3">
                 {templates.slice(0, visibleTemplates).map((template, i) => (
                   <div key={i}>
@@ -219,7 +277,6 @@ export default function ConfiguracionPage() {
                     />
                   </div>
                 ))}
-
                 {visibleTemplates < 5 && (
                   <button
                     onClick={() => setVisibleTemplates(v => Math.min(v + 1, 5))}
@@ -232,6 +289,21 @@ export default function ConfiguracionPage() {
             </div>
 
           </div>
+
+          {/* ── Zona de peligro ── */}
+          <div className="mt-6 rounded-xl border border-red-100 bg-red-50 p-4 sm:p-5">
+            <h2 className="mb-1 text-sm font-semibold text-red-700">Zona de peligro</h2>
+            <p className="mb-4 text-xs text-red-500">
+              Una vez que elimines este evento, se borrarán todos sus invitados y mensajes. Esta acción no se puede deshacer.
+            </p>
+            <button
+              onClick={() => setShowDeleteModal(true)}
+              className="rounded-lg border border-red-300 bg-white px-4 py-2 text-sm font-semibold text-red-600 transition hover:bg-red-600 hover:text-white"
+            >
+              Eliminar evento
+            </button>
+          </div>
+
         </div>
       </div>
 
