@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, usePathname, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { Users, Images, Music2, Settings } from 'lucide-react'
+import { Users, Images, Music2, Settings, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 
 type Event = {
   id: string
@@ -66,8 +66,20 @@ export default function EventLayout({ children }: { children: React.ReactNode })
   const [event, setEvent] = useState<Event | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [authChecked, setAuthChecked] = useState(false)
+  const [collapsed, setCollapsed] = useState(false)
 
-  // ── PROTECCIÓN DE RUTA ──
+  useEffect(() => {
+    const stored = localStorage.getItem('gf_sidebar_collapsed')
+    if (stored === 'true') setCollapsed(true)
+  }, [])
+
+  const toggleSidebar = () => {
+    setCollapsed(prev => {
+      localStorage.setItem('gf_sidebar_collapsed', String(!prev))
+      return !prev
+    })
+  }
+
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'INITIAL_SESSION' && !session) {
@@ -79,7 +91,6 @@ export default function EventLayout({ children }: { children: React.ReactNode })
     return () => subscription.unsubscribe()
   }, [router])
 
-  // ── CARGAR EVENTO (solo si hay sesión) ──
   useEffect(() => {
     if (!authChecked) return
     const loadEvent = async () => {
@@ -114,7 +125,6 @@ export default function EventLayout({ children }: { children: React.ReactNode })
   const LEFT_ITEMS  = NAV_ITEMS.slice(0, 2)
   const RIGHT_ITEMS = NAV_ITEMS.slice(2)
 
-  // ── PANTALLA DE CARGA mientras verifica auth ──
   if (!authChecked) {
     return (
       <div className="flex h-screen items-center justify-center bg-white">
@@ -163,44 +173,89 @@ export default function EventLayout({ children }: { children: React.ReactNode })
       <div className="flex min-h-0 flex-1 overflow-hidden">
 
         {/* ══ SIDEBAR — solo desktop ══ */}
-        <aside className="hidden w-56 shrink-0 flex-col overflow-y-auto border-r border-[#e8e8e8] bg-[#f8f5f0] lg:flex">
-          <div className="border-b border-[#e8e8e8] px-4 py-5">
-            {event?.event_type && (
-              <p className="mb-1 text-[11px] text-[#999]">{EVENT_TYPE_LABELS[event.event_type] || event.event_type}</p>
+        <aside
+          className="hidden shrink-0 flex-col overflow-hidden border-r border-[#e8e8e8] bg-[#f8f5f0] lg:flex"
+          style={{ width: collapsed ? '56px' : '224px', transition: 'width 0.2s ease' }}
+        >
+          {/* Header sidebar: logo + toggle */}
+          <div
+            className="flex shrink-0 items-center border-b border-[#e8e8e8]"
+            style={{
+              height: '56px',
+              padding: collapsed ? '0' : '0 12px 0 16px',
+              justifyContent: collapsed ? 'center' : 'space-between',
+            }}
+          >
+            {!collapsed && (
+              <span className="truncate text-sm font-bold text-[#1D1E20]" style={{ fontFamily: 'Georgia, serif' }}>
+                Guest<span className="text-[#48C9B0]">Flow</span>
+              </span>
             )}
-            <p className="text-sm font-bold leading-snug text-[#1D1E20]">{event?.name || '...'}</p>
-            {event?.event_date && (
-              <p className="mt-1 text-[11px] text-[#999]">{formatDate(event.event_date)}</p>
-            )}
-            {event?.venue && (
-              <p className="mt-0.5 text-[11px] text-[#aaa]">📍 {event.venue}</p>
-            )}
+            <button
+              onClick={toggleSidebar}
+              title={collapsed ? 'Expandir' : 'Colapsar'}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[#e0e0e0] text-[#aaa] transition hover:border-[#48C9B0] hover:text-[#48C9B0]"
+            >
+              {collapsed
+                ? <PanelLeftOpen width={14} height={14} />
+                : <PanelLeftClose width={14} height={14} />
+              }
+            </button>
           </div>
+
+          {/* Evento info — solo expandido */}
+          {!collapsed && (
+            <div className="shrink-0 border-b border-[#e8e8e8] px-4 py-4">
+              {event?.event_type && (
+                <p className="mb-1 text-[11px] text-[#999]">{EVENT_TYPE_LABELS[event.event_type] || event.event_type}</p>
+              )}
+              <p className="text-sm font-bold leading-snug text-[#1D1E20]">{event?.name || '...'}</p>
+              {event?.event_date && (
+                <p className="mt-1 text-[11px] text-[#999]">{formatDate(event.event_date)}</p>
+              )}
+              {event?.venue && (
+                <p className="mt-0.5 text-[11px] text-[#aaa]">📍 {event.venue}</p>
+              )}
+            </div>
+          )}
+
+          {/* Nav */}
           <nav className="flex-1 py-2">
             {NAV_ITEMS.map(item => (
               <button
                 key={item.path}
                 onClick={() => navigate(item.path)}
-                className={`flex w-full items-center gap-2.5 border-l-[3px] px-4 py-2.5 text-left text-sm transition
+                title={collapsed ? item.label : undefined}
+                className={`flex w-full items-center border-l-[3px] py-2.5 text-left text-sm transition
+                  ${collapsed ? 'justify-center px-0' : 'gap-2.5 px-4'}
                   ${isActive(item.path)
                     ? 'border-[#48C9B0] bg-white font-semibold text-[#1D1E20]'
                     : 'border-transparent font-normal text-[#888] hover:bg-white/60 hover:text-[#1D1E20]'
                   }`}
               >
                 {isActive(item.path) ? item.iconFilled : item.iconOutline}
-                <span>{item.label}</span>
+                {!collapsed && <span>{item.label}</span>}
               </button>
             ))}
           </nav>
+
+          {/* Footer — solo expandido */}
+          {!collapsed && (
+            <div className="shrink-0 border-t border-[#e8e8e8] px-4 py-3">
+              <button
+                onClick={() => router.push('/dashboard')}
+                className="text-[11px] text-[#bbb] transition hover:text-[#48C9B0]"
+              >
+                ← Mis eventos
+              </button>
+            </div>
+          )}
         </aside>
 
         {/* ══ DRAWER — tablet ══ */}
         {drawerOpen && (
           <>
-            <div
-              onClick={() => setDrawerOpen(false)}
-              className="fixed inset-0 top-16 z-40 bg-black/30 lg:hidden"
-            />
+            <div onClick={() => setDrawerOpen(false)} className="fixed inset-0 top-16 z-40 bg-black/30 lg:hidden" />
             <div className="fixed left-0 top-16 z-50 flex h-[calc(100vh-64px)] w-56 flex-col overflow-y-auto border-r border-[#e8e8e8] bg-[#f8f5f0] shadow-lg lg:hidden">
               <div className="border-b border-[#e8e8e8] px-4 py-5">
                 {event?.event_type && (
@@ -253,8 +308,6 @@ export default function EventLayout({ children }: { children: React.ReactNode })
             <span>{item.labelMobile ?? item.label}</span>
           </button>
         ))}
-
-        {/* Botón central elevado — WA Hub */}
         <div className="flex flex-1 flex-col items-center justify-end pb-1">
           <button
             onClick={() => router.push('/mensajes')}
@@ -264,7 +317,6 @@ export default function EventLayout({ children }: { children: React.ReactNode })
             <span className="mt-0.5 text-[9px] font-semibold leading-none">Hub</span>
           </button>
         </div>
-
         {RIGHT_ITEMS.map(item => (
           <button
             key={item.path}
@@ -276,7 +328,6 @@ export default function EventLayout({ children }: { children: React.ReactNode })
             <span>{item.labelMobile ?? item.label}</span>
           </button>
         ))}
-
       </nav>
 
     </div>
