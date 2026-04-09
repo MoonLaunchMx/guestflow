@@ -306,19 +306,27 @@ export default function EventPage() {
       {/* ══ STICKY TOP PANEL ══ */}
       <div style={{ flexShrink: 0, borderBottom: '1px solid #e8e8e8' }} className="px-4 pt-4 pb-0 sm:px-6 sm:pt-5 lg:px-10 lg:pt-6">
 
-        {/* Evento info */}
-        <div className="mb-4">
+      {/* Evento info */}
+      <div className="mb-4">
+        <div className="flex items-center justify-between gap-2">
           <div className="flex flex-wrap items-baseline gap-2">
             <h1 className="text-lg font-bold text-[#1D1E20] sm:text-xl lg:text-2xl">{event?.name}</h1>
             {event?.event_type && (
               <span className="text-xs text-[#888] sm:text-sm">{EVENT_TYPE_LABELS[event.event_type]}</span>
             )}
           </div>
-          <p className="mt-0.5 text-xs text-[#888] sm:text-sm">
-            {event?.event_date ? formatDate(event.event_date) : ''}
-            {event?.venue ? ` · ${event.venue}` : ''}
-          </p>
+          <button
+            onClick={() => window.location.href = '/dashboard'}
+            className="shrink-0 text-xs text-[#999] transition hover:text-[#48C9B0] sm:hidden"
+          >
+            ← Eventos
+          </button>
         </div>
+        <p className="mt-0.5 text-xs text-[#888] sm:text-sm">
+          {event?.event_date ? formatDate(event.event_date) : ''}
+          {event?.venue ? ` · ${event.venue}` : ''}
+        </p>
+      </div>
 
         {/* Stats — 1 fila siempre */}
         <div className="mb-4 grid grid-cols-4 gap-2">
