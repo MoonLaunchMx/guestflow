@@ -292,7 +292,12 @@ export default function EventPage() {
   const declined    = guests.filter(g => g.rsvp_status === 'declined').length
   const allSelected = filtered.length > 0 && selected.size === filtered.length
   const someSelected = selected.size > 0
-  const formatDate  = (d: string) => new Date(d).toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+  const formatDate = (d: string) => {
+  const [year, month, day] = d.split('T')[0].split('-').map(Number)
+  return new Date(year, month - 1, day).toLocaleDateString('es-MX', {
+    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
+  })
+}
   const activeTemplates = event?.message_templates?.filter(t => t.trim()) || []
 
   return (

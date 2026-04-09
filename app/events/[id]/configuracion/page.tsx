@@ -63,7 +63,7 @@ export default function ConfiguracionPage() {
     }).eq('id', id)
     if (err) { setError('Error: ' + err.message); setSaving(false); return }
     setSaving(false); setSaved(true)
-    setTimeout(() => setSaved(false), 3000)
+    setTimeout(() => window.location.reload(), 800)
   }
 
   const handleDelete = async () => {
@@ -209,13 +209,14 @@ export default function ConfiguracionPage() {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="mb-1.5 block text-xs font-medium text-[#555]">Fecha</label>
-                    <input
-                      type="date"
-                      value={eventDate}
-                      onChange={e => setEventDate(e.target.value)}
-                      style={{ colorScheme: 'light' }}
-                      className="w-full rounded-lg border border-[#d0d0d0] bg-white px-3 py-2.5 text-sm text-[#1D1E20] outline-none transition focus:border-[#48C9B0]"
-                    />
+                  <input
+                    type="date"
+                    value={eventDate}
+                    onChange={e => setEventDate(e.target.value)}
+                    min={new Date().toISOString().split('T')[0]}
+                    style={{ colorScheme: 'light' }}
+                    className="w-full rounded-lg border border-[#d0d0d0] bg-white px-3 py-2.5 text-sm text-[#1D1E20] outline-none transition focus:border-[#48C9B0]"
+                  />
                   </div>
                   <div>
                     <label className="mb-1.5 block text-xs font-medium text-[#555]">Hora</label>

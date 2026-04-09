@@ -53,7 +53,7 @@ export default function Dashboard() {
       const today = new Date()
       today.setHours(0, 0, 0, 0)
 
-      const activeEvents = eventsData.filter(e => e.event_date && new Date(e.event_date) >= today).length
+      const activeEvents = eventsData.filter(e => e.event_date && parseLocalDate(e.event_date) >= today).length
       const confirmed    = guestsData?.filter(g => g.rsvp_status === 'confirmed').length ?? 0
       const declined     = guestsData?.filter(g => g.rsvp_status === 'declined').length ?? 0
       const pending      = guestsData?.filter(g => g.rsvp_status === 'pending').length ?? 0
@@ -70,16 +70,21 @@ export default function Dashboard() {
     window.location.href = '/'
   }
 
+  const parseLocalDate = (dateStr: string) => {
+    const [year, month, day] = dateStr.split('T')[0].split('-').map(Number)
+    return new Date(year, month - 1, day)
+  }
+
   const formatDate = (dateStr: string) => {
     if (!dateStr) return '—'
-    return new Date(dateStr).toLocaleDateString('es-MX', {
+    return parseLocalDate(dateStr).toLocaleDateString('es-MX', {
       day: 'numeric', month: 'long', year: 'numeric',
     })
   }
 
   const sortedEvents = [...events].sort((a, b) => {
-    const dateA = a.event_date ? new Date(a.event_date).getTime() : 0
-    const dateB = b.event_date ? new Date(b.event_date).getTime() : 0
+    const dateA = a.event_date ? parseLocalDate(a.event_date).getTime() : 0
+    const dateB = b.event_date ? parseLocalDate(b.event_date).getTime() : 0
     return sortAsc ? dateA - dateB : dateB - dateA
   })
 

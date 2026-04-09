@@ -65,8 +65,23 @@ export default function EventLayout({ children }: { children: React.ReactNode })
   const router = useRouter()
   const [event, setEvent] = useState<Event | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [authChecked, setAuthChecked] = useState(false)
 
+  // ── PROTECCIÓN DE RUTA ──
   useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'INITIAL_SESSION' && !session) {
+        router.replace('/')
+      } else if (session) {
+        setAuthChecked(true)
+      }
+    })
+    return () => subscription.unsubscribe()
+  }, [router])
+
+  // ── CARGAR EVENTO (solo si hay sesión) ──
+  useEffect(() => {
+    if (!authChecked) return
     const loadEvent = async () => {
       const { data } = await supabase
         .from('events')
@@ -76,10 +91,14 @@ export default function EventLayout({ children }: { children: React.ReactNode })
       if (data) setEvent(data)
     }
     loadEvent()
-  }, [id])
+  }, [id, authChecked])
 
-  const formatDate = (d: string) =>
-    new Date(d).toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })
+  const formatDate = (d: string) => {
+    const [year, month, day] = d.split('T')[0].split('-').map(Number)
+    return new Date(year, month - 1, day).toLocaleDateString('es-MX', {
+      day: 'numeric', month: 'long', year: 'numeric'
+    })
+  }
 
   const isActive = (path: string) => {
     const full = `/events/${id}${path}`
@@ -94,6 +113,18 @@ export default function EventLayout({ children }: { children: React.ReactNode })
 
   const LEFT_ITEMS  = NAV_ITEMS.slice(0, 2)
   const RIGHT_ITEMS = NAV_ITEMS.slice(2)
+
+  // ── PANTALLA DE CARGA mientras verifica auth ──
+  if (!authChecked) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-white">
+        <div className="flex flex-col items-center gap-3">
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-[#e8e8e8] border-t-[#48C9B0]" />
+          <p className="text-sm text-[#999]">Cargando...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-white font-sans text-[#1D1E20]">
@@ -220,14 +251,13 @@ export default function EventLayout({ children }: { children: React.ReactNode })
         )}
 
         {/* ══ MAIN CONTENT ══ */}
-        <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white">
+        <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white pb-16 sm:pb-0">
           {children}
         </main>
       </div>
 
       {/* ══ BOTTOM NAV — solo mobile ══ */}
-      <nav className="relative flex shrink-0 items-end border-t border-[#e8e8e8] bg-white sm:hidden">
-
+      <nav className="fixed bottom-0 left-0 right-0 z-40 flex items-end border-t border-[#e8e8e8] bg-white sm:hidden">
         {LEFT_ITEMS.map(item => (
           <button
             key={item.path}
