@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 
 // ── Cambia este email por el tuyo ──────────────────────────────────────────
-const ADMIN_EMAIL = 'tu@email.com'
+const ADMIN_EMAIL = 'diego.garza@moonlaunch.mx'
 
 // ── Tipos ──────────────────────────────────────────────────────────────────
 interface AdminUser {
