@@ -8,30 +8,29 @@ type Event = {
   id: string
   name: string
   event_date: string
+  event_time: string | null
   venue: string | null
   total_guests: number
 }
 
-type Stats = {
-  activeEvents: number
-  totalGuests: number
+type EventWithStats = Event & {
   confirmed: number
-  declined: number
   pending: number
+  declined: number
+  total: number
 }
 
 export default function Dashboard() {
-  const [events, setEvents] = useState<Event[]>([])
-  const [stats, setStats] = useState<Stats>({
-    activeEvents: 0,
-    totalGuests: 0,
-    confirmed: 0,
-    declined: 0,
-    pending: 0,
-  })
+  const [events, setEvents] = useState<EventWithStats[]>([])
   const [loading, setLoading] = useState(true)
   const [userEmail, setUserEmail] = useState('')
   const [sortAsc, setSortAsc] = useState(true)
+  const [now, setNow] = useState(new Date())
+
+  useEffect(() => {
+    const interval = setInterval(() => setNow(new Date()), 1000)
+    return () => clearInterval(interval)
+  }, [])
 
   useEffect(() => { checkAuth(); loadData() }, [])
 
@@ -42,26 +41,31 @@ export default function Dashboard() {
   }
 
   const loadData = async () => {
-    const [{ data: eventsData, error: eventsError }, { data: guestsData }] = await Promise.all([
-      supabase.from('events').select('id, name, event_date, venue, total_guests').order('event_date', { ascending: true }),
-      supabase.from('guests').select('rsvp_status'),
-    ])
+    const { data: eventsData } = await supabase
+      .from('events')
+      .select('id, name, event_date, event_time, venue, total_guests')
+      .order('event_date', { ascending: true })
 
-    if (!eventsError && eventsData) {
-      setEvents(eventsData)
+    if (!eventsData) { setLoading(false); return }
 
-      const today = new Date()
-      today.setHours(0, 0, 0, 0)
+    const eventsWithStats: EventWithStats[] = await Promise.all(
+      eventsData.map(async (event) => {
+        const [{ data: guests }, { data: members }] = await Promise.all([
+          supabase.from('guests').select('rsvp_status').eq('event_id', event.id),
+          supabase.from('party_members').select('rsvp_status').eq('event_id', event.id),
+        ])
+        const all = [...(guests || []), ...(members || [])]
+        return {
+          ...event,
+          total:     all.length,
+          confirmed: all.filter(g => g.rsvp_status === 'confirmed').length,
+          pending:   all.filter(g => g.rsvp_status === 'pending').length,
+          declined:  all.filter(g => g.rsvp_status === 'declined').length,
+        }
+      })
+    )
 
-      const activeEvents = eventsData.filter(e => e.event_date && parseLocalDate(e.event_date) >= today).length
-      const confirmed    = guestsData?.filter(g => g.rsvp_status === 'confirmed').length ?? 0
-      const declined     = guestsData?.filter(g => g.rsvp_status === 'declined').length ?? 0
-      const pending      = guestsData?.filter(g => g.rsvp_status === 'pending').length ?? 0
-      const totalGuests  = guestsData?.length ?? 0
-
-      setStats({ activeEvents, totalGuests, confirmed, declined, pending })
-    }
-
+    setEvents(eventsWithStats)
     setLoading(false)
   }
 
@@ -70,23 +74,74 @@ export default function Dashboard() {
     window.location.href = '/'
   }
 
-  const parseLocalDate = (dateStr: string) => {
-    const [year, month, day] = dateStr.split('T')[0].split('-').map(Number)
-    return new Date(year, month - 1, day)
+  const getEventDateTime = (event: Event): Date => {
+    const [year, month, day] = event.event_date.split('T')[0].split('-').map(Number)
+    const base = new Date(year, month - 1, day)
+    if (event.event_time) {
+      const [h, m] = event.event_time.split(':').map(Number)
+      base.setHours(h, m, 0, 0)
+    } else {
+      base.setHours(0, 0, 0, 0)
+    }
+    return base
   }
 
   const formatDate = (dateStr: string) => {
-    if (!dateStr) return '—'
-    return parseLocalDate(dateStr).toLocaleDateString('es-MX', {
+    const [year, month, day] = dateStr.split('T')[0].split('-').map(Number)
+    return new Date(year, month - 1, day).toLocaleDateString('es-MX', {
       day: 'numeric', month: 'long', year: 'numeric',
     })
   }
 
+  const formatTime = (time: string | null) => {
+    if (!time) return ''
+    const [h, m] = time.split(':').map(Number)
+    const ampm = h >= 12 ? 'pm' : 'am'
+    const h12 = h % 12 || 12
+    return `${h12}:${m.toString().padStart(2, '0')} ${ampm}`
+  }
+
+  const getCountdown = (event: Event): string => {
+    const target = getEventDateTime(event)
+    const diff = target.getTime() - now.getTime()
+    if (diff <= 0) return '¡Es hoy!'
+    const days    = Math.floor(diff / (1000 * 60 * 60 * 24))
+    const hours   = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
+    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+    const seconds = Math.floor((diff % (1000 * 60)) / 1000)
+    if (days > 0) return `${days}d ${hours}h ${minutes}m ${seconds}s`
+    if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`
+    return `${minutes}m ${seconds}s`
+  }
+
   const sortedEvents = [...events].sort((a, b) => {
-    const dateA = a.event_date ? parseLocalDate(a.event_date).getTime() : 0
-    const dateB = b.event_date ? parseLocalDate(b.event_date).getTime() : 0
+    const dateA = getEventDateTime(a).getTime()
+    const dateB = getEventDateTime(b).getTime()
     return sortAsc ? dateA - dateB : dateB - dateA
   })
+
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+
+  const futureEvents = sortedEvents.filter(e => {
+    const d = getEventDateTime(e)
+    d.setHours(0, 0, 0, 0)
+    return d >= today
+  })
+
+  const nextEvent = futureEvents.length > 0
+    ? [...futureEvents].sort((a, b) => getEventDateTime(a).getTime() - getEventDateTime(b).getTime())[0]
+    : null
+
+  const sameDay = nextEvent
+    ? futureEvents.filter(e =>
+        e.id !== nextEvent.id &&
+        e.event_date.split('T')[0] === nextEvent.event_date.split('T')[0]
+      )
+    : []
+
+  const confirmPct = (e: EventWithStats) =>
+    e.total > 0 ? Math.round((e.confirmed / e.total) * 100) : 0
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-[#f8f8f8] font-sans text-[#1D1E20]">
@@ -111,15 +166,15 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* ── Zona fija: título + métricas ── */}
+      {/* ── Zona fija ── */}
       <div className="shrink-0 bg-[#f8f8f8]">
-        <div className="mx-auto max-w-4xl px-4 pt-6 sm:px-6 sm:pt-8 lg:px-8 lg:pt-10">
+        <div className="mx-auto max-w-4xl px-4 pt-3 sm:px-6 sm:pt-4 lg:px-8">
 
           {/* Título + botón */}
-          <div className="mb-5 flex items-center justify-between sm:mb-6">
+          <div className="mb-4 flex items-center justify-between">
             <div>
               <h1 className="text-xl font-bold text-[#1D1E20] sm:text-2xl">Dashboard</h1>
-              <p className="mt-0.5 text-xs text-[#888] sm:text-sm">Resumen general de tus eventos</p>
+              <p className="mt-0.5 text-xs text-[#888] sm:text-sm">Resumen de tus eventos</p>
             </div>
             <button
               onClick={() => window.location.href = '/events/new'}
@@ -130,37 +185,64 @@ export default function Dashboard() {
             </button>
           </div>
 
-          {/* Métricas */}
-          {!loading && (
-            <div className="mb-5 sm:mb-6">
-              <div className="mb-3 grid grid-cols-2 gap-3 sm:gap-4">
-                <div className="rounded-xl border border-[#e8e8e8] bg-white px-4 py-4 sm:px-5 sm:py-5">
-                  <p className="text-xs text-[#888] sm:text-sm">Eventos activos</p>
-                  <p className="mt-1 text-3xl font-bold text-[#1D1E20] sm:text-4xl">{stats.activeEvents}</p>
+          {/* Banner próximo evento */}
+          {!loading && nextEvent && (
+            <div
+              onClick={() => window.location.href = `/events/${nextEvent.id}`}
+              className="mb-4 cursor-pointer rounded-2xl border border-[#48C9B0]/30 bg-white p-4 shadow-[0_2px_16px_rgba(72,201,176,0.1)] transition hover:shadow-[0_4px_24px_rgba(72,201,176,0.18)]"
+            >
+              <div className="flex gap-4">
+
+                {/* Izquierda */}
+                <div className="min-w-0 flex-1">
+                  <span className="mb-1.5 inline-block rounded-full bg-[#e8f7f3] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#48C9B0]">
+                    Próximo evento
+                  </span>
+                  <h2 className="truncate text-sm font-bold text-[#1D1E20] sm:text-base">{nextEvent.name}</h2>
+                  <p className="mt-0.5 text-xs text-[#888]">
+                    {formatDate(nextEvent.event_date)}
+                    {nextEvent.event_time && ` · ${formatTime(nextEvent.event_time)}`}
+                    {nextEvent.venue && ` · ${nextEvent.venue}`}
+                  </p>
+                  <div className="mt-2 rounded-xl bg-[#f8f5f0] px-3 py-2">
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Faltan</p>
+                    <p className="font-mono text-xl font-bold text-[#48C9B0] sm:text-2xl">
+                      {getCountdown(nextEvent)}
+                    </p>
+                  </div>
                 </div>
-                <div className="rounded-xl border border-[#e8e8e8] bg-white px-4 py-4 sm:px-5 sm:py-5">
-                  <p className="text-xs text-[#888] sm:text-sm">Total invitados</p>
-                  <p className="mt-1 text-3xl font-bold text-[#1D1E20] sm:text-4xl">{stats.totalGuests}</p>
+
+                {/* Derecha — 2x2 mismo alto que izquierda */}
+                <div className="flex-1 grid grid-cols-2 gap-2">
+                  {[
+                    { label: 'Total',  value: nextEvent.total,     color: '#1D1E20' },
+                    { label: 'Conf.',  value: nextEvent.confirmed, color: '#2a7a50' },
+                    { label: 'Pend.',  value: nextEvent.pending,   color: '#b8860b' },
+                    { label: 'Decl.',  value: nextEvent.declined,  color: '#cc3333' },
+                  ].map(s => (
+                    <div key={s.label} className="flex flex-col items-center justify-center rounded-lg border border-[#e8e8e8] bg-[#f8f8f8]">
+                      <p className="text-sm font-bold sm:text-base" style={{ color: s.color }}>{s.value}</p>
+                      <p className="text-[10px] text-[#999]">{s.label}</p>
+                    </div>
+                  ))}
                 </div>
+
               </div>
-              <div className="grid grid-cols-3 gap-3 sm:gap-4">
-                <div className="rounded-xl border border-[#e8e8e8] bg-white px-4 py-4 sm:px-5 sm:py-5">
-                  <p className="text-xs text-[#888] sm:text-sm">Confirmados</p>
-                  <p className="mt-1 text-2xl font-bold text-[#48C9B0] sm:text-3xl">{stats.confirmed}</p>
+
+              {sameDay.length > 0 && (
+                <div className="mt-3 border-t border-[#f0f0f0] pt-2">
+                  {sameDay.map(e => (
+                    <p key={e.id} className="text-xs text-[#aaa]">
+                      También hoy: <span className="font-semibold text-[#888]">{e.name}</span>
+                      {e.event_time && ` a las ${formatTime(e.event_time)}`}
+                    </p>
+                  ))}
                 </div>
-                <div className="rounded-xl border border-[#e8e8e8] bg-white px-4 py-4 sm:px-5 sm:py-5">
-                  <p className="text-xs text-[#888] sm:text-sm">Pendientes</p>
-                  <p className="mt-1 text-2xl font-bold text-[#F5A623] sm:text-3xl">{stats.pending}</p>
-                </div>
-                <div className="rounded-xl border border-[#e8e8e8] bg-white px-4 py-4 sm:px-5 sm:py-5">
-                  <p className="text-xs text-[#888] sm:text-sm">Cancelados</p>
-                  <p className="mt-1 text-2xl font-bold text-[#E05C5C] sm:text-3xl">{stats.declined}</p>
-                </div>
-              </div>
+              )}
             </div>
           )}
 
-          {/* Encabezado lista + botón orden */}
+          {/* Encabezado lista */}
           <div className="flex items-center justify-between pb-3">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-[#888]">
               Mis eventos · {events.length}
@@ -179,7 +261,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* ── Zona scrolleable: solo la lista ── */}
+      {/* ── Lista scrolleable ── */}
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-4xl px-4 pb-8 sm:px-6 lg:px-8">
 
@@ -190,38 +272,62 @@ export default function Dashboard() {
             <div className="rounded-xl border border-dashed border-[#e0e0e0] px-6 py-16 text-center sm:py-20">
               <div className="mb-4 text-4xl">💍</div>
               <p className="text-sm text-[#888] sm:text-base">Aún no tienes eventos</p>
-              <p className="mt-1 text-xs text-[#bbb] sm:text-sm">Crea tu primer evento para empezar a gestionar invitados</p>
+              <p className="mt-1 text-xs text-[#bbb] sm:text-sm">Crea tu primer evento para empezar</p>
             </div>
 
           ) : (
             <div className="flex flex-col gap-3">
-              {sortedEvents.map(event => (
-                <div
-                  key={event.id}
-                  onClick={() => window.location.href = `/events/${event.id}`}
-                  className="group flex cursor-pointer items-center justify-between rounded-xl border border-[#e8e8e8] bg-white px-4 py-4 transition hover:border-[#48C9B0] hover:shadow-[0_2px_12px_rgba(72,201,176,0.12)] active:scale-[0.99] sm:px-6 sm:py-5"
-                >
-                  <div className="min-w-0 flex-1 pr-4">
-                    <p className="truncate text-sm font-semibold text-[#1D1E20] sm:text-base">{event.name}</p>
-                    <p className="mt-0.5 text-xs text-[#888] sm:text-sm">
-                      {formatDate(event.event_date)}
-                      {event.venue && (
-                        <>
-                          <span className="hidden sm:inline"> · {event.venue}</span>
-                          <span className="block sm:hidden">{event.venue}</span>
-                        </>
-                      )}
-                    </p>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-3 sm:gap-4">
-                    <div className="text-right">
-                      <p className="text-lg font-bold text-[#48C9B0] sm:text-xl">{event.total_guests}</p>
-                      <p className="text-[10px] text-[#999] sm:text-xs">invitados</p>
+              {sortedEvents.map(event => {
+                const pct = confirmPct(event)
+                const isNext = event.id === nextEvent?.id
+                return (
+                  <div
+                    key={event.id}
+                    onClick={() => window.location.href = `/events/${event.id}`}
+                    className={`group cursor-pointer rounded-xl border bg-white px-4 py-4 transition hover:border-[#48C9B0] hover:shadow-[0_2px_12px_rgba(72,201,176,0.12)] active:scale-[0.99] sm:px-5
+                      ${isNext ? 'border-[#48C9B0]/40' : 'border-[#e8e8e8]'}`}
+                  >
+                    <div className="mb-3 flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-[#1D1E20]">{event.name}</p>
+                        <p className="mt-0.5 text-xs text-[#888]">
+                          {formatDate(event.event_date)}
+                          {event.event_time && ` · ${formatTime(event.event_time)}`}
+                          {event.venue && ` · ${event.venue}`}
+                        </p>
+                      </div>
+                      <span className="shrink-0 text-lg text-[#ccc] transition group-hover:text-[#48C9B0]">›</span>
                     </div>
-                    <span className="text-lg text-[#ccc] transition group-hover:text-[#48C9B0]">›</span>
+
+                    <div className="mb-3 grid grid-cols-4 gap-2">
+                      {[
+                        { label: 'Total',  value: event.total,     color: '#1D1E20' },
+                        { label: 'Conf.',  value: event.confirmed, color: '#2a7a50' },
+                        { label: 'Pend.',  value: event.pending,   color: '#b8860b' },
+                        { label: 'Decl.',  value: event.declined,  color: '#cc3333' },
+                      ].map(s => (
+                        <div key={s.label} className="rounded-lg bg-[#f8f8f8] p-2 text-center">
+                          <p className="text-sm font-bold" style={{ color: s.color }}>{s.value}</p>
+                          <p className="text-[10px] text-[#999]">{s.label}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div>
+                      <div className="mb-1 flex items-center justify-between">
+                        <span className="text-[10px] text-[#aaa]">Confirmados</span>
+                        <span className="text-[10px] font-semibold text-[#48C9B0]">{pct}%</span>
+                      </div>
+                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-[#f0f0f0]">
+                        <div
+                          className="h-full rounded-full bg-[#48C9B0] transition-all duration-500"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           )}
 
