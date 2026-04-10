@@ -13,6 +13,11 @@ const EVENT_TYPES = [
   { value: 'otro',        label: '📅 Otro' },
 ]
 
+function generateToken(length = 10): string {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'
+  return Array.from({ length }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
+}
+
 export default function ConfiguracionPage() {
   const { id } = useParams()
   const router = useRouter()
@@ -31,6 +36,10 @@ export default function ConfiguracionPage() {
   const [showDeleteModal, setShowDeleteModal] = useState(false)
   const [deleting, setDeleting]             = useState(false)
   const [deleteError, setDeleteError]       = useState('')
+  const [playlistToken, setPlaylistToken]   = useState('')
+  const [categories, setCategories]         = useState<string[]>([])
+  const [newCategory, setNewCategory]       = useState('')
+  const [copied, setCopied]                 = useState(false)
 
   useEffect(() => { loadEvent() }, [])
 
@@ -46,9 +55,11 @@ export default function ConfiguracionPage() {
       if (Array.isArray(data.message_templates)) {
         const loaded = [...data.message_templates, '', '', '', '', ''].slice(0, 5)
         setTemplates(loaded)
-        const filled = loaded.filter(t => t.trim()).length
+        const filled = loaded.filter((t: string) => t.trim()).length
         setVisibleTemplates(Math.max(2, filled))
       }
+      setPlaylistToken(data.playlist_token || '')
+      setCategories(Array.isArray(data.playlist_categories) ? data.playlist_categories : [])
     }
     setLoading(false)
   }
@@ -60,29 +71,45 @@ export default function ConfiguracionPage() {
       name, event_type: eventType || null, event_date: eventDate || null,
       event_time: eventTime || null, venue: venue || null,
       address: address || null, message_templates: templates,
+      playlist_token: playlistToken || null,
+      playlist_categories: categories,
     }).eq('id', id)
     if (err) { setError('Error: ' + err.message); setSaving(false); return }
     setSaving(false); setSaved(true)
     setTimeout(() => window.location.reload(), 800)
   }
 
+  const handleGenerateToken = () => {
+    setPlaylistToken(generateToken())
+  }
+
+  const handleCopyLink = () => {
+    const url = `${window.location.origin}/playlist/${playlistToken}`
+    navigator.clipboard.writeText(url)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  const handleAddCategory = () => {
+    const trimmed = newCategory.trim()
+    if (!trimmed || categories.includes(trimmed)) return
+    setCategories(prev => [...prev, trimmed])
+    setNewCategory('')
+  }
+
+  const handleRemoveCategory = (cat: string) => {
+    setCategories(prev => prev.filter(c => c !== cat))
+  }
+
   const handleDelete = async () => {
     setDeleting(true)
     setDeleteError('')
-
-    // Eliminar guests primero, luego wa_messages, luego el evento
-    const { error: errGuests } = await supabase
-      .from('guests').delete().eq('event_id', id)
+    const { error: errGuests } = await supabase.from('guests').delete().eq('event_id', id)
     if (errGuests) { setDeleteError('Error eliminando invitados: ' + errGuests.message); setDeleting(false); return }
-
-    const { error: errMsgs } = await supabase
-      .from('wa_messages').delete().eq('event_id', id)
+    const { error: errMsgs } = await supabase.from('wa_messages').delete().eq('event_id', id)
     if (errMsgs) { setDeleteError('Error eliminando mensajes: ' + errMsgs.message); setDeleting(false); return }
-
-    const { error: errEvent } = await supabase
-      .from('events').delete().eq('id', id)
+    const { error: errEvent } = await supabase.from('events').delete().eq('id', id)
     if (errEvent) { setDeleteError('Error eliminando evento: ' + errEvent.message); setDeleting(false); return }
-
     router.push('/dashboard')
   }
 
@@ -111,13 +138,9 @@ export default function ConfiguracionPage() {
               Se eliminarán permanentemente <span className="font-semibold text-[#1D1E20]">{name}</span> y todos sus invitados y mensajes.
             </p>
             <p className="mb-5 text-xs text-[#999]">Esta acción no se puede deshacer.</p>
-
             {deleteError && (
-              <div className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">
-                {deleteError}
-              </div>
+              <div className="mb-4 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{deleteError}</div>
             )}
-
             <div className="flex gap-3">
               <button
                 onClick={() => { setShowDeleteModal(false); setDeleteError('') }}
@@ -169,7 +192,6 @@ export default function ConfiguracionPage() {
       {/* ── Contenido scrolleable ── */}
       <div className="flex-1 overflow-y-auto">
         <div className="px-4 py-5 sm:px-6 lg:px-8 lg:py-6">
-
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-5">
 
             {/* ── Datos del evento ── */}
@@ -209,14 +231,14 @@ export default function ConfiguracionPage() {
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="mb-1.5 block text-xs font-medium text-[#555]">Fecha</label>
-                  <input
-                    type="date"
-                    value={eventDate}
-                    onChange={e => setEventDate(e.target.value)}
-                    min={new Date().toISOString().split('T')[0]}
-                    style={{ colorScheme: 'light' }}
-                    className="w-full rounded-lg border border-[#d0d0d0] bg-white px-3 py-2.5 text-sm text-[#1D1E20] outline-none transition focus:border-[#48C9B0]"
-                  />
+                    <input
+                      type="date"
+                      value={eventDate}
+                      onChange={e => setEventDate(e.target.value)}
+                      min={new Date().toISOString().split('T')[0]}
+                      style={{ colorScheme: 'light' }}
+                      className="w-full rounded-lg border border-[#d0d0d0] bg-white px-3 py-2.5 text-sm text-[#1D1E20] outline-none transition focus:border-[#48C9B0]"
+                    />
                   </div>
                   <div>
                     <label className="mb-1.5 block text-xs font-medium text-[#555]">Hora</label>
@@ -252,43 +274,129 @@ export default function ConfiguracionPage() {
               </div>
             </div>
 
-            {/* ── Plantillas WhatsApp ── */}
-            <div className="rounded-xl bg-[#fafafa] p-4 sm:p-5">
-              <h2 className="mb-1.5 text-base font-semibold text-[#1D1E20] sm:text-lg">
-                💬 Plantillas de WhatsApp
-              </h2>
-              <p className="mb-3 text-xs text-[#666]">Mensajes pre-escritos para enviar a tus invitados</p>
-              <div className="mb-4 rounded-lg border border-[#e8e8e8] bg-white px-3 py-2 font-mono text-[11px] text-[#999]">
-                {'{nombre} · {evento} · {fecha} · {hora} · {venue}'}
+            {/* ── Columna derecha ── */}
+            <div className="flex flex-col gap-4 sm:gap-5">
+
+              {/* ── Plantillas WhatsApp ── */}
+              <div className="rounded-xl bg-[#fafafa] p-4 sm:p-5">
+                <h2 className="mb-1.5 text-base font-semibold text-[#1D1E20] sm:text-lg">
+                  💬 Plantillas de WhatsApp
+                </h2>
+                <p className="mb-3 text-xs text-[#666]">Mensajes pre-escritos para enviar a tus invitados</p>
+                <div className="mb-4 rounded-lg border border-[#e8e8e8] bg-white px-3 py-2 font-mono text-[11px] text-[#999]">
+                  {'{nombre} · {evento} · {fecha} · {hora} · {venue}'}
+                </div>
+                <div className="flex flex-col gap-3">
+                  {templates.slice(0, visibleTemplates).map((template, i) => (
+                    <div key={i}>
+                      <label className="mb-1.5 block text-xs font-medium text-[#555]">
+                        Plantilla {i + 1}
+                      </label>
+                      <textarea
+                        value={template}
+                        onChange={e => updateTemplate(i, e.target.value)}
+                        placeholder={i === 0
+                          ? 'Hola {nombre}, te esperamos en {evento} el {fecha} a las {hora} 🎉'
+                          : `Plantilla ${i + 1}...`}
+                        rows={4}
+                        className="w-full resize-y rounded-lg border border-[#d0d0d0] bg-white px-3 py-2.5 font-sans text-sm leading-relaxed text-[#1D1E20] outline-none transition focus:border-[#48C9B0]"
+                      />
+                    </div>
+                  ))}
+                  {visibleTemplates < 5 && (
+                    <button
+                      onClick={() => setVisibleTemplates(v => Math.min(v + 1, 5))}
+                      className="flex items-center gap-1.5 text-xs text-[#48C9B0] transition hover:text-[#3ab89f]"
+                    >
+                      <span className="text-base leading-none">+</span> Agregar plantilla
+                    </button>
+                  )}
+                </div>
               </div>
-              <div className="flex flex-col gap-3">
-                {templates.slice(0, visibleTemplates).map((template, i) => (
-                  <div key={i}>
-                    <label className="mb-1.5 block text-xs font-medium text-[#555]">
-                      Plantilla {i + 1}
-                    </label>
-                    <textarea
-                      value={template}
-                      onChange={e => updateTemplate(i, e.target.value)}
-                      placeholder={i === 0
-                        ? 'Hola {nombre}, te esperamos en {evento} el {fecha} a las {hora} 🎉'
-                        : `Plantilla ${i + 1}...`}
-                      rows={4}
-                      className="w-full resize-y rounded-lg border border-[#d0d0d0] bg-white px-3 py-2.5 font-sans text-sm leading-relaxed text-[#1D1E20] outline-none transition focus:border-[#48C9B0]"
+
+              {/* ── Playlist ── */}
+              <div className="rounded-xl bg-[#fafafa] p-4 sm:p-5">
+                <h2 className="mb-1.5 text-base font-semibold text-[#1D1E20] sm:text-lg">
+                  🎵 Playlist de invitados
+                </h2>
+                <p className="mb-4 text-xs text-[#666]">
+                  Los invitados recomiendan canciones desde un link público sin necesidad de crear cuenta.
+                </p>
+
+                {/* Categorías — primero */}
+                <div className="mb-4">
+                  <label className="mb-1.5 block text-xs font-medium text-[#555]">Categorías</label>
+                  <p className="mb-2 text-xs text-[#999]">Ej: Vals, Entrada, Para llorar, Techno...</p>
+                  {categories.length > 0 && (
+                    <div className="mb-2 flex flex-wrap gap-1.5">
+                      {categories.map(cat => (
+                        <span
+                          key={cat}
+                          className="flex items-center gap-1 rounded-full border border-[#d0d0d0] bg-white px-2.5 py-1 text-xs text-[#555]"
+                        >
+                          {cat}
+                          <button
+                            onClick={() => handleRemoveCategory(cat)}
+                            className="ml-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full text-[#999] hover:bg-red-100 hover:text-red-500"
+                          >
+                            ×
+                          </button>
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={newCategory}
+                      onChange={e => setNewCategory(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && handleAddCategory()}
+                      placeholder="Nueva categoría..."
+                      className="flex-1 rounded-lg border border-[#d0d0d0] bg-white px-3 py-2 text-sm text-[#1D1E20] outline-none transition focus:border-[#48C9B0]"
                     />
+                    <button
+                      onClick={handleAddCategory}
+                      disabled={!newCategory.trim()}
+                      className="shrink-0 rounded-lg bg-[#48C9B0] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#3ab89f] disabled:opacity-40"
+                    >
+                      Agregar
+                    </button>
                   </div>
-                ))}
-                {visibleTemplates < 5 && (
-                  <button
-                    onClick={() => setVisibleTemplates(v => Math.min(v + 1, 5))}
-                    className="flex items-center gap-1.5 text-xs text-[#48C9B0] transition hover:text-[#3ab89f]"
-                  >
-                    <span className="text-base leading-none">+</span> Agregar plantilla
-                  </button>
-                )}
+                </div>
+
+                {/* Link público — al final */}
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-[#555]">Link público</label>
+                  {playlistToken ? (
+                    <div className="flex gap-2">
+                      <div className="flex-1 overflow-hidden rounded-lg border border-[#d0d0d0] bg-white px-3 py-2.5">
+                        <p className="truncate font-mono text-xs text-[#555]">
+                          {typeof window !== 'undefined' ? window.location.origin : 'https://guestflow-eta.vercel.app'}/playlist/{playlistToken}
+                        </p>
+                      </div>
+                      <button
+                        onClick={handleCopyLink}
+                        className={`shrink-0 rounded-lg border px-3 py-2 text-xs font-medium transition
+                          ${copied
+                            ? 'border-[#48C9B0] bg-[#f0fdfb] text-[#1a9e88]'
+                            : 'border-[#d0d0d0] bg-white text-[#555] hover:border-[#48C9B0] hover:text-[#1a9e88]'
+                          }`}
+                      >
+                        {copied ? '✓ Copiado' : 'Copiar'}
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={handleGenerateToken}
+                      className="w-full rounded-lg border border-dashed border-[#48C9B0] bg-[#f0fdfb] py-2.5 text-xs font-medium text-[#1a9e88] transition hover:bg-[#e0faf5]"
+                    >
+                      + Generar link de playlist
+                    </button>
+                  )}
+                </div>
+
               </div>
             </div>
-
           </div>
 
           {/* ── Zona de peligro ── */}
@@ -307,7 +415,6 @@ export default function ConfiguracionPage() {
 
         </div>
       </div>
-
     </div>
   )
 }

@@ -197,7 +197,7 @@ export default function Dashboard() {
     onClick={() => window.location.href = `/events/${nextEvent.id}`}
     className="mb-5 cursor-pointer rounded-2xl border border-[#48C9B0]/30 bg-white p-4 shadow-[0_2px_16px_rgba(72,201,176,0.1)] transition hover:shadow-[0_4px_24px_rgba(72,201,176,0.18)] sm:mb-6"
   >
-    <div className="flex gap-4">
+    <div className="flex items-stretch gap-4">
 
       {/* Izquierda — nombre + countdown */}
       <div className="min-w-0 flex-1">
@@ -218,20 +218,20 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Derecha — 2x2 grid, mismo ancho que izquierda */}
-      <div className="flex-1 grid grid-cols-2 gap-2 content-center">
-        {[
-          { label: 'Total',  value: nextEvent.total,     color: '#1D1E20' },
-          { label: 'Conf.',  value: nextEvent.confirmed, color: '#2a7a50' },
-          { label: 'Pend.',  value: nextEvent.pending,   color: '#b8860b' },
-          { label: 'Decl.',  value: nextEvent.declined,  color: '#cc3333' },
-        ].map(s => (
-          <div key={s.label} className="flex flex-col items-center rounded-lg border border-[#e8e8e8] bg-[#f8f8f8] py-2">
-            <p className="text-sm font-bold sm:text-base" style={{ color: s.color }}>{s.value}</p>
-            <p className="text-[10px] text-[#999]">{s.label}</p>
-          </div>
-        ))}
-      </div>
+    {/* Derecha — 2x2 grid, mismo alto que izquierda */}
+    <div className="flex-1 grid grid-cols-2 gap-2">
+      {[
+        { label: 'Total',  value: nextEvent.total,     color: '#1D1E20' },
+        { label: 'Conf.',  value: nextEvent.confirmed, color: '#2a7a50' },
+        { label: 'Pend.',  value: nextEvent.pending,   color: '#b8860b' },
+        { label: 'Decl.',  value: nextEvent.declined,  color: '#cc3333' },
+      ].map(s => (
+        <div key={s.label} className="flex flex-1 flex-col items-center justify-center rounded-lg border border-[#e8e8e8] bg-[#f8f8f8]">
+          <p className="text-sm font-bold sm:text-base" style={{ color: s.color }}>{s.value}</p>
+          <p className="text-[10px] text-[#999]">{s.label}</p>
+        </div>
+      ))}
+    </div>
 
     </div>
 
