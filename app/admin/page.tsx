@@ -1,10 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { createClient } from '@/lib/supabase'
+import { supabase } from '@/lib/supabase'
 
 // ── Cambia este email por el tuyo ──────────────────────────────────────────
-const ADMIN_EMAIL = 'diego.garza@moonlaunch.mx'
+const ADMIN_EMAIL = 'tu@email.com'
 
 // ── Tipos ──────────────────────────────────────────────────────────────────
 interface AdminUser {
@@ -58,8 +58,6 @@ const PLAN_STYLES: Record<string, string> = {
 
 // ── Componente principal ───────────────────────────────────────────────────
 export default function AdminPage() {
-  const supabase = createClient()
-
   const [loading, setLoading]     = useState(true)
   const [authed, setAuthed]       = useState(false)
   const [stats, setStats]         = useState<GlobalStats | null>(null)
