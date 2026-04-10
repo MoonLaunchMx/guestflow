@@ -27,6 +27,7 @@ export default function Dashboard() {
   const [sortAsc, setSortAsc] = useState(true)
   const [now, setNow] = useState(new Date())
 
+  // Tick cada segundo para el countdown
   useEffect(() => {
     const interval = setInterval(() => setNow(new Date()), 1000)
     return () => clearInterval(interval)
@@ -48,12 +49,14 @@ export default function Dashboard() {
 
     if (!eventsData) { setLoading(false); return }
 
+    // Para cada evento, cargar guests + party_members
     const eventsWithStats: EventWithStats[] = await Promise.all(
       eventsData.map(async (event) => {
         const [{ data: guests }, { data: members }] = await Promise.all([
           supabase.from('guests').select('rsvp_status').eq('event_id', event.id),
           supabase.from('party_members').select('rsvp_status').eq('event_id', event.id),
         ])
+
         const all = [...(guests || []), ...(members || [])]
         return {
           ...event,
@@ -105,10 +108,12 @@ export default function Dashboard() {
     const target = getEventDateTime(event)
     const diff = target.getTime() - now.getTime()
     if (diff <= 0) return '¡Es hoy!'
+
     const days    = Math.floor(diff / (1000 * 60 * 60 * 24))
     const hours   = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
     const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
     const seconds = Math.floor((diff % (1000 * 60)) / 1000)
+
     if (days > 0) return `${days}d ${hours}h ${minutes}m ${seconds}s`
     if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`
     return `${minutes}m ${seconds}s`
@@ -133,6 +138,7 @@ export default function Dashboard() {
     ? [...futureEvents].sort((a, b) => getEventDateTime(a).getTime() - getEventDateTime(b).getTime())[0]
     : null
 
+  // Eventos el mismo día que el nextEvent pero distintos
   const sameDay = nextEvent
     ? futureEvents.filter(e =>
         e.id !== nextEvent.id &&
@@ -166,12 +172,12 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* ── Zona fija ── */}
+      {/* ── Zona fija: título + próximo evento ── */}
       <div className="shrink-0 bg-[#f8f8f8]">
         <div className="mx-auto max-w-4xl px-4 pt-3 sm:px-6 sm:pt-4 lg:px-8">
 
           {/* Título + botón */}
-          <div className="mb-4 flex items-center justify-between">
+          <div className="mb-5 flex items-center justify-between sm:mb-6">
             <div>
               <h1 className="text-xl font-bold text-[#1D1E20] sm:text-2xl">Dashboard</h1>
               <p className="mt-0.5 text-xs text-[#888] sm:text-sm">Resumen de tus eventos</p>
@@ -185,63 +191,63 @@ export default function Dashboard() {
             </button>
           </div>
 
-          {/* Banner próximo evento */}
-          {!loading && nextEvent && (
-            <div
-              onClick={() => window.location.href = `/events/${nextEvent.id}`}
-              className="mb-4 cursor-pointer rounded-2xl border border-[#48C9B0]/30 bg-white p-4 shadow-[0_2px_16px_rgba(72,201,176,0.1)] transition hover:shadow-[0_4px_24px_rgba(72,201,176,0.18)]"
-            >
-              <div className="flex gap-4">
+{/* Banner próximo evento */}
+{!loading && nextEvent && (
+  <div
+    onClick={() => window.location.href = `/events/${nextEvent.id}`}
+    className="mb-5 cursor-pointer rounded-2xl border border-[#48C9B0]/30 bg-white p-4 shadow-[0_2px_16px_rgba(72,201,176,0.1)] transition hover:shadow-[0_4px_24px_rgba(72,201,176,0.18)] sm:mb-6"
+  >
+    <div className="flex gap-4">
 
-                {/* Izquierda */}
-                <div className="min-w-0 flex-1">
-                  <span className="mb-1.5 inline-block rounded-full bg-[#e8f7f3] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#48C9B0]">
-                    Próximo evento
-                  </span>
-                  <h2 className="truncate text-sm font-bold text-[#1D1E20] sm:text-base">{nextEvent.name}</h2>
-                  <p className="mt-0.5 text-xs text-[#888]">
-                    {formatDate(nextEvent.event_date)}
-                    {nextEvent.event_time && ` · ${formatTime(nextEvent.event_time)}`}
-                    {nextEvent.venue && ` · ${nextEvent.venue}`}
-                  </p>
-                  <div className="mt-2 rounded-xl bg-[#f8f5f0] px-3 py-2">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Faltan</p>
-                    <p className="font-mono text-xl font-bold text-[#48C9B0] sm:text-2xl">
-                      {getCountdown(nextEvent)}
-                    </p>
-                  </div>
-                </div>
+      {/* Izquierda — nombre + countdown */}
+      <div className="min-w-0 flex-1">
+        <span className="mb-1.5 inline-block rounded-full bg-[#e8f7f3] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#48C9B0]">
+          Próximo evento
+        </span>
+        <h2 className="truncate text-sm font-bold text-[#1D1E20] sm:text-base">{nextEvent.name}</h2>
+        <p className="mt-0.5 text-xs text-[#888]">
+          {formatDate(nextEvent.event_date)}
+          {nextEvent.event_time && ` · ${formatTime(nextEvent.event_time)}`}
+          {nextEvent.venue && ` · ${nextEvent.venue}`}
+        </p>
+        <div className="mt-3 rounded-xl bg-[#f8f5f0] px-3 py-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Faltan</p>
+          <p className="font-mono text-xl font-bold text-[#48C9B0] sm:text-2xl">
+            {getCountdown(nextEvent)}
+          </p>
+        </div>
+      </div>
 
-                {/* Derecha — 2x2 mismo alto que izquierda */}
-                <div className="flex-1 grid grid-cols-2 gap-2">
-                  {[
-                    { label: 'Total',  value: nextEvent.total,     color: '#1D1E20' },
-                    { label: 'Conf.',  value: nextEvent.confirmed, color: '#2a7a50' },
-                    { label: 'Pend.',  value: nextEvent.pending,   color: '#b8860b' },
-                    { label: 'Decl.',  value: nextEvent.declined,  color: '#cc3333' },
-                  ].map(s => (
-                    <div key={s.label} className="flex flex-col items-center justify-center rounded-lg border border-[#e8e8e8] bg-[#f8f8f8]">
-                      <p className="text-sm font-bold sm:text-base" style={{ color: s.color }}>{s.value}</p>
-                      <p className="text-[10px] text-[#999]">{s.label}</p>
-                    </div>
-                  ))}
-                </div>
+      {/* Derecha — 2x2 grid, mismo ancho que izquierda */}
+      <div className="flex-1 grid grid-cols-2 gap-2 content-center">
+        {[
+          { label: 'Total',  value: nextEvent.total,     color: '#1D1E20' },
+          { label: 'Conf.',  value: nextEvent.confirmed, color: '#2a7a50' },
+          { label: 'Pend.',  value: nextEvent.pending,   color: '#b8860b' },
+          { label: 'Decl.',  value: nextEvent.declined,  color: '#cc3333' },
+        ].map(s => (
+          <div key={s.label} className="flex flex-col items-center rounded-lg border border-[#e8e8e8] bg-[#f8f8f8] py-2">
+            <p className="text-sm font-bold sm:text-base" style={{ color: s.color }}>{s.value}</p>
+            <p className="text-[10px] text-[#999]">{s.label}</p>
+          </div>
+        ))}
+      </div>
 
-              </div>
+    </div>
 
-              {sameDay.length > 0 && (
-                <div className="mt-3 border-t border-[#f0f0f0] pt-2">
-                  {sameDay.map(e => (
-                    <p key={e.id} className="text-xs text-[#aaa]">
-                      También hoy: <span className="font-semibold text-[#888]">{e.name}</span>
-                      {e.event_time && ` a las ${formatTime(e.event_time)}`}
-                    </p>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
+    {/* Mismo día */}
+    {sameDay.length > 0 && (
+      <div className="mt-3 border-t border-[#f0f0f0] pt-2">
+        {sameDay.map(e => (
+          <p key={e.id} className="text-xs text-[#aaa]">
+            También hoy: <span className="font-semibold text-[#888]">{e.name}</span>
+            {e.event_time && ` a las ${formatTime(e.event_time)}`}
+          </p>
+        ))}
+      </div>
+    )}
+  </div>
+)}
           {/* Encabezado lista */}
           <div className="flex items-center justify-between pb-3">
             <h2 className="text-xs font-semibold uppercase tracking-wide text-[#888]">
@@ -284,9 +290,10 @@ export default function Dashboard() {
                   <div
                     key={event.id}
                     onClick={() => window.location.href = `/events/${event.id}`}
-                    className={`group cursor-pointer rounded-xl border bg-white px-4 py-4 transition hover:border-[#48C9B0] hover:shadow-[0_2px_12px_rgba(72,201,176,0.12)] active:scale-[0.99] sm:px-5
+                    className={`group cursor-pointer rounded-xl border bg-white px-4 py-4 transition hover:border-[#48C9B0] hover:shadow-[0_2px_12px_rgba(72,201,176,0.12)] active:scale-[0.99] sm:px-5 sm:py-4
                       ${isNext ? 'border-[#48C9B0]/40' : 'border-[#e8e8e8]'}`}
                   >
+                    {/* Nombre + fecha */}
                     <div className="mb-3 flex items-start justify-between gap-3">
                       <div className="min-w-0">
                         <p className="truncate text-sm font-semibold text-[#1D1E20]">{event.name}</p>
@@ -299,6 +306,7 @@ export default function Dashboard() {
                       <span className="shrink-0 text-lg text-[#ccc] transition group-hover:text-[#48C9B0]">›</span>
                     </div>
 
+                    {/* Stats */}
                     <div className="mb-3 grid grid-cols-4 gap-2">
                       {[
                         { label: 'Total',  value: event.total,     color: '#1D1E20' },
@@ -313,6 +321,7 @@ export default function Dashboard() {
                       ))}
                     </div>
 
+                    {/* Barra de progreso */}
                     <div>
                       <div className="mb-1 flex items-center justify-between">
                         <span className="text-[10px] text-[#aaa]">Confirmados</span>
