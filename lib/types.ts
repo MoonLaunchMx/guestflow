@@ -19,5 +19,6 @@ export type Guest = {
   party_size: number
   notes?: string | null
   rsvp_status: RsvpStatus
+  tags: string[]
   party_members: PartyMember[]
 }
