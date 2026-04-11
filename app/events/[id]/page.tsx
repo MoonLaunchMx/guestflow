@@ -5,36 +5,30 @@ import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { PartyMember, Guest } from '@/lib/types'
 
-// ─────────────────────────────────────────────
-// TIPOS
-// ─────────────────────────────────────────────
+type EventStatus = 'active' | 'paused' | 'cancelled'
+
 type Event = {
   id: string
   name: string
   event_date: string
   venue: string | null
+  address: string | null
   event_type: string | null
   total_guests: number
-  status: string
   event_time: string | null
   message_templates: string[]
   template_names: string[]
   playlist_token: string | null
-  guest_tags: string[] // Tags disponibles definidos en Configuración
+  guest_tags: string[]
+  event_status: EventStatus
 }
 
-// ─────────────────────────────────────────────
-// CONSTANTES DE UI
-// ─────────────────────────────────────────────
-
-// Colores y etiquetas para cada estado de RSVP
 const STATUS_LABEL: Record<string, { label: string; color: string; bg: string; border: string }> = {
   pending:   { label: 'Pendiente',  color: '#b8860b', bg: '#fffbf0', border: '#f0d080' },
   confirmed: { label: 'Confirmado', color: '#2a7a50', bg: '#f0fff6', border: '#a0e0c0' },
   declined:  { label: 'Declinó',    color: '#cc3333', bg: '#fff0f0', border: '#ffc0c0' },
 }
 
-// Etiquetas legibles para cada tipo de evento
 const EVENT_TYPE_LABELS: Record<string, string> = {
   boda:        '💍 Boda',
   cumpleanos:  '🎂 Cumpleaños',
@@ -44,13 +38,11 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
   otro:        '📅 Otro',
 }
 
-// Colores para la barra lateral de grupos con acompañantes
 const GROUP_COLORS = [
   '#48C9B0', '#7F77DD', '#F0997B', '#378ADD',
   '#EF9F27', '#D4537E', '#639922', '#D85A30',
 ]
 
-// Paleta de colores para los chips de tags (cicla si hay más de 8)
 const TAG_COLORS = [
   { bg: '#f0fdfb', border: '#9FE1CB', text: '#0F6E56' },
   { bg: '#f0f0ff', border: '#afa9ec', text: '#3C3489' },
@@ -62,12 +54,10 @@ const TAG_COLORS = [
   { bg: '#fff5f0', border: '#f09595', text: '#A32D2D' },
 ]
 
-// Devuelve el color de un tag según su índice en la lista de tags del evento
 function getTagColor(tagIndex: number) {
   return TAG_COLORS[tagIndex % TAG_COLORS.length]
 }
 
-// Estilo base para inputs del modal (evita repetir Tailwind)
 const inp: React.CSSProperties = {
   width: '100%', padding: '10px 14px',
   background: '#f8f8f8', border: '1px solid #e0e0e0',
@@ -75,16 +65,10 @@ const inp: React.CSSProperties = {
   fontSize: '14px', outline: 'none', boxSizing: 'border-box',
 }
 
-// ─────────────────────────────────────────────
-// ICONOS SVG REUTILIZABLES
-// ─────────────────────────────────────────────
-
-// Ícono de WhatsApp
 const WA_ICON = (
   <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
 )
 
-// Ícono de basura para eliminar
 const TRASH_ICON = (
   <>
     <polyline points="3 6 5 6 21 6"/>
@@ -94,9 +78,6 @@ const TRASH_ICON = (
   </>
 )
 
-// ─────────────────────────────────────────────
-// TIPOS LOCALES
-// ─────────────────────────────────────────────
 type EditMember = {
   id?: string
   name: string
@@ -104,52 +85,22 @@ type EditMember = {
   rsvp_status: 'pending' | 'confirmed' | 'declined'
 }
 
-// ─────────────────────────────────────────────
-// COMPONENTE: Selector de tags del invitado
-// Muestra los tags disponibles del evento como chips togglables.
-// Tags activos se muestran con color, inactivos en gris.
-// ─────────────────────────────────────────────
-function TagSelector({
-  availableTags,
-  selectedTags,
-  onChange,
-}: {
+function TagSelector({ availableTags, selectedTags, onChange }: {
   availableTags: string[]
   selectedTags: string[]
   onChange: (tags: string[]) => void
 }) {
-  if (availableTags.length === 0) {
-    return (
-      <p className="text-xs text-[#bbb]">
-        Sin tags — agrégalos desde Configuración.
-      </p>
-    )
-  }
-
-  const toggle = (tag: string) => {
-    onChange(
-      selectedTags.includes(tag)
-        ? selectedTags.filter(t => t !== tag)
-        : [...selectedTags, tag]
-    )
-  }
-
+  if (availableTags.length === 0) return <p className="text-xs text-[#bbb]">Sin tags — agrégalos desde Configuración.</p>
+  const toggle = (tag: string) => onChange(selectedTags.includes(tag) ? selectedTags.filter(t => t !== tag) : [...selectedTags, tag])
   return (
     <div className="flex flex-wrap gap-1.5">
       {availableTags.map((tag, i) => {
         const col = getTagColor(i)
         const isSelected = selectedTags.includes(tag)
         return (
-          <button
-            key={tag}
-            type="button"
-            onClick={() => toggle(tag)}
+          <button key={tag} type="button" onClick={() => toggle(tag)}
             className="rounded-full border px-2.5 py-1 text-xs font-medium transition"
-            style={isSelected
-              ? { background: col.bg, borderColor: col.border, color: col.text }
-              : { background: '#f8f8f8', borderColor: '#e0e0e0', color: '#aaa' }
-            }
-          >
+            style={isSelected ? { background: col.bg, borderColor: col.border, color: col.text } : { background: '#f8f8f8', borderColor: '#e0e0e0', color: '#aaa' }}>
             {tag}
           </button>
         )
@@ -158,46 +109,23 @@ function TagSelector({
   )
 }
 
-// ─────────────────────────────────────────────
-// COMPONENTE: Editor de acompañantes
-// Permite agregar/editar/eliminar hasta 5 acompañantes por invitado
-// ─────────────────────────────────────────────
-function MembersEditor({
-  value,
-  onChange,
-}: {
-  value: EditMember[]
-  onChange: (v: EditMember[]) => void
-}) {
+function MembersEditor({ value, onChange }: { value: EditMember[]; onChange: (v: EditMember[]) => void }) {
   const MAX = 5
-  const add = () => {
-    if (value.length < MAX) onChange([...value, { name: '', phone: '', rsvp_status: 'pending' }])
-  }
+  const add = () => { if (value.length < MAX) onChange([...value, { name: '', phone: '', rsvp_status: 'pending' }]) }
   const remove = (i: number) => onChange(value.filter((_, idx) => idx !== i))
   const update = (i: number, field: keyof EditMember, val: string) =>
     onChange(value.map((m, idx) => idx === i ? { ...m, [field]: val } : m))
-
   return (
     <div>
       <div className="mb-2 flex items-center justify-between">
-        <label className="text-xs font-medium text-[#555]">
-          Acompañantes <span className="font-normal text-[#ccc]">(máx. {MAX})</span>
-        </label>
-        {value.length < MAX && (
-          <button type="button" onClick={add} className="text-xs font-semibold text-[#48C9B0] hover:underline">
-            + Agregar
-          </button>
-        )}
+        <label className="text-xs font-medium text-[#555]">Acompañantes <span className="font-normal text-[#ccc]">(máx. {MAX})</span></label>
+        {value.length < MAX && <button type="button" onClick={add} className="text-xs font-semibold text-[#48C9B0] hover:underline">+ Agregar</button>}
       </div>
-      {value.length === 0 && (
-        <p className="text-xs text-[#bbb]">Sin acompañantes — haz clic en "Agregar" para incluir uno.</p>
-      )}
+      {value.length === 0 && <p className="text-xs text-[#bbb]">Sin acompañantes — haz clic en "Agregar" para incluir uno.</p>}
       <div className="flex flex-col gap-2">
         {value.map((m, i) => (
           <div key={i} className="rounded-lg border border-[#e8e8e8] bg-[#f8f8f8] p-3">
-            <div className="mb-2">
-              <span className="text-[11px] font-semibold text-[#aaa]">+{i + 1}</span>
-            </div>
+            <div className="mb-2"><span className="text-[11px] font-semibold text-[#aaa]">+{i + 1}</span></div>
             <div className="flex flex-col gap-2">
               <input type="text" value={m.name} onChange={e => update(i, 'name', e.target.value)} placeholder="Nombre (opcional)" style={{ ...inp, fontSize: '13px', padding: '8px 12px' }} />
               <input type="tel" value={m.phone} onChange={e => update(i, 'phone', e.target.value)} placeholder="WhatsApp (opcional)" style={{ ...inp, fontSize: '13px', padding: '8px 12px' }} />
@@ -206,9 +134,7 @@ function MembersEditor({
                 <option value="confirmed">Confirmado</option>
                 <option value="declined">Declinó</option>
               </select>
-              <button type="button" onClick={() => remove(i)} className="mt-1 w-full rounded-lg border border-[#ffe0e0] bg-[#fff5f5] py-1.5 text-xs font-semibold text-[#cc3333] transition hover:bg-[#ffe8e8]">
-                Eliminar acompañante
-              </button>
+              <button type="button" onClick={() => remove(i)} className="mt-1 w-full rounded-lg border border-[#ffe0e0] bg-[#fff5f5] py-1.5 text-xs font-semibold text-[#cc3333] transition hover:bg-[#ffe8e8]">Eliminar acompañante</button>
             </div>
           </div>
         ))}
@@ -217,30 +143,29 @@ function MembersEditor({
   )
 }
 
-// ─────────────────────────────────────────────
-// PÁGINA PRINCIPAL: Lista de invitados
-// ─────────────────────────────────────────────
+const EVENT_STATUS_STYLES: Record<string, { dot: string; badge: string; label: string }> = {
+  active:    { dot: 'bg-[#48C9B0]', badge: 'border-[#c8ede7] bg-[#f0fdfb] text-[#1a9e88]', label: 'Activo' },
+  paused:    { dot: 'bg-blue-400',  badge: 'border-blue-200 bg-blue-50 text-blue-700',      label: 'Pausado' },
+  cancelled: { dot: 'bg-red-400',   badge: 'border-red-200 bg-red-50 text-red-600',         label: 'Cancelado' },
+  completed: { dot: 'bg-[#888]',    badge: 'border-[#e0e0e0] bg-[#f8f8f8] text-[#888]',    label: 'Completado' },
+}
+
 export default function EventPage() {
   const { id } = useParams()
 
-  // ── Estado del evento ──
   const [event, setEvent] = useState<Event | null>(null)
-
-  // ── Estado de invitados ──
   const [guests, setGuests] = useState<Guest[]>([])
   const [filtered, setFiltered] = useState<Guest[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<'all' | 'pending' | 'confirmed' | 'declined'>('all')
 
-  // ── Modales ──
-  const [showModal, setShowModal] = useState(false)       // Modal agregar invitado
-  const [showCsvModal, setShowCsvModal] = useState(false) // Modal importar CSV
+  const [showModal, setShowModal] = useState(false)
+  const [showCsvModal, setShowCsvModal] = useState(false)
   const [csvError, setCsvError] = useState('')
   const [csvSuccess, setCsvSuccess] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
-  // ── Edición de invitado ──
   const [editGuest, setEditGuest] = useState<Guest | null>(null)
   const [editName, setEditName] = useState('')
   const [editPhone, setEditPhone] = useState('')
@@ -251,24 +176,16 @@ export default function EventPage() {
   const [editSaving, setEditSaving] = useState(false)
   const [editError, setEditError] = useState('')
 
-  // ── Selección masiva ──
-  // En mobile: checkbox siempre visible, tap = seleccionar/deseleccionar
-  // En desktop: checkbox en primera columna de la tabla
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [showBulkMenu, setShowBulkMenu] = useState(false)
   const bulkMenuRef = useRef<HTMLDivElement>(null)
 
-  // ── Menú WhatsApp desktop (dropdown de plantillas) ──
   const [showWaMenu, setShowWaMenu] = useState<string | null>(null)
   const waMenuRef = useRef<HTMLDivElement>(null)
 
-  // ── Bottom sheet mobile: plantillas WhatsApp ──
-  // Toque corto en WA → abre chat directo
-  // Long press en WA → abre este bottom sheet con plantillas
   const [showWaSheet, setShowWaSheet] = useState<Guest | null>(null)
   const waLongPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // ── Formulario nuevo invitado ──
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [email, setEmail] = useState('')
@@ -278,14 +195,12 @@ export default function EventPage() {
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
 
-  // ─────────────────────────────────────────────
-  // EFECTOS
-  // ─────────────────────────────────────────────
+  const [showStatusDropdown, setShowStatusDropdown] = useState(false)
+  const [statusSaving, setStatusSaving] = useState(false)
+  const statusDropdownRef = useRef<HTMLDivElement>(null)
 
-  // Cargar datos al montar
   useEffect(() => { loadEvent(); loadGuests() }, [])
 
-  // Filtrar invitados cuando cambia búsqueda o filtro de status
   useEffect(() => {
     let result = guests
     if (filter !== 'all') result = result.filter(g => g.rsvp_status === filter)
@@ -293,51 +208,25 @@ export default function EventPage() {
     setFiltered(result)
   }, [guests, filter, search])
 
-  // Cerrar menús al hacer click fuera de ellos
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
-      if (bulkMenuRef.current && !bulkMenuRef.current.contains(e.target as Node))
-        setShowBulkMenu(false)
-      if (waMenuRef.current && !waMenuRef.current.contains(e.target as Node))
-        setShowWaMenu(null)
+      if (bulkMenuRef.current && !bulkMenuRef.current.contains(e.target as Node)) setShowBulkMenu(false)
+      if (waMenuRef.current && !waMenuRef.current.contains(e.target as Node)) setShowWaMenu(null)
+      if (statusDropdownRef.current && !statusDropdownRef.current.contains(e.target as Node)) setShowStatusDropdown(false)
     }
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
-  // ─────────────────────────────────────────────
-  // WHATSAPP MOBILE: toque corto vs long press
-  // Toque corto → abre WhatsApp directo sin mensaje
-  // Long press (400ms) → abre bottom sheet con plantillas
-  // ─────────────────────────────────────────────
   const handleWaLongPressStart = (guest: Guest) => {
-    waLongPressTimer.current = setTimeout(() => {
-      waLongPressTimer.current = null // null = long press disparado
-      setShowWaSheet(guest)
-    }, 400)
+    waLongPressTimer.current = setTimeout(() => { waLongPressTimer.current = null; setShowWaSheet(guest) }, 400)
   }
-
   const handleWaLongPressEnd = (guest: Guest) => {
-    if (waLongPressTimer.current) {
-      // Timer activo = fue toque corto → abrir WhatsApp directo
-      clearTimeout(waLongPressTimer.current)
-      waLongPressTimer.current = null
-      window.open(`https://wa.me/${guest.phone!.replace(/\D/g, '')}`, '_blank')
-    }
-    // Si timer es null = long press ya disparó, no hacer nada
+    if (waLongPressTimer.current) { clearTimeout(waLongPressTimer.current); waLongPressTimer.current = null; window.open('https://wa.me/' + guest.phone!.replace(/\D/g, ''), '_blank') }
   }
-
   const handleWaTouchMove = () => {
-    // Cancelar si el usuario mueve el dedo (no era intención de long press)
-    if (waLongPressTimer.current) {
-      clearTimeout(waLongPressTimer.current)
-      waLongPressTimer.current = null
-    }
+    if (waLongPressTimer.current) { clearTimeout(waLongPressTimer.current); waLongPressTimer.current = null }
   }
-
-  // ─────────────────────────────────────────────
-  // CARGA DE DATOS
-  // ─────────────────────────────────────────────
 
   const loadEvent = async () => {
     const { data } = await supabase.from('events').select('*').eq('id', id).single()
@@ -345,25 +234,33 @@ export default function EventPage() {
   }
 
   const loadGuests = async () => {
-    // Cargar invitados principales ordenados por nombre
-    const { data: guestsData } = await supabase
-      .from('guests').select('*').eq('event_id', id).order('name')
+    const { data: guestsData } = await supabase.from('guests').select('*').eq('event_id', id).order('name')
     if (!guestsData) { setLoading(false); return }
-
-    // Cargar acompañantes y asociarlos a su invitado principal
-    const { data: membersData } = await supabase
-      .from('party_members').select('*').eq('event_id', id).order('created_at')
-    setGuests(guestsData.map(g => ({
-      ...g,
-      tags: g.tags || [],
-      party_members: (membersData || []).filter(m => m.guest_id === g.id),
-    })))
+    const { data: membersData } = await supabase.from('party_members').select('*').eq('event_id', id).order('created_at')
+    setGuests(guestsData.map(g => ({ ...g, tags: g.tags || [], party_members: (membersData || []).filter(m => m.guest_id === g.id) })))
     setLoading(false)
   }
 
-  // ─────────────────────────────────────────────
-  // ACTUALIZACIÓN DE STATUS
-  // ─────────────────────────────────────────────
+  const getDisplayStatus = (): 'active' | 'paused' | 'cancelled' | 'completed' => {
+    const es = event?.event_status || 'active'
+    if (es === 'paused' || es === 'cancelled') return es
+    if (event?.event_date) {
+      const [year, month, day] = event.event_date.split('T')[0].split('-').map(Number)
+      const eventDay = new Date(year, month - 1, day)
+      eventDay.setHours(0, 0, 0, 0)
+      const today = new Date(); today.setHours(0, 0, 0, 0)
+      if (eventDay < today) return 'completed'
+    }
+    return 'active'
+  }
+
+  const handleStatusChange = async (newStatus: EventStatus) => {
+    setStatusSaving(true)
+    setShowStatusDropdown(false)
+    const { error } = await supabase.from('events').update({ event_status: newStatus }).eq('id', id)
+    if (!error) setEvent(prev => prev ? { ...prev, event_status: newStatus } : prev)
+    setStatusSaving(false)
+  }
 
   const updateStatus = async (guestId: string, status: 'pending' | 'confirmed' | 'declined') => {
     await supabase.from('guests').update({ rsvp_status: status }).eq('id', guestId)
@@ -372,15 +269,8 @@ export default function EventPage() {
 
   const updatePartyMemberStatus = async (memberId: string, guestId: string, status: 'pending' | 'confirmed' | 'declined') => {
     await supabase.from('party_members').update({ rsvp_status: status }).eq('id', memberId)
-    setGuests(prev => prev.map(g => g.id === guestId ? {
-      ...g,
-      party_members: g.party_members.map(m => m.id === memberId ? { ...m, rsvp_status: status } : m)
-    } : g))
+    setGuests(prev => prev.map(g => g.id === guestId ? { ...g, party_members: g.party_members.map(m => m.id === memberId ? { ...m, rsvp_status: status } : m) } : g))
   }
-
-  // ─────────────────────────────────────────────
-  // ELIMINAR
-  // ─────────────────────────────────────────────
 
   const deleteGuest = async (guestId: string) => {
     if (!confirm('¿Eliminar este invitado?')) return
@@ -394,81 +284,36 @@ export default function EventPage() {
   const deletePartyMember = async (memberId: string, guestId: string) => {
     if (!confirm('¿Eliminar este acompañante?')) return
     await supabase.from('party_members').delete().eq('id', memberId)
-    setGuests(prev => prev.map(g => g.id === guestId ? {
-      ...g,
-      party_size: g.party_size - 1,
-      party_members: g.party_members.filter(m => m.id !== memberId)
-    } : g))
+    setGuests(prev => prev.map(g => g.id === guestId ? { ...g, party_size: g.party_size - 1, party_members: g.party_members.filter(m => m.id !== memberId) } : g))
   }
 
-  // ─────────────────────────────────────────────
-  // EDITAR INVITADO
-  // ─────────────────────────────────────────────
-
   const openEdit = (guest: Guest) => {
-    setEditGuest(guest)
-    setEditName(guest.name)
-    setEditPhone(guest.phone || '')
-    setEditEmail(guest.email || '')
-    setEditNotes(guest.notes || '')
-    setEditTags(guest.tags || [])
-    setEditMembers(guest.party_members.map(m => ({
-      id: m.id, name: m.name, phone: m.phone || '', rsvp_status: m.rsvp_status,
-    })))
-    setEditError('')
+    setEditGuest(guest); setEditName(guest.name); setEditPhone(guest.phone || '')
+    setEditEmail(guest.email || ''); setEditNotes(guest.notes || '')
+    setEditTags(guest.tags || []); setEditError('')
+    setEditMembers(guest.party_members.map(m => ({ id: m.id, name: m.name, phone: m.phone || '', rsvp_status: m.rsvp_status })))
   }
 
   const handleEditSave = async () => {
     if (!editGuest) return
     if (!editName) { setEditError('El nombre es obligatorio'); return }
     setEditSaving(true); setEditError('')
-    const { error } = await supabase.from('guests').update({
-      name: editName, phone: editPhone || null, email: editEmail || null,
-      party_size: 1 + editMembers.length, notes: editNotes || null,
-      tags: editTags,
-    }).eq('id', editGuest.id)
+    const { error } = await supabase.from('guests').update({ name: editName, phone: editPhone || null, email: editEmail || null, party_size: 1 + editMembers.length, notes: editNotes || null, tags: editTags }).eq('id', editGuest.id)
     if (error) { setEditError('Error: ' + error.message); setEditSaving(false); return }
-
-    // Sincronizar acompañantes: eliminar los que ya no están, actualizar existentes, insertar nuevos
     const existingIds = editGuest.party_members.map(m => m.id)
     const keepIds = editMembers.filter(m => m.id).map(m => m.id as string)
     const toDelete = existingIds.filter(id => !keepIds.includes(id))
     if (toDelete.length > 0) await supabase.from('party_members').delete().in('id', toDelete)
-    for (const m of editMembers.filter(m => m.id)) {
-      await supabase.from('party_members').update({
-        name: m.name, phone: m.phone || null, rsvp_status: m.rsvp_status,
-      }).eq('id', m.id!)
-    }
+    for (const m of editMembers.filter(m => m.id)) await supabase.from('party_members').update({ name: m.name, phone: m.phone || null, rsvp_status: m.rsvp_status }).eq('id', m.id!)
     const toInsert = editMembers.filter(m => !m.id)
-    if (toInsert.length > 0) {
-      await supabase.from('party_members').insert(
-        toInsert.map(m => ({
-          guest_id: editGuest.id, event_id: id,
-          name: m.name, phone: m.phone || null, rsvp_status: m.rsvp_status,
-        }))
-      )
-    }
-    await loadGuests()
-    setEditGuest(null)
-    setEditSaving(false)
+    if (toInsert.length > 0) await supabase.from('party_members').insert(toInsert.map(m => ({ guest_id: editGuest.id, event_id: id, name: m.name, phone: m.phone || null, rsvp_status: m.rsvp_status })))
+    await loadGuests(); setEditGuest(null); setEditSaving(false)
   }
-
-  // ─────────────────────────────────────────────
-  // SELECCIÓN MASIVA
-  // Toggle individual, seleccionar todos, acciones bulk
-  // ─────────────────────────────────────────────
 
   const toggleSelect = (guestId: string) => {
-    setSelected(prev => {
-      const n = new Set(prev)
-      n.has(guestId) ? n.delete(guestId) : n.add(guestId)
-      return n
-    })
+    setSelected(prev => { const n = new Set(prev); n.has(guestId) ? n.delete(guestId) : n.add(guestId); return n })
   }
-
-  const toggleSelectAll = () => {
-    setSelected(selected.size === filtered.length ? new Set() : new Set(filtered.map(g => g.id)))
-  }
+  const toggleSelectAll = () => { setSelected(selected.size === filtered.length ? new Set() : new Set(filtered.map(g => g.id))) }
 
   const bulkUpdateStatus = async (status: 'pending' | 'confirmed' | 'declined') => {
     const ids = Array.from(selected)
@@ -478,81 +323,48 @@ export default function EventPage() {
   }
 
   const bulkDelete = async () => {
-    if (!confirm(`¿Eliminar ${selected.size} invitados?`)) return
+    if (!confirm('¿Eliminar ' + selected.size + ' invitados?')) return
     const ids = Array.from(selected)
     await supabase.from('guests').delete().in('id', ids)
-    for (let i = 0; i < ids.length; i++)
-      await supabase.rpc('decrement_guests', { event_id_input: id })
+    for (let i = 0; i < ids.length; i++) await supabase.rpc('decrement_guests', { event_id_input: id })
     setGuests(prev => prev.filter(g => !selected.has(g.id)))
     setEvent(prev => prev ? { ...prev, total_guests: Math.max(0, prev.total_guests - ids.length) } : prev)
     setSelected(new Set()); setShowBulkMenu(false)
   }
 
-  // ─────────────────────────────────────────────
-  // WHATSAPP: construye texto con variables dinámicas
-  // {playlist} se sustituye por el link público si el evento tiene token
-  // ─────────────────────────────────────────────
   const buildWaText = (guest: Guest, templateIndex = 0) => {
-    const playlistUrl = event?.playlist_token
-      ? `${window.location.origin}/playlist/${event.playlist_token}`
-      : ''
+    const playlistUrl = event?.playlist_token ? window.location.origin + '/playlist/' + event.playlist_token : ''
     const text = (event?.message_templates?.[templateIndex] || 'Hola {nombre}, te escribimos de parte de {evento}.')
       .replace('{nombre}', guest.name)
       .replace('{evento}', event?.name || '')
       .replace('{fecha}', event?.event_date ? new Date(event.event_date).toLocaleDateString('es-MX') : '')
       .replace('{hora}', event?.event_time || '')
       .replace('{venue}', event?.venue || '')
+      .replace('{direccion}', event?.address || '')
       .replace('{playlist}', playlistUrl)
     return encodeURIComponent(text)
   }
 
-  // Enviar WhatsApp masivo a todos los seleccionados con teléfono
   const bulkWhatsApp = () => {
     const list = guests.filter(g => selected.has(g.id) && g.phone)
     if (!list.length) { alert('Ningún invitado seleccionado tiene WhatsApp'); return }
-    list.forEach((g, i) => setTimeout(() =>
-      window.open(`https://wa.me/${g.phone!.replace(/\D/g, '')}?text=${buildWaText(g)}`, '_blank'),
-      i * 500))
+    list.forEach((g, i) => setTimeout(() => window.open('https://wa.me/' + g.phone!.replace(/\D/g, '') + '?text=' + buildWaText(g), '_blank'), i * 500))
     setShowBulkMenu(false)
   }
 
-  // ─────────────────────────────────────────────
-  // AGREGAR INVITADO
-  // ─────────────────────────────────────────────
-
-  const resetForm = () => {
-    setName(''); setPhone(''); setEmail(''); setNotes('')
-    setNewTags([]); setNewMembers([]); setFormError('')
-  }
+  const resetForm = () => { setName(''); setPhone(''); setEmail(''); setNotes(''); setNewTags([]); setNewMembers([]); setFormError('') }
 
   const handleAddGuest = async () => {
     if (!name) { setFormError('El nombre es obligatorio'); return }
     setSaving(true); setFormError('')
-    const { data: guestData, error } = await supabase.from('guests').insert({
-      event_id: id, name, phone: phone || null, email: email || null,
-      party_size: 1 + newMembers.length, notes: notes || null,
-      tags: newTags, rsvp_status: 'pending',
-    }).select().single()
+    const { data: guestData, error } = await supabase.from('guests').insert({ event_id: id, name, phone: phone || null, email: email || null, party_size: 1 + newMembers.length, notes: notes || null, tags: newTags, rsvp_status: 'pending' }).select().single()
     if (error || !guestData) { setFormError('Error: ' + error?.message); setSaving(false); return }
-    if (newMembers.length > 0) {
-      await supabase.from('party_members').insert(
-        newMembers.map(m => ({
-          guest_id: guestData.id, event_id: id,
-          name: m.name, phone: m.phone || null, rsvp_status: m.rsvp_status,
-        }))
-      )
-    }
+    if (newMembers.length > 0) await supabase.from('party_members').insert(newMembers.map(m => ({ guest_id: guestData.id, event_id: id, name: m.name, phone: m.phone || null, rsvp_status: m.rsvp_status })))
     await supabase.rpc('increment_guests', { event_id_input: id })
     setEvent(prev => prev ? { ...prev, total_guests: prev.total_guests + 1 } : prev)
-    await loadGuests()
-    resetForm(); setShowModal(false); setSaving(false)
+    await loadGuests(); resetForm(); setShowModal(false); setSaving(false)
   }
 
-  // ─────────────────────────────────────────────
-  // IMPORTAR CSV
-  // Acepta separador por coma o punto y coma.
-  // Columnas: nombre (obligatorio), telefono, email.
-  // ─────────────────────────────────────────────
   const handleCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return
     setCsvError(''); setCsvSuccess('')
@@ -567,127 +379,123 @@ export default function EventPage() {
     if (nameIdx === -1) { setCsvError('No se encontró columna "nombre"'); return }
     const rows = lines.slice(1).map(line => {
       const cols = line.split(sep).map(c => c.trim().replace(/"/g, ''))
-      return {
-        event_id: id, name: cols[nameIdx] || '',
-        phone: phoneIdx >= 0 ? cols[phoneIdx] || null : null,
-        email: emailIdx >= 0 ? cols[emailIdx] || null : null,
-        party_size: 1, rsvp_status: 'pending', tags: [],
-      }
+      return { event_id: id, name: cols[nameIdx] || '', phone: phoneIdx >= 0 ? cols[phoneIdx] || null : null, email: emailIdx >= 0 ? cols[emailIdx] || null : null, party_size: 1, rsvp_status: 'pending', tags: [] }
     }).filter(r => r.name)
     if (!rows.length) { setCsvError('No se encontraron invitados válidos'); return }
     const { error } = await supabase.from('guests').insert(rows)
     if (error) { setCsvError('Error al importar: ' + error.message); return }
     for (let i = 0; i < rows.length; i++) await supabase.rpc('increment_guests', { event_id_input: id })
     setEvent(prev => prev ? { ...prev, total_guests: prev.total_guests + rows.length } : prev)
-    await loadGuests()
-    setCsvSuccess(`✓ ${rows.length} invitados importados correctamente`)
+    await loadGuests(); setCsvSuccess('✓ ' + rows.length + ' invitados importados correctamente')
     if (fileRef.current) fileRef.current.value = ''
   }
 
-  // ─────────────────────────────────────────────
-  // EXPORTAR CSV
-  // Descarga nombre, teléfono, email, status, notas y tags
-  // ─────────────────────────────────────────────
   const exportCSV = () => {
     const headers = 'nombre,telefono,email,status,notas,tags'
-    const rows = guests.map(g =>
-      `"${g.name}","${g.phone || ''}","${g.email || ''}","${STATUS_LABEL[g.rsvp_status].label}","${(g.notes || '').replace(/"/g, '""')}","${(g.tags || []).join(', ')}"`
-    )
+    const rows = guests.map(g => '"' + g.name + '","' + (g.phone || '') + '","' + (g.email || '') + '","' + STATUS_LABEL[g.rsvp_status].label + '","' + (g.notes || '').replace(/"/g, '""') + '","' + (g.tags || []).join(', ') + '"')
     const csv = [headers, ...rows].join('\n')
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `invitados_${event?.name?.replace(/\s+/g, '_') || 'evento'}.csv`
-    a.click()
+    const a = document.createElement('a'); a.href = url; a.download = 'invitados_' + (event?.name?.replace(/\s+/g, '_') || 'evento') + '.csv'; a.click()
     URL.revokeObjectURL(url)
   }
 
-  // ─────────────────────────────────────────────
-  // DESCARGAR PLANTILLA CSV (para importar)
-  // ─────────────────────────────────────────────
   const downloadTemplate = () => {
-    const csv = `nombre,telefono,email\nMaria Jose,+52 81 1234 5678,mj@ejemplo.com\nPatrocleo Juarez,+52 55 9876 5432,\nAndres Garza,,andres@ejemplo.com`
+    const csv = 'nombre,telefono,email\nMaria Jose,+52 81 1234 5678,mj@ejemplo.com\nPatrocleo Juarez,+52 55 9876 5432,\nAndres Garza,,andres@ejemplo.com'
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a'); a.href = url; a.download = 'plantilla_guestflow.csv'; a.click()
     URL.revokeObjectURL(url)
   }
 
-  // ─────────────────────────────────────────────
-  // MÉTRICAS: conteos por status incluyendo acompañantes
-  // ─────────────────────────────────────────────
   const totalPersonas = guests.reduce((acc, g) => acc + 1 + g.party_members.length, 0)
-  const confirmed = guests.reduce((acc, g) => {
-    let n = g.rsvp_status === 'confirmed' ? 1 : 0
-    n += g.party_members.filter(m => m.rsvp_status === 'confirmed').length
-    return acc + n
-  }, 0)
-  const pending = guests.reduce((acc, g) => {
-    let n = g.rsvp_status === 'pending' ? 1 : 0
-    n += g.party_members.filter(m => m.rsvp_status === 'pending').length
-    return acc + n
-  }, 0)
-  const declined = guests.reduce((acc, g) => {
-    let n = g.rsvp_status === 'declined' ? 1 : 0
-    n += g.party_members.filter(m => m.rsvp_status === 'declined').length
-    return acc + n
-  }, 0)
+  const confirmed = guests.reduce((acc, g) => { let n = g.rsvp_status === 'confirmed' ? 1 : 0; n += g.party_members.filter(m => m.rsvp_status === 'confirmed').length; return acc + n }, 0)
+  const pending   = guests.reduce((acc, g) => { let n = g.rsvp_status === 'pending' ? 1 : 0;   n += g.party_members.filter(m => m.rsvp_status === 'pending').length;   return acc + n }, 0)
+  const declined  = guests.reduce((acc, g) => { let n = g.rsvp_status === 'declined' ? 1 : 0;  n += g.party_members.filter(m => m.rsvp_status === 'declined').length;  return acc + n }, 0)
 
   const allSelected = filtered.length > 0 && selected.size === filtered.length
   const someSelected = selected.size > 0
 
-  // Formatea fecha larga en español para el encabezado
   const formatDate = (d: string) => {
     const [year, month, day] = d.split('T')[0].split('-').map(Number)
-    return new Date(year, month - 1, day).toLocaleDateString('es-MX', {
-      weekday: 'long', day: 'numeric', month: 'long', year: 'numeric'
-    })
+    return new Date(year, month - 1, day).toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
   }
 
-  // Solo plantillas que tienen contenido escrito
   const activeTemplates = event?.message_templates?.filter(t => t.trim()) || []
   const availableTags = event?.guest_tags || []
 
-  // ─────────────────────────────────────────────
-  // RENDER
-  // ─────────────────────────────────────────────
+  const displayStatus = getDisplayStatus()
+  const badgeStyle = EVENT_STATUS_STYLES[displayStatus]
+  const isClickable = displayStatus !== 'completed'
+
+  const statusOptions: { status: EventStatus; label: string; dot: string }[] = [
+    { status: 'active',    label: 'Activo',    dot: 'bg-[#48C9B0]' },
+    { status: 'paused',    label: 'Pausado',   dot: 'bg-blue-400' },
+    { status: 'cancelled', label: 'Cancelado', dot: 'bg-red-400' },
+  ].filter(o => o.status !== event?.event_status)
+
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#ffffff', color: '#1D1E20' }}>
 
-      {/* ══ PANEL SUPERIOR STICKY ══
-          Contiene: encabezado del evento, métricas, búsqueda, filtros y acciones */}
+      {/* PANEL SUPERIOR */}
       <div style={{ flexShrink: 0, borderBottom: '1px solid #e8e8e8' }} className="px-4 pt-4 pb-0 sm:px-6 sm:pt-5 lg:px-10 lg:pt-6">
 
-        {/* Encabezado: nombre del evento y tipo */}
         <div className="mb-4">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex flex-wrap items-baseline gap-2">
-              <h1 className="text-lg font-bold text-[#1D1E20] sm:text-xl lg:text-2xl">{event?.name}</h1>
-              {event?.event_type && (
-                <span className="text-xs text-[#888] sm:text-sm">{EVENT_TYPE_LABELS[event.event_type]}</span>
-              )}
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-lg font-bold text-[#1D1E20] sm:text-xl lg:text-2xl">{event?.name}</h1>
+                {event?.event_type && (
+                  <span className="text-xs text-[#888] sm:text-sm">{EVENT_TYPE_LABELS[event.event_type]}</span>
+                )}
+                {event && (
+                  <div className="relative" ref={statusDropdownRef}>
+                    <button
+                      onClick={() => isClickable && setShowStatusDropdown(!showStatusDropdown)}
+                      disabled={statusSaving || !isClickable}
+                      className={'flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold transition ' + (isClickable ? 'hover:opacity-80' : 'cursor-default') + ' ' + badgeStyle.badge + ' disabled:opacity-60'}
+                    >
+                      <span className={'h-1.5 w-1.5 rounded-full ' + badgeStyle.dot} />
+                      {statusSaving ? 'Guardando...' : badgeStyle.label}
+                      {isClickable && (
+                        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="opacity-60">
+                          <path d="M2 3.5l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      )}
+                    </button>
+                    {showStatusDropdown && (
+                      <div className="absolute left-0 top-full z-50 mt-1.5 w-44 overflow-hidden rounded-xl border border-[#e8e8e8] bg-white shadow-lg">
+                        <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-[#bbb]">Cambiar estado</div>
+                        {statusOptions.map(opt => (
+                          <button key={opt.status} onClick={() => handleStatusChange(opt.status)}
+                            className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-xs text-[#555] transition hover:bg-[#f8f8f8]">
+                            <span className={'h-2 w-2 rounded-full ' + opt.dot} />
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+              <p className="mt-0.5 text-xs text-[#888] sm:text-sm">
+                {event?.event_date ? formatDate(event.event_date) : ''}
+                {event?.venue ? ' · ' + event.venue : ''}
+              </p>
             </div>
-            <button
-              onClick={() => window.location.href = '/dashboard'}
-              className="shrink-0 text-xs text-[#999] transition hover:text-[#48C9B0] sm:hidden"
-            >
+            <button onClick={() => window.location.href = '/dashboard'} className="shrink-0 text-xs text-[#999] transition hover:text-[#48C9B0] sm:hidden">
               ← Eventos
             </button>
           </div>
-          <p className="mt-0.5 text-xs text-[#888] sm:text-sm">
-            {event?.event_date ? formatDate(event.event_date) : ''}
-            {event?.venue ? ` · ${event.venue}` : ''}
-          </p>
         </div>
 
-        {/* Métricas: total, confirmados, pendientes, declinados */}
+        {/* Métricas */}
         <div className="mb-4 grid grid-cols-4 gap-2">
           {[
-            { label: 'Total',  value: totalPersonas, color: '#1D1E20' },
-            { label: 'Conf.',  value: confirmed,     color: '#2a7a50' },
-            { label: 'Pend.',  value: pending,       color: '#b8860b' },
-            { label: 'Decl.',  value: declined,      color: '#cc3333' },
+            { label: 'Total', value: totalPersonas, color: '#1D1E20' },
+            { label: 'Conf.', value: confirmed,     color: '#2a7a50' },
+            { label: 'Pend.', value: pending,       color: '#b8860b' },
+            { label: 'Decl.', value: declined,      color: '#cc3333' },
           ].map(s => (
             <div key={s.label} className="rounded-xl border border-[#e8e8e8] bg-[#f8f8f8] p-2 text-center">
               <div className="text-lg font-bold sm:text-xl" style={{ color: s.color }}>{s.value}</div>
@@ -696,50 +504,34 @@ export default function EventPage() {
           ))}
         </div>
 
-        {/* Barra de herramientas: búsqueda, filtros, acciones */}
+        {/* Barra herramientas */}
         <div className="mb-3 flex flex-col gap-2">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Buscar..."
+              className="w-full rounded-lg border border-[#e0e0e0] bg-[#f8f8f8] px-3 py-2 text-sm text-[#1D1E20] outline-none sm:w-48" />
 
-            {/* Búsqueda por nombre */}
-            <input
-              type="text" value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="🔍 Buscar..."
-              className="w-full rounded-lg border border-[#e0e0e0] bg-[#f8f8f8] px-3 py-2 text-sm text-[#1D1E20] outline-none sm:w-48"
-            />
-
-            {/* Filtros por status */}
-            <div className="flex gap-1.5">
+            <div className="grid grid-cols-4 gap-1 w-full">
               {[
-                { key: 'all',       labelMobile: 'Todos',  labelDesktop: 'Todos' },
-                { key: 'confirmed', labelMobile: 'Conf.',  labelDesktop: 'Confirmados' },
-                { key: 'pending',   labelMobile: 'Pend.',  labelDesktop: 'Pendientes' },
-                { key: 'declined',  labelMobile: 'Dec.',   labelDesktop: 'Declinados' },
+                { key: 'all',       label: 'Todos',       labelShort: 'Todos', count: totalPersonas },
+                { key: 'confirmed', label: 'Confirmados', labelShort: 'Conf.', count: confirmed },
+                { key: 'pending',   label: 'Pendientes',  labelShort: 'Pend.', count: pending },
+                { key: 'declined',  label: 'Declinados',  labelShort: 'Dec.',  count: declined },
               ].map(tab => (
-                <button
-                  key={tab.key}
-                  onClick={() => setFilter(tab.key as typeof filter)}
-                  className={`shrink-0 rounded-full border px-3 py-1 text-xs transition
-                    ${filter === tab.key
-                      ? 'border-[#48C9B0] bg-[#48C9B0] font-semibold text-white'
-                      : 'border-[#e0e0e0] text-[#666] hover:border-[#48C9B0] hover:text-[#48C9B0]'
-                    }`}
-                >
-                  <span className="sm:hidden">{tab.labelMobile}</span>
-                  <span className="hidden sm:inline">{tab.labelDesktop}</span>
+                <button key={tab.key} onClick={() => setFilter(tab.key as typeof filter)}
+                  className={'flex items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold transition ' + (filter === tab.key ? 'bg-[#1D1E20] text-white' : 'text-[#888] hover:bg-[#efefef]')}>
+                  <span className="sm:hidden">{tab.labelShort}</span>
+                  <span className="hidden sm:inline">{tab.label}</span>
+                  <span className={'rounded-full px-1.5 py-0.5 text-[10px] font-bold ' + (filter === tab.key ? 'bg-white/20 text-white' : 'bg-[#e8e8e8] text-[#666]')}>
+                    {tab.count}
+                  </span>
                 </button>
               ))}
             </div>
 
-            {/* Acciones: bulk, exportar, importar, agregar */}
             <div className="flex items-center justify-end gap-2 sm:ml-auto">
-
-              {/* Menú acciones masivas — aparece cuando hay invitados seleccionados */}
               {someSelected && (
-                <div className="relative" ref={bulkMenuRef}>
-                  <button
-                    onClick={() => setShowBulkMenu(!showBulkMenu)}
-                    className="whitespace-nowrap rounded-lg border border-[#48C9B0] bg-[#f0fdfb] px-3 py-1.5 text-xs font-semibold text-[#1a9e88]"
-                  >
+                <div className="relative flex-1 sm:flex-none" ref={bulkMenuRef}>
+                  <button onClick={() => setShowBulkMenu(!showBulkMenu)} className="w-full whitespace-nowrap rounded-lg border border-[#48C9B0] bg-[#f0fdfb] px-3 py-1.5 text-xs font-semibold text-[#1a9e88] sm:w-auto">
                     {selected.size} seleccionados ▾
                   </button>
                   {showBulkMenu && (
@@ -758,27 +550,15 @@ export default function EventPage() {
                   )}
                 </div>
               )}
-
-              {/* Exportar CSV */}
-              <button onClick={exportCSV} className="hidden whitespace-nowrap rounded-lg border border-[#e0e0e0] px-3 py-1.5 text-xs text-[#666] transition hover:border-[#48C9B0] hover:text-[#48C9B0] sm:block">
-                ⬇️ Exportar
-              </button>
-
-              {/* Importar CSV */}
-              <button onClick={() => { setCsvError(''); setCsvSuccess(''); setShowCsvModal(true) }} className="hidden whitespace-nowrap rounded-lg border border-[#e0e0e0] px-3 py-1.5 text-xs text-[#666] transition hover:border-[#48C9B0] hover:text-[#48C9B0] sm:block">
-                📂 Importar
-              </button>
-
-              {/* Agregar invitado */}
-              <button onClick={() => { resetForm(); setShowModal(true) }} className="whitespace-nowrap rounded-lg bg-[#48C9B0] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#3ab89f] sm:px-4 sm:text-sm">
-                + Agregar
-              </button>
+              <button onClick={exportCSV} className="hidden whitespace-nowrap rounded-lg border border-[#e0e0e0] px-3 py-1.5 text-xs text-[#666] transition hover:border-[#48C9B0] hover:text-[#48C9B0] sm:block">⬇️ Exportar</button>
+              <button onClick={() => { setCsvError(''); setCsvSuccess(''); setShowCsvModal(true) }} className="hidden whitespace-nowrap rounded-lg border border-[#e0e0e0] px-3 py-1.5 text-xs text-[#666] transition hover:border-[#48C9B0] hover:text-[#48C9B0] sm:block">📂 Importar</button>
+              <button onClick={() => { resetForm(); setShowModal(true) }} className="shrink-0 whitespace-nowrap rounded-lg bg-[#48C9B0] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#3ab89f] sm:px-4 sm:text-sm">+ Agregar</button>
             </div>
           </div>
         </div>
       </div>
 
-      {/* ══ LISTA DE INVITADOS ══ */}
+      {/* LISTA */}
       <div style={{ flex: 1, overflowY: 'auto' }} className="px-4 pb-6 pt-3 sm:px-6 lg:px-10">
         {loading ? (
           <p className="pt-5 text-sm text-[#999]">Cargando...</p>
@@ -790,49 +570,21 @@ export default function EventPage() {
           </div>
         ) : (
           <>
-            {/* ── MOBILE: cards ──
-                Layout: [checkbox] [WA] [nombre + tags] [status]
-                Checkbox siempre visible — tap para seleccionar
-                WA: toque corto = chat directo, long press = plantillas */}
+            {/* Mobile */}
             <div className="flex flex-col gap-2 sm:hidden">
               {filtered.map((guest, gIdx) => {
                 const groupColor = guest.party_members.length > 0 ? GROUP_COLORS[gIdx % GROUP_COLORS.length] : null
                 const guestTags = guest.tags || []
                 const isSelected = selected.has(guest.id)
-
                 return (
                   <div key={guest.id}>
-                    <div
-                      className={`rounded-xl border bg-white px-3 py-3 transition
-                        ${isSelected ? 'border-[#48C9B0] bg-[#f0fdfb]' : 'border-[#e8e8e8]'}
-                        ${groupColor ? 'rounded-b-none border-b-0' : ''}`}
-                    >
+                    <div className={'rounded-xl border bg-white px-3 py-3 transition ' + (isSelected ? 'border-[#48C9B0] bg-[#f0fdfb]' : 'border-[#e8e8e8]') + (groupColor ? ' rounded-b-none border-b-0' : '')}>
                       <div className="flex items-center gap-2">
-
-                        {/* Checkbox de selección — siempre visible en mobile */}
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => toggleSelect(guest.id)}
-                          className="h-4 w-4 shrink-0 accent-[#48C9B0]"
-                        />
-
-                        {/* Barra de color de grupo (si tiene acompañantes) */}
-                        {groupColor && (
-                          <div className="h-8 w-[3px] shrink-0 rounded-full" style={{ background: groupColor }} />
-                        )}
-
-                        {/* Botón WhatsApp mobile:
-                            - Toque corto → abre chat directo sin mensaje
-                            - Long press → bottom sheet con plantillas */}
+                        <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(guest.id)} className="h-4 w-4 shrink-0 accent-[#48C9B0]" />
+                        {groupColor && <div className="h-8 w-[3px] shrink-0 rounded-full" style={{ background: groupColor }} />}
                         <div className="shrink-0">
                           {guest.phone ? (
-                            <button
-                              onTouchStart={(e) => { e.stopPropagation(); handleWaLongPressStart(guest) }}
-                              onTouchEnd={(e) => { e.stopPropagation(); handleWaLongPressEnd(guest) }}
-                              onTouchMove={(e) => { e.stopPropagation(); handleWaTouchMove() }}
-                              className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#c0f0dc] bg-[#f0fff8]"
-                            >
+                            <button onTouchStart={e => { e.stopPropagation(); handleWaLongPressStart(guest) }} onTouchEnd={e => { e.stopPropagation(); handleWaLongPressEnd(guest) }} onTouchMove={e => { e.stopPropagation(); handleWaTouchMove() }} className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#c0f0dc] bg-[#f0fff8]">
                               <svg width="18" height="18" viewBox="0 0 24 24" fill="#25D366">{WA_ICON}</svg>
                             </button>
                           ) : (
@@ -841,74 +593,44 @@ export default function EventPage() {
                             </div>
                           )}
                         </div>
-
-                        {/* Nombre + tags — tap abre modal de editar */}
                         <div className="min-w-0 flex-1" onClick={() => openEdit(guest)}>
                           <p className="truncate text-sm font-semibold text-[#1D1E20]">
                             {guest.name}
-                            {guest.party_members.length > 0 && (
-                              <span className="ml-1 text-xs font-normal" style={{ color: groupColor || '#aaa' }}>
-                                +{guest.party_members.length}
-                              </span>
-                            )}
+                            {guest.party_members.length > 0 && <span className="ml-1 text-xs font-normal" style={{ color: groupColor || '#aaa' }}>+{guest.party_members.length}</span>}
                           </p>
-                          {/* Tags del invitado */}
                           {guestTags.length > 0 && (
                             <div className="mt-1 flex flex-wrap gap-1">
                               {guestTags.map(tag => {
                                 const tagIdx = availableTags.indexOf(tag)
                                 const col = getTagColor(tagIdx >= 0 ? tagIdx : 0)
-                                return (
-                                  <span key={tag} className="rounded-full border px-1.5 py-0.5 text-[10px] font-medium"
-                                    style={{ background: col.bg, borderColor: col.border, color: col.text }}>
-                                    {tag}
-                                  </span>
-                                )
+                                return <span key={tag} className="rounded-full border px-1.5 py-0.5 text-[10px] font-medium" style={{ background: col.bg, borderColor: col.border, color: col.text }}>{tag}</span>
                               })}
                             </div>
                           )}
                         </div>
-
-                        {/* Selector de status */}
                         <div className="shrink-0">
-                          <select
-                            value={guest.rsvp_status}
-                            onChange={e => updateStatus(guest.id, e.target.value as 'pending' | 'confirmed' | 'declined')}
+                          <select value={guest.rsvp_status} onChange={e => updateStatus(guest.id, e.target.value as 'pending' | 'confirmed' | 'declined')}
                             className="rounded-lg border px-2 py-1.5 text-xs font-semibold outline-none"
-                            style={{
-                              background: STATUS_LABEL[guest.rsvp_status].bg,
-                              borderColor: STATUS_LABEL[guest.rsvp_status].border,
-                              color: STATUS_LABEL[guest.rsvp_status].color,
-                              cursor: 'pointer',
-                            }}
-                          >
+                            style={{ background: STATUS_LABEL[guest.rsvp_status].bg, borderColor: STATUS_LABEL[guest.rsvp_status].border, color: STATUS_LABEL[guest.rsvp_status].color, cursor: 'pointer' }}>
                             <option value="pending">Pendiente</option>
                             <option value="confirmed">Confirmado</option>
                             <option value="declined">Declinó</option>
                           </select>
                         </div>
-
-                        {/* Botón eliminar */}
                         <button onClick={() => deleteGuest(guest.id)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#ffe0e0] bg-[#fff5f5]">
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#cc3333" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{TRASH_ICON}</svg>
                         </button>
                       </div>
                     </div>
-
-                    {/* Acompañantes del invitado (mobile) */}
                     {groupColor && guest.party_members.map((m, mi) => {
                       const isLast = mi === guest.party_members.length - 1
                       return (
-                        <div key={m.id} className={`border border-t-0 bg-[#fafafa] px-3 py-2 ${isLast ? 'rounded-b-xl' : ''}`} style={{ borderColor: '#e8e8e8' }}>
+                        <div key={m.id} className={'border border-t-0 bg-[#fafafa] px-3 py-2 ' + (isLast ? 'rounded-b-xl' : '')} style={{ borderColor: '#e8e8e8' }}>
                           <div className="flex items-center gap-2 pl-6">
                             <div className="h-6 w-[3px] shrink-0 rounded-full opacity-40" style={{ background: groupColor }} />
-                            <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold" style={{ background: groupColor + '22', color: groupColor }}>
-                              +{mi + 1}
-                            </div>
+                            <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold" style={{ background: groupColor + '22', color: groupColor }}>+{mi + 1}</div>
                             <span className="flex-1 truncate text-xs text-[#888]">{m.name || 'Acompañante'}</span>
-                            <span className="text-[10px] font-semibold" style={{ color: STATUS_LABEL[m.rsvp_status].color }}>
-                              {STATUS_LABEL[m.rsvp_status].label}
-                            </span>
+                            <span className="text-[10px] font-semibold" style={{ color: STATUS_LABEL[m.rsvp_status].color }}>{STATUS_LABEL[m.rsvp_status].label}</span>
                           </div>
                         </div>
                       )
@@ -918,64 +640,39 @@ export default function EventPage() {
               })}
             </div>
 
-            {/* ── DESKTOP: tabla ──
-                Columnas: checkbox | nombre | tags | notas | teléfono | status | eliminar */}
+            {/* Desktop */}
             <div className="hidden overflow-hidden rounded-xl border border-[#e8e8e8] sm:block">
-
-              {/* Encabezados */}
-              <div className="grid items-center border-b border-[#e8e8e8] bg-[#f8f8f8] px-4 py-2"
-                style={{ gridTemplateColumns: '40px 2fr 1.5fr 1fr 1.5fr 140px 40px' }}>
+              <div className="grid items-center border-b border-[#e8e8e8] bg-[#f8f8f8] px-4 py-2" style={{ gridTemplateColumns: '40px 2fr 1.5fr 1fr 1.5fr 140px 40px' }}>
                 <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} style={{ cursor: 'pointer', accentColor: '#48C9B0' }} />
                 {['Nombre', 'Tags', 'Notas', 'Teléfono', 'Status', ''].map(h => (
                   <div key={h} className="text-[11px] font-semibold uppercase tracking-wide text-[#aaa]">{h}</div>
                 ))}
               </div>
-
-              {/* Filas de invitados */}
               {filtered.map((guest, gIdx) => {
                 const groupColor = guest.party_members.length > 0 ? GROUP_COLORS[gIdx % GROUP_COLORS.length] : null
                 const isLastGuest = gIdx === filtered.length - 1
                 const hasMembers = guest.party_members.length > 0
                 const guestTags = guest.tags || []
-
                 return (
                   <div key={guest.id}>
-                    <div
-                      className={`grid items-center px-4 py-2.5 transition
-                        ${selected.has(guest.id) ? 'bg-[#f0fdfb]' : gIdx % 2 === 0 ? 'bg-white hover:bg-[#f5f5f5]' : 'bg-[#fafafa] hover:bg-[#f5f5f5]'}
-                        ${!hasMembers && !isLastGuest ? 'border-b border-[#f0f0f0]' : ''}
-                        ${hasMembers ? 'border-b border-[#f0f0f0]' : ''}`}
-                      style={{ gridTemplateColumns: '40px 2fr 1.5fr 1fr 1.5fr 140px 40px' }}
-                    >
+                    <div className={'grid items-center px-4 py-2.5 transition ' + (selected.has(guest.id) ? 'bg-[#f0fdfb]' : gIdx % 2 === 0 ? 'bg-white hover:bg-[#f5f5f5]' : 'bg-[#fafafa] hover:bg-[#f5f5f5]') + (!hasMembers && !isLastGuest ? ' border-b border-[#f0f0f0]' : '') + (hasMembers ? ' border-b border-[#f0f0f0]' : '')}
+                      style={{ gridTemplateColumns: '40px 2fr 1.5fr 1fr 1.5fr 140px 40px' }}>
                       <input type="checkbox" checked={selected.has(guest.id)} onChange={() => toggleSelect(guest.id)} style={{ cursor: 'pointer', accentColor: '#48C9B0' }} />
-
-                      {/* Nombre + indicador de grupo */}
                       <div onClick={() => openEdit(guest)} className="flex cursor-pointer items-center gap-1.5">
                         {groupColor && <div className="mr-1 h-5 w-[3px] shrink-0 rounded-full" style={{ background: groupColor }} />}
                         <span className="text-sm font-semibold text-[#1D1E20]">{guest.name}</span>
                         {hasMembers && <span className="text-xs font-semibold" style={{ color: groupColor || '#aaa' }}>+{guest.party_members.length}</span>}
                       </div>
-
-                      {/* Tags — chips de colores, click abre editar */}
                       <div onClick={() => openEdit(guest)} className="flex flex-wrap gap-1 cursor-pointer">
                         {guestTags.length > 0 ? guestTags.map(tag => {
                           const tagIdx = availableTags.indexOf(tag)
                           const col = getTagColor(tagIdx >= 0 ? tagIdx : 0)
-                          return (
-                            <span key={tag} className="rounded-full border px-2 py-0.5 text-[10px] font-medium"
-                              style={{ background: col.bg, borderColor: col.border, color: col.text }}>
-                              {tag}
-                            </span>
-                          )
+                          return <span key={tag} className="rounded-full border px-2 py-0.5 text-[10px] font-medium" style={{ background: col.bg, borderColor: col.border, color: col.text }}>{tag}</span>
                         }) : <span className="text-[#ddd] text-xs">—</span>}
                       </div>
-
-                      {/* Notas — click abre editar */}
                       <div onClick={() => openEdit(guest)} className="cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap text-xs text-[#aaa] hover:text-[#1D1E20]" title={guest.notes || ''}>
                         {guest.notes || <span className="text-[#ddd]">—</span>}
                       </div>
-
-                      {/* Teléfono + dropdown de plantillas WhatsApp */}
                       <div className="flex items-center gap-1.5">
                         {guest.phone ? (
                           <>
@@ -984,19 +681,14 @@ export default function EventPage() {
                               <button onClick={() => setShowWaMenu(showWaMenu === guest.id ? null : guest.id)} className="flex items-center p-0.5">
                                 <svg width="15" height="15" viewBox="0 0 24 24" fill="#25D366">{WA_ICON}</svg>
                               </button>
-                              {/* Dropdown con nombre de plantilla y preview del texto */}
                               {showWaMenu === guest.id && (
                                 <div ref={waMenuRef} className="absolute left-0 top-full z-50 mt-1 min-w-[220px] rounded-xl border border-[#e8e8e8] bg-white p-1 shadow-lg">
                                   {activeTemplates.length === 0 ? (
                                     <p className="px-3 py-2.5 text-xs text-[#aaa]">No hay plantillas — ve a Configuración</p>
                                   ) : activeTemplates.map((template, ti) => (
-                                    <button key={ti}
-                                      onClick={() => { window.open(`https://wa.me/${guest.phone!.replace(/\D/g, '')}?text=${buildWaText(guest, ti)}`, '_blank'); setShowWaMenu(null) }}
-                                      className="w-full rounded-lg px-3 py-2 text-left text-xs leading-snug text-[#1D1E20] hover:bg-[#f0fdfb]"
-                                    >
-                                      <span className="mb-0.5 block text-[10px] font-semibold text-[#48C9B0]">
-                                        {event?.template_names?.[ti] || `Plantilla ${ti + 1}`}
-                                      </span>
+                                    <button key={ti} onClick={() => { window.open('https://wa.me/' + guest.phone!.replace(/\D/g, '') + '?text=' + buildWaText(guest, ti), '_blank'); setShowWaMenu(null) }}
+                                      className="w-full rounded-lg px-3 py-2 text-left text-xs leading-snug text-[#1D1E20] hover:bg-[#f0fdfb]">
+                                      <span className="mb-0.5 block text-[10px] font-semibold text-[#48C9B0]">{event?.template_names?.[ti] || 'Plantilla ' + (ti + 1)}</span>
                                       {template.length > 60 ? template.substring(0, 60) + '...' : template}
                                     </button>
                                   ))}
@@ -1004,61 +696,35 @@ export default function EventPage() {
                               )}
                             </div>
                           </>
-                        ) : (
-                          <span className="text-xs text-[#ddd]">—</span>
-                        )}
+                        ) : <span className="text-xs text-[#ddd]">—</span>}
                       </div>
-
-                      {/* Selector de status */}
-                      <select
-                        value={guest.rsvp_status}
-                        onChange={e => updateStatus(guest.id, e.target.value as 'pending' | 'confirmed' | 'declined')}
+                      <select value={guest.rsvp_status} onChange={e => updateStatus(guest.id, e.target.value as 'pending' | 'confirmed' | 'declined')}
                         className="w-[120px] cursor-pointer rounded-md border px-2 py-1 text-xs font-semibold outline-none"
-                        style={{
-                          background: STATUS_LABEL[guest.rsvp_status].bg,
-                          borderColor: STATUS_LABEL[guest.rsvp_status].border,
-                          color: STATUS_LABEL[guest.rsvp_status].color,
-                        }}
-                      >
+                        style={{ background: STATUS_LABEL[guest.rsvp_status].bg, borderColor: STATUS_LABEL[guest.rsvp_status].border, color: STATUS_LABEL[guest.rsvp_status].color }}>
                         <option value="pending">Pendiente</option>
                         <option value="confirmed">Confirmado</option>
                         <option value="declined">Declinó</option>
                       </select>
-
-                      {/* Eliminar invitado */}
                       <button onClick={() => deleteGuest(guest.id)} className="flex items-center justify-center p-1">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#cc3333" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{TRASH_ICON}</svg>
                       </button>
                     </div>
-
-                    {/* Filas de acompañantes (desktop) */}
                     {groupColor && guest.party_members.map((m, mi) => {
                       const isLastMember = mi === guest.party_members.length - 1
                       return (
-                        <div key={m.id}
-                          className={`grid items-center px-4 py-1.5 bg-[#fafafa] ${isLastMember && !isLastGuest ? 'border-b-2 border-[#f0f0f0]' : 'border-b border-[#f8f8f8]'}`}
-                          style={{ gridTemplateColumns: '40px 2fr 1.5fr 1fr 1.5fr 140px 40px' }}
-                        >
+                        <div key={m.id} className={'grid items-center px-4 py-1.5 bg-[#fafafa] ' + (isLastMember && !isLastGuest ? 'border-b-2 border-[#f0f0f0]' : 'border-b border-[#f8f8f8]')}
+                          style={{ gridTemplateColumns: '40px 2fr 1.5fr 1fr 1.5fr 140px 40px' }}>
                           <div />
                           <div className="flex items-center gap-2 pl-4">
                             <div className="h-4 w-[2px] shrink-0 rounded-full opacity-40" style={{ background: groupColor }} />
-                            <div className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold" style={{ background: groupColor + '22', color: groupColor }}>
-                              +{mi + 1}
-                            </div>
+                            <div className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold" style={{ background: groupColor + '22', color: groupColor }}>+{mi + 1}</div>
                             <span className="text-xs text-[#888]">{m.name || 'Acompañante'}</span>
                           </div>
                           <div /><div />
                           <div className="text-xs text-[#aaa]">{m.phone || ''}</div>
-                          <select
-                            value={m.rsvp_status}
-                            onChange={e => updatePartyMemberStatus(m.id, guest.id, e.target.value as 'pending' | 'confirmed' | 'declined')}
+                          <select value={m.rsvp_status} onChange={e => updatePartyMemberStatus(m.id, guest.id, e.target.value as 'pending' | 'confirmed' | 'declined')}
                             className="w-[120px] cursor-pointer rounded-md border px-2 py-1 text-xs font-semibold outline-none"
-                            style={{
-                              background: STATUS_LABEL[m.rsvp_status].bg,
-                              borderColor: STATUS_LABEL[m.rsvp_status].border,
-                              color: STATUS_LABEL[m.rsvp_status].color,
-                            }}
-                          >
+                            style={{ background: STATUS_LABEL[m.rsvp_status].bg, borderColor: STATUS_LABEL[m.rsvp_status].border, color: STATUS_LABEL[m.rsvp_status].color }}>
                             <option value="pending">Pendiente</option>
                             <option value="confirmed">Confirmado</option>
                             <option value="declined">Declinó</option>
@@ -1077,7 +743,7 @@ export default function EventPage() {
         )}
       </div>
 
-      {/* ══ MODAL: Editar invitado ══ */}
+      {/* MODAL: Editar */}
       {editGuest && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md overflow-y-auto rounded-2xl border border-[#e8e8e8] bg-white p-6 shadow-xl sm:p-8" style={{ maxHeight: '90vh' }}>
@@ -1086,45 +752,25 @@ export default function EventPage() {
               <button onClick={() => setEditGuest(null)} className="text-xl text-[#aaa]">✕</button>
             </div>
             <div className="flex flex-col gap-4">
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-[#555] sm:text-sm">Nombre *</label>
-                <input type="text" value={editName} onChange={e => setEditName(e.target.value)} style={inp} />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-[#555] sm:text-sm">WhatsApp</label>
-                <input type="tel" value={editPhone} onChange={e => setEditPhone(e.target.value)} placeholder="+52 81 1234 5678" style={inp} />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-[#555] sm:text-sm">Email</label>
-                <input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)} placeholder="ana@ejemplo.com" style={inp} />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-[#555] sm:text-sm">Notas</label>
-                <textarea value={editNotes} onChange={e => setEditNotes(e.target.value)} placeholder="Mesa preferida, restricciones..." rows={2} style={{ ...inp, resize: 'vertical' }} />
-              </div>
-              {/* Selector de tags del invitado */}
+              <div><label className="mb-1.5 block text-xs font-medium text-[#555]">Nombre *</label><input type="text" value={editName} onChange={e => setEditName(e.target.value)} style={inp} /></div>
+              <div><label className="mb-1.5 block text-xs font-medium text-[#555]">WhatsApp</label><input type="tel" value={editPhone} onChange={e => setEditPhone(e.target.value)} placeholder="+52 81 1234 5678" style={inp} /></div>
+              <div><label className="mb-1.5 block text-xs font-medium text-[#555]">Email</label><input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)} placeholder="ana@ejemplo.com" style={inp} /></div>
+              <div><label className="mb-1.5 block text-xs font-medium text-[#555]">Notas</label><textarea value={editNotes} onChange={e => setEditNotes(e.target.value)} placeholder="Mesa preferida, restricciones..." rows={2} style={{ ...inp, resize: 'vertical' }} /></div>
               {availableTags.length > 0 && (
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-[#555] sm:text-sm">Tags</label>
-                  <TagSelector availableTags={availableTags} selectedTags={editTags} onChange={setEditTags} />
-                </div>
+                <div><label className="mb-1.5 block text-xs font-medium text-[#555]">Tags</label><TagSelector availableTags={availableTags} selectedTags={editTags} onChange={setEditTags} /></div>
               )}
-              <div className="border-t border-[#f0f0f0] pt-4">
-                <MembersEditor value={editMembers} onChange={setEditMembers} />
-              </div>
+              <div className="border-t border-[#f0f0f0] pt-4"><MembersEditor value={editMembers} onChange={setEditMembers} /></div>
             </div>
             {editError && <div className="mt-3 rounded-lg border border-[#ffc0c0] bg-[#fff0f0] p-2.5 text-xs text-[#cc3333]">{editError}</div>}
             <div className="mt-6 flex gap-2.5">
               <button onClick={() => setEditGuest(null)} className="flex-1 rounded-lg border border-[#e0e0e0] py-3 text-sm text-[#888]">Cancelar</button>
-              <button onClick={handleEditSave} disabled={editSaving} className="flex-[2] rounded-lg bg-[#48C9B0] py-3 text-sm font-semibold text-white disabled:opacity-60">
-                {editSaving ? 'Guardando...' : 'Guardar cambios'}
-              </button>
+              <button onClick={handleEditSave} disabled={editSaving} className="flex-[2] rounded-lg bg-[#48C9B0] py-3 text-sm font-semibold text-white disabled:opacity-60">{editSaving ? 'Guardando...' : 'Guardar cambios'}</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ══ MODAL: Agregar invitado ══ */}
+      {/* MODAL: Agregar */}
       {showModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md overflow-y-auto rounded-2xl border border-[#e8e8e8] bg-white p-6 shadow-xl sm:p-8" style={{ maxHeight: '90vh' }}>
@@ -1133,45 +779,25 @@ export default function EventPage() {
               <button onClick={() => setShowModal(false)} className="text-xl text-[#aaa]">✕</button>
             </div>
             <div className="flex flex-col gap-4">
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-[#555] sm:text-sm">Nombre *</label>
-                <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Ana García" style={inp} />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-[#555] sm:text-sm">WhatsApp <span className="font-normal text-[#ccc]">(opcional)</span></label>
-                <input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+52 81 1234 5678" style={inp} />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-[#555] sm:text-sm">Email <span className="font-normal text-[#ccc]">(opcional)</span></label>
-                <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="ana@ejemplo.com" style={inp} />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-[#555] sm:text-sm">Notas <span className="font-normal text-[#ccc]">(opcional)</span></label>
-                <textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Mesa preferida, restricciones..." rows={2} style={{ ...inp, resize: 'vertical' }} />
-              </div>
-              {/* Selector de tags del nuevo invitado */}
+              <div><label className="mb-1.5 block text-xs font-medium text-[#555]">Nombre *</label><input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="Ana García" style={inp} /></div>
+              <div><label className="mb-1.5 block text-xs font-medium text-[#555]">WhatsApp <span className="font-normal text-[#ccc]">(opcional)</span></label><input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+52 81 1234 5678" style={inp} /></div>
+              <div><label className="mb-1.5 block text-xs font-medium text-[#555]">Email <span className="font-normal text-[#ccc]">(opcional)</span></label><input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="ana@ejemplo.com" style={inp} /></div>
+              <div><label className="mb-1.5 block text-xs font-medium text-[#555]">Notas <span className="font-normal text-[#ccc]">(opcional)</span></label><textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Mesa preferida, restricciones..." rows={2} style={{ ...inp, resize: 'vertical' }} /></div>
               {availableTags.length > 0 && (
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-[#555] sm:text-sm">Tags <span className="font-normal text-[#ccc]">(opcional)</span></label>
-                  <TagSelector availableTags={availableTags} selectedTags={newTags} onChange={setNewTags} />
-                </div>
+                <div><label className="mb-1.5 block text-xs font-medium text-[#555]">Tags <span className="font-normal text-[#ccc]">(opcional)</span></label><TagSelector availableTags={availableTags} selectedTags={newTags} onChange={setNewTags} /></div>
               )}
-              <div className="border-t border-[#f0f0f0] pt-4">
-                <MembersEditor value={newMembers} onChange={setNewMembers} />
-              </div>
+              <div className="border-t border-[#f0f0f0] pt-4"><MembersEditor value={newMembers} onChange={setNewMembers} /></div>
             </div>
             {formError && <div className="mt-3 rounded-lg border border-[#ffc0c0] bg-[#fff0f0] p-2.5 text-xs text-[#cc3333]">{formError}</div>}
             <div className="mt-6 flex gap-2.5">
               <button onClick={() => setShowModal(false)} className="flex-1 rounded-lg border border-[#e0e0e0] py-3 text-sm text-[#888]">Cancelar</button>
-              <button onClick={handleAddGuest} disabled={saving} className="flex-[2] rounded-lg bg-[#48C9B0] py-3 text-sm font-semibold text-white disabled:opacity-60">
-                {saving ? 'Guardando...' : 'Agregar invitado'}
-              </button>
+              <button onClick={handleAddGuest} disabled={saving} className="flex-[2] rounded-lg bg-[#48C9B0] py-3 text-sm font-semibold text-white disabled:opacity-60">{saving ? 'Guardando...' : 'Agregar invitado'}</button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ══ MODAL: Importar CSV ══ */}
+      {/* MODAL: CSV */}
       {showCsvModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-lg rounded-2xl border border-[#e8e8e8] bg-white p-6 shadow-xl sm:p-8">
@@ -1190,9 +816,7 @@ export default function EventPage() {
                 <span className="font-semibold text-[#48C9B0]">telefono</span> — WhatsApp (opcional)<br/>
                 <span className="font-semibold text-[#48C9B0]">email</span> — correo (opcional)
               </div>
-              <button onClick={downloadTemplate} className="ml-8 rounded-lg border border-[#48C9B0] px-4 py-2 text-xs text-[#1a9e88] transition hover:bg-[#f0fdfb]">
-                ⬇️ Descargar plantilla CSV
-              </button>
+              <button onClick={downloadTemplate} className="ml-8 rounded-lg border border-[#48C9B0] px-4 py-2 text-xs text-[#1a9e88] transition hover:bg-[#f0fdfb]">⬇️ Descargar plantilla CSV</button>
             </div>
             <div className="mb-6 border-t border-[#f0f0f0]" />
             <div>
@@ -1214,64 +838,30 @@ export default function EventPage() {
         </div>
       )}
 
-      {/* ══ BOTTOM SHEET MOBILE: Plantillas WhatsApp ══
-          Se activa con long press en el ícono de WhatsApp.
-          Tap fuera del sheet → cierra.
-          Tap en plantilla → abre WhatsApp con ese mensaje. */}
+      {/* BOTTOM SHEET: WhatsApp mobile */}
       {showWaSheet && (
-        <div
-          className="fixed inset-0 z-[200] flex items-end sm:hidden"
-          onClick={() => setShowWaSheet(null)}
-        >
-          <div
-            className="w-full rounded-t-2xl border-t border-[#e8e8e8] bg-white pb-8 pt-4 shadow-2xl"
-            onClick={e => e.stopPropagation()}
-          >
-            {/* Handle visual */}
+        <div className="fixed inset-0 z-[200] flex items-end sm:hidden" onClick={() => setShowWaSheet(null)}>
+          <div className="w-full rounded-t-2xl border-t border-[#e8e8e8] bg-white pb-8 pt-4 shadow-2xl" onClick={e => e.stopPropagation()}>
             <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-[#e0e0e0]" />
-
-            {/* Nombre del invitado */}
             <div className="mb-3 px-5">
               <p className="text-xs text-[#aaa]">Enviar a</p>
               <p className="text-sm font-semibold text-[#1D1E20]">{showWaSheet.name}</p>
             </div>
-
             <div className="border-t border-[#f0f0f0]" />
-
-            {/* Lista de plantillas disponibles */}
             {activeTemplates.length === 0 ? (
-              <p className="px-5 py-4 text-sm text-[#aaa]">
-                No hay plantillas — configúralas en Configuración.
-              </p>
+              <p className="px-5 py-4 text-sm text-[#aaa]">No hay plantillas — configúralas en Configuración.</p>
             ) : (
               <div className="flex flex-col">
                 {activeTemplates.map((template, ti) => (
-                  <button
-                    key={ti}
-                    onClick={() => {
-                      window.open(`https://wa.me/${showWaSheet.phone!.replace(/\D/g, '')}?text=${buildWaText(showWaSheet, ti)}`, '_blank')
-                      setShowWaSheet(null)
-                    }}
-                    className="border-b border-[#f5f5f5] px-5 py-3.5 text-left transition active:bg-[#f0fdfb]"
-                  >
-                    <p className="mb-0.5 text-[10px] font-semibold text-[#48C9B0]">
-                      {event?.template_names?.[ti] || `Plantilla ${ti + 1}`}
-                    </p>
-                    <p className="text-sm text-[#1D1E20] line-clamp-2">
-                      {template.length > 80 ? template.substring(0, 80) + '...' : template}
-                    </p>
+                  <button key={ti} onClick={() => { window.open('https://wa.me/' + showWaSheet.phone!.replace(/\D/g, '') + '?text=' + buildWaText(showWaSheet, ti), '_blank'); setShowWaSheet(null) }}
+                    className="border-b border-[#f5f5f5] px-5 py-3.5 text-left transition active:bg-[#f0fdfb]">
+                    <p className="mb-0.5 text-[10px] font-semibold text-[#48C9B0]">{event?.template_names?.[ti] || 'Plantilla ' + (ti + 1)}</p>
+                    <p className="text-sm text-[#1D1E20] line-clamp-2">{template.length > 80 ? template.substring(0, 80) + '...' : template}</p>
                   </button>
                 ))}
               </div>
             )}
-
-            {/* Botón cancelar */}
-            <button
-              onClick={() => setShowWaSheet(null)}
-              className="mx-5 mt-3 w-[calc(100%-40px)] rounded-xl border border-[#e0e0e0] py-3 text-sm font-medium text-[#666]"
-            >
-              Cancelar
-            </button>
+            <button onClick={() => setShowWaSheet(null)} className="mx-5 mt-3 w-[calc(100%-40px)] rounded-xl border border-[#e0e0e0] py-3 text-sm font-medium text-[#666]">Cancelar</button>
           </div>
         </div>
       )}
