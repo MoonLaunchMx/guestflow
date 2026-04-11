@@ -428,11 +428,11 @@ export default function EventPage() {
   const badgeStyle = EVENT_STATUS_STYLES[displayStatus]
   const isClickable = displayStatus !== 'completed'
 
-  const statusOptions: { status: EventStatus; label: string; dot: string }[] = [
-    { status: 'active',    label: 'Activo',    dot: 'bg-[#48C9B0]' },
-    { status: 'paused',    label: 'Pausado',   dot: 'bg-blue-400' },
-    { status: 'cancelled', label: 'Cancelado', dot: 'bg-red-400' },
-  ].filter(o => o.status !== event?.event_status)
+const statusOptions = [
+  { status: 'active' as EventStatus,    label: 'Activo',    dot: 'bg-[#48C9B0]' },
+  { status: 'paused' as EventStatus,    label: 'Pausado',   dot: 'bg-blue-400' },
+  { status: 'cancelled' as EventStatus, label: 'Cancelado', dot: 'bg-red-400' },
+].filter(o => o.status !== event?.event_status)
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#ffffff', color: '#1D1E20' }}>
