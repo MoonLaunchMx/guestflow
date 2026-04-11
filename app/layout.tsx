@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import './globals.css'
+import { PostHogProvider } from './components/PostHogProvider'
 
 export const metadata: Metadata = {
   title: 'GuestFlow',
@@ -13,7 +14,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="es">
-      <body>{children}</body>
+      <body><PostHogProvider>{children}</PostHogProvider></body>
     </html>
   )
 }
