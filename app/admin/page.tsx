@@ -3,10 +3,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 
-// ── Cambia este email por el tuyo ──────────────────────────────────────────
 const ADMIN_EMAIL = 'diego.garza@moonlaunch.mx'
 
-// ── Tipos ──────────────────────────────────────────────────────────────────
 interface AdminUser {
   id: string
   email: string
@@ -16,6 +14,7 @@ interface AdminUser {
   event_count: number
   guest_count: number
   last_event: string | null
+  last_sign_in: string | null
 }
 
 interface GlobalStats {
@@ -32,7 +31,6 @@ interface GlobalStats {
   new_events_7d: number
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────
 function formatDate(iso: string | null) {
   if (!iso) return '—'
   return new Date(iso).toLocaleDateString('es-MX', {
@@ -56,17 +54,15 @@ const PLAN_STYLES: Record<string, string> = {
   agency: 'bg-[#fff3cd] text-[#856404]',
 }
 
-// ── Componente principal ───────────────────────────────────────────────────
 export default function AdminPage() {
-  const [loading, setLoading]     = useState(true)
-  const [authed, setAuthed]       = useState(false)
-  const [stats, setStats]         = useState<GlobalStats | null>(null)
-  const [users, setUsers]         = useState<AdminUser[]>([])
-  const [search, setSearch]       = useState('')
+  const [loading, setLoading]       = useState(true)
+  const [authed, setAuthed]         = useState(false)
+  const [stats, setStats]           = useState<GlobalStats | null>(null)
+  const [users, setUsers]           = useState<AdminUser[]>([])
+  const [search, setSearch]         = useState('')
   const [planFilter, setPlanFilter] = useState<string>('all')
-  const [sortBy, setSortBy]       = useState<'created_at' | 'event_count' | 'guest_count'>('created_at')
+  const [sortBy, setSortBy]         = useState<'created_at' | 'event_count' | 'guest_count'>('created_at')
 
-  // ── Auth check ────────────────────────────────────────────────────────
   useEffect(() => {
     async function checkAuth() {
       const { data: { user } } = await supabase.auth.getUser()
@@ -81,11 +77,9 @@ export default function AdminPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // ── Carga de datos ────────────────────────────────────────────────────
   async function loadData() {
     setLoading(true)
 
-    // 1. Usuarios con conteo de eventos e invitados
     const { data: usersRaw } = await supabase
       .from('users')
       .select('id, email, full_name, plan, created_at')
@@ -93,38 +87,42 @@ export default function AdminPage() {
 
     if (!usersRaw) { setLoading(false); return }
 
-    // 2. Eventos
     const { data: eventsRaw } = await supabase
       .from('events')
       .select('id, user_id, name, created_at')
 
-    // 3. Invitados
     const { data: guestsRaw } = await supabase
       .from('guests')
       .select('id, event_id, rsvp_status')
 
-    const events  = eventsRaw  || []
-    const guests  = guestsRaw  || []
+    // ── Último acceso desde la view que creamos ────────────────────────
+    const { data: lastSeenRaw } = await supabase
+      .from('user_last_seen')
+      .select('id, last_sign_in_at')
 
-    // Enriquecer usuarios
+    const events   = eventsRaw   || []
+    const guests   = guestsRaw   || []
+    const lastSeen = lastSeenRaw || []
+
     const enriched: AdminUser[] = usersRaw.map(u => {
-      const userEvents = events.filter(e => e.user_id === u.id)
+      const userEvents   = events.filter(e => e.user_id === u.id)
       const userEventIds = userEvents.map(e => e.id)
-      const userGuests = guests.filter(g => userEventIds.includes(g.event_id))
-      const lastEvent = userEvents.sort(
+      const userGuests   = guests.filter(g => userEventIds.includes(g.event_id))
+      const lastEvent    = userEvents.sort(
         (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       )[0]?.created_at || null
+      const lastSignIn   = lastSeen.find(ls => ls.id === u.id)?.last_sign_in_at || null
 
       return {
         ...u,
         plan: u.plan || 'free',
         event_count: userEvents.length,
         guest_count: userGuests.length,
-        last_event: lastEvent,
+        last_event:  lastEvent,
+        last_sign_in: lastSignIn,
       }
     })
 
-    // Stats globales
     const now = new Date()
     const sevenDaysAgo = new Date(now.getTime() - 7 * 86400000).toISOString()
 
@@ -147,7 +145,6 @@ export default function AdminPage() {
     setLoading(false)
   }
 
-  // ── Filtros ────────────────────────────────────────────────────────────
   const filtered = users
     .filter(u => {
       const matchSearch = search === '' ||
@@ -162,12 +159,10 @@ export default function AdminPage() {
       return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     })
 
-  // ── Cambiar plan manualmente ───────────────────────────────────────────
   async function changePlan(userId: string, newPlan: string) {
     await supabase.from('users').update({ plan: newPlan }).eq('id', userId)
     setUsers(prev => prev.map(u => u.id === userId ? { ...u, plan: newPlan } : u))
     if (stats) {
-      // recalcular stats de plan
       const updated = users.map(u => u.id === userId ? { ...u, plan: newPlan } : u)
       setStats({
         ...stats,
@@ -178,7 +173,6 @@ export default function AdminPage() {
     }
   }
 
-  // ── Estados de carga / no auth ─────────────────────────────────────────
   if (!authed && !loading) return null
 
   if (loading) return (
@@ -190,7 +184,6 @@ export default function AdminPage() {
     </div>
   )
 
-  // ── UI ─────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-[#f8f5f0]">
 
@@ -228,15 +221,11 @@ export default function AdminPage() {
         {/* Stats globales */}
         {stats && (
           <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-6">
-
-            {/* Usuarios */}
             <div className="rounded-xl border border-[#e8e8e8] bg-white p-4">
               <p className="text-xs text-[#888]">Usuarios totales</p>
               <p className="mt-1 text-2xl font-bold text-[#1D1E20]">{stats.total_users}</p>
               <p className="mt-1 text-xs text-[#48C9B0]">+{stats.new_users_7d} esta semana</p>
             </div>
-
-            {/* Planes */}
             <div className="rounded-xl border border-[#e8e8e8] bg-white p-4">
               <p className="text-xs text-[#888]">Por plan</p>
               <div className="mt-2 space-y-1">
@@ -254,22 +243,16 @@ export default function AdminPage() {
                 </div>
               </div>
             </div>
-
-            {/* Eventos */}
             <div className="rounded-xl border border-[#e8e8e8] bg-white p-4">
               <p className="text-xs text-[#888]">Eventos totales</p>
               <p className="mt-1 text-2xl font-bold text-[#1D1E20]">{stats.total_events}</p>
               <p className="mt-1 text-xs text-[#48C9B0]">+{stats.new_events_7d} esta semana</p>
             </div>
-
-            {/* Invitados */}
             <div className="rounded-xl border border-[#e8e8e8] bg-white p-4">
               <p className="text-xs text-[#888]">Invitados totales</p>
               <p className="mt-1 text-2xl font-bold text-[#1D1E20]">{stats.total_guests}</p>
               <p className="mt-1 text-xs text-[#888]">en toda la plataforma</p>
             </div>
-
-            {/* RSVPs */}
             <div className="rounded-xl border border-[#e8e8e8] bg-white p-4 sm:col-span-2">
               <p className="mb-2 text-xs text-[#888]">RSVPs globales</p>
               <div className="space-y-1.5">
@@ -279,10 +262,7 @@ export default function AdminPage() {
                     <span className="font-medium text-[#1D1E20]">{stats.confirmed}</span>
                   </div>
                   <div className="h-1.5 w-full rounded-full bg-[#f0f0f0]">
-                    <div
-                      className="h-1.5 rounded-full bg-[#48C9B0]"
-                      style={{ width: stats.total_guests ? `${Math.round(stats.confirmed / stats.total_guests * 100)}%` : '0%' }}
-                    />
+                    <div className="h-1.5 rounded-full bg-[#48C9B0]" style={{ width: stats.total_guests ? `${Math.round(stats.confirmed / stats.total_guests * 100)}%` : '0%' }} />
                   </div>
                 </div>
                 <div>
@@ -291,10 +271,7 @@ export default function AdminPage() {
                     <span className="font-medium text-[#1D1E20]">{stats.pending}</span>
                   </div>
                   <div className="h-1.5 w-full rounded-full bg-[#f0f0f0]">
-                    <div
-                      className="h-1.5 rounded-full bg-[#f59e0b]"
-                      style={{ width: stats.total_guests ? `${Math.round(stats.pending / stats.total_guests * 100)}%` : '0%' }}
-                    />
+                    <div className="h-1.5 rounded-full bg-[#f59e0b]" style={{ width: stats.total_guests ? `${Math.round(stats.pending / stats.total_guests * 100)}%` : '0%' }} />
                   </div>
                 </div>
                 <div>
@@ -303,15 +280,11 @@ export default function AdminPage() {
                     <span className="font-medium text-[#1D1E20]">{stats.declined}</span>
                   </div>
                   <div className="h-1.5 w-full rounded-full bg-[#f0f0f0]">
-                    <div
-                      className="h-1.5 rounded-full bg-[#ef4444]"
-                      style={{ width: stats.total_guests ? `${Math.round(stats.declined / stats.total_guests * 100)}%` : '0%' }}
-                    />
+                    <div className="h-1.5 rounded-full bg-[#ef4444]" style={{ width: stats.total_guests ? `${Math.round(stats.declined / stats.total_guests * 100)}%` : '0%' }} />
                   </div>
                 </div>
               </div>
             </div>
-
           </div>
         )}
 
@@ -363,6 +336,7 @@ export default function AdminPage() {
                   <th className="px-4 py-3 text-xs font-medium text-[#888]">Plan</th>
                   <th className="px-4 py-3 text-xs font-medium text-[#888]">Eventos</th>
                   <th className="px-4 py-3 text-xs font-medium text-[#888]">Invitados</th>
+                  <th className="px-4 py-3 text-xs font-medium text-[#888]">Último acceso</th>
                   <th className="px-4 py-3 text-xs font-medium text-[#888]">Último evento</th>
                   <th className="px-4 py-3 text-xs font-medium text-[#888]">Registro</th>
                   <th className="px-4 py-3 text-xs font-medium text-[#888]">Cambiar plan</th>
@@ -371,7 +345,7 @@ export default function AdminPage() {
               <tbody>
                 {filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-sm text-[#888]">
+                    <td colSpan={8} className="px-4 py-8 text-center text-sm text-[#888]">
                       No hay usuarios que coincidan
                     </td>
                   </tr>
@@ -394,6 +368,9 @@ export default function AdminPage() {
                     </td>
                     <td className="px-4 py-3">
                       <span className="font-medium text-[#1D1E20]">{u.guest_count}</span>
+                    </td>
+                    <td className="px-4 py-3 text-xs text-[#888]">
+                      {u.last_sign_in ? timeAgo(u.last_sign_in) : '—'}
                     </td>
                     <td className="px-4 py-3 text-xs text-[#888]">
                       {u.last_event ? timeAgo(u.last_event) : '—'}
@@ -433,9 +410,10 @@ export default function AdminPage() {
                     {u.plan}
                   </span>
                 </div>
-                <div className="mb-3 flex gap-4 text-xs text-[#888]">
+                <div className="mb-3 flex flex-wrap gap-3 text-xs text-[#888]">
                   <span>{u.event_count} eventos</span>
                   <span>{u.guest_count} invitados</span>
+                  <span>Acceso: {u.last_sign_in ? timeAgo(u.last_sign_in) : '—'}</span>
                   <span>Registro: {formatDate(u.created_at)}</span>
                 </div>
                 <div className="flex items-center gap-2">
