@@ -40,11 +40,11 @@ async function fetchTrackInfo(url: string): Promise<TrackPreview | null> {
   try {
     let oembedUrl = ''
     if (platform === 'spotify') {
-      oembedUrl = `https://open.spotify.com/oembed?url=${encodeURIComponent(url)}`
+      oembedUrl = 'https://open.spotify.com/oembed?url=' + encodeURIComponent(url)
     } else if (platform === 'youtube') {
-      oembedUrl = `https://www.youtube.com/oembed?url=${encodeURIComponent(url)}&format=json`
+      oembedUrl = 'https://www.youtube.com/oembed?url=' + encodeURIComponent(url) + '&format=json'
     } else if (platform === 'apple') {
-      oembedUrl = `https://music.apple.com/oembed?url=${encodeURIComponent(url)}`
+      oembedUrl = 'https://music.apple.com/oembed?url=' + encodeURIComponent(url)
     }
     const res = await fetch(oembedUrl)
     if (!res.ok) return null
@@ -100,7 +100,7 @@ export default function PlaylistPublicPage() {
       .from('song_recommendations')
       .select('*')
       .eq('event_id', eventData.id)
-      .order('position', { ascending: true })
+      .order('created_at', { ascending: true })
     setSongs(songsData || [])
     setLoading(false)
   }
@@ -127,16 +127,6 @@ export default function PlaylistPublicPage() {
     if (myCount >= 3) return
     setSubmitting(true); setSubmitError('')
 
-    const { data: maxData } = await supabase
-      .from('song_recommendations')
-      .select('position')
-      .eq('event_id', event!.id)
-      .order('position', { ascending: false })
-      .limit(1)
-      .single()
-
-    const nextPosition = maxData ? (maxData.position || 0) + 1 : 0
-
     const { error } = await supabase.from('song_recommendations').insert({
       event_id: event!.id,
       guest_name: guestName.trim(),
@@ -144,7 +134,6 @@ export default function PlaylistPublicPage() {
       artist: track.artist,
       category: category || null,
       spotify_url: musicUrl.trim(),
-      position: nextPosition,
     })
 
     if (error) { setSubmitError('Error al guardar. Intenta de nuevo.'); setSubmitting(false); return }
@@ -183,11 +172,9 @@ export default function PlaylistPublicPage() {
   return (
     <div className="flex min-h-screen flex-col bg-white">
 
-      {/* ── Formulario sticky ── */}
+      {/* Formulario sticky */}
       <div className="sticky top-0 z-10 border-b border-[#e8e8e8] bg-white px-4 pt-5 pb-4 sm:px-6">
         <div className="mx-auto max-w-lg">
-
-          {/* Título compacto */}
           <div className="mb-3 flex items-center justify-between">
             <div>
               <p className="text-[11px] text-[#bbb]">{event?.name}</p>
@@ -202,8 +189,6 @@ export default function PlaylistPublicPage() {
 
           {!done ? (
             <div className="flex flex-col gap-2">
-
-              {/* Fila 1: nombre */}
               <input
                 type="text"
                 value={guestName}
@@ -213,18 +198,13 @@ export default function PlaylistPublicPage() {
                 className="w-full rounded-lg border border-[#d0d0d0] bg-white px-3 py-2 text-sm text-[#1D1E20] outline-none transition focus:border-[#48C9B0] disabled:bg-[#f5f5f5] disabled:text-[#999]"
               />
 
-              {/* Fila 2: categorías */}
               {categories.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
                   {categories.map((cat: string) => (
                     <button
                       key={cat}
                       onClick={() => setCategory(prev => prev === cat ? '' : cat)}
-                      className={`rounded-full border px-3 py-1 text-xs transition
-                        ${category === cat
-                          ? 'border-[#48C9B0] bg-[#48C9B0] font-medium text-white'
-                          : 'border-[#d0d0d0] bg-white text-[#555] hover:border-[#48C9B0] hover:text-[#1a9e88]'
-                        }`}
+                      className={'rounded-full border px-3 py-1 text-xs transition ' + (category === cat ? 'border-[#48C9B0] bg-[#48C9B0] font-medium text-white' : 'border-[#d0d0d0] bg-white text-[#555] hover:border-[#48C9B0] hover:text-[#1a9e88]')}
                     >
                       {cat}
                     </button>
@@ -232,7 +212,6 @@ export default function PlaylistPublicPage() {
                 </div>
               )}
 
-              {/* Fila 3: URL + botón buscar */}
               <div className="flex gap-2">
                 <input
                   type="url"
@@ -255,7 +234,6 @@ export default function PlaylistPublicPage() {
 
               {fetchError && <p className="text-xs text-red-500">{fetchError}</p>}
 
-              {/* Preview canción detectada */}
               {track && (
                 <div className="flex items-center gap-3 rounded-xl border border-[#48C9B0] bg-[#f0fdfb] px-3 py-2">
                   {track.thumbnail && (
@@ -270,7 +248,6 @@ export default function PlaylistPublicPage() {
 
               {submitError && <p className="text-xs text-red-500">{submitError}</p>}
 
-              {/* Botón agregar */}
               <button
                 onClick={handleSubmit}
                 disabled={submitting || !track}
@@ -284,7 +261,6 @@ export default function PlaylistPublicPage() {
                       ? 'Agregar canción (1 de 3)'
                       : 'Agregar canción (2 de 3)'}
               </button>
-
             </div>
           ) : (
             <div className="rounded-xl border border-[#e8e8e8] bg-[#fafafa] px-4 py-3 text-center">
@@ -295,7 +271,7 @@ export default function PlaylistPublicPage() {
         </div>
       </div>
 
-      {/* ── Lista scrolleable ── */}
+      {/* Lista */}
       <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6">
         <div className="mx-auto max-w-lg">
           {songs.length > 0 && (
@@ -305,10 +281,7 @@ export default function PlaylistPublicPage() {
               </p>
               <div className="flex flex-col gap-2">
                 {songs.map(song => (
-                  <div
-                    key={song.id}
-                    className="flex items-center gap-3 rounded-xl border border-[#f0f0f0] bg-white px-4 py-3"
-                  >
+                  <div key={song.id} className="flex items-center gap-3 rounded-xl border border-[#f0f0f0] bg-white px-4 py-3">
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium text-[#1D1E20]">{song.song_title}</p>
                       <p className="truncate text-xs text-[#aaa]">{song.artist}</p>
