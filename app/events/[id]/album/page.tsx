@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { QRCodeCanvas } from 'qrcode.react'
@@ -11,6 +11,9 @@ export default function AlbumPage() {
   const [eventName, setEventName] = useState('')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [shared, setShared] = useState(false)
+  const [sharedLink, setSharedLink] = useState(false)
+  const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 
   useEffect(() => {
     const load = async () => {
@@ -21,11 +24,56 @@ export default function AlbumPage() {
     load()
   }, [])
 
-  const handleSave = async () => {
+  const handleSave = async (autoSave = false) => {
     setSaving(true); setSaved(false)
     await supabase.from('events').update({ album_url: albumUrl || null }).eq('id', id)
     setSaving(false); setSaved(true)
-    setTimeout(() => setSaved(false), 3000)
+    setTimeout(() => setSaved(false), autoSave ? 2000 : 3000)
+  }
+
+  const handleUrlChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const newUrl = e.target.value
+    setAlbumUrl(newUrl)
+    
+    // Limpiar el timeout anterior
+    if (autoSaveTimeoutRef.current) clearTimeout(autoSaveTimeoutRef.current)
+    
+    // Auto-guardar después de 1 segundo sin cambios
+    if (newUrl.trim()) {
+      const timeout = setTimeout(() => {
+        handleSave(true)
+      }, 1000)
+      autoSaveTimeoutRef.current = timeout
+    }
+  }
+
+  const shareLinkHandler = async () => {
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: `${eventName} - Álbum de fotos`,
+          text: `Comparte tus fotos del evento ${eventName}, solo ingresa al siguiente enlace:`,
+          url: albumUrl
+        })
+        setSharedLink(true)
+        setTimeout(() => setSharedLink(false), 3000)
+      } else {
+        // Fallback: copiar al portapapeles
+        const fullMessage = `Comparte tus fotos del evento ${eventName}, solo ingresa al siguiente enlace:\n${albumUrl}`
+        await navigator.clipboard.writeText(fullMessage)
+        setSharedLink(true)
+        setTimeout(() => setSharedLink(false), 3000)
+      }
+    } catch (error) {
+      try {
+        const fullMessage = `Comparte tus fotos del evento ${eventName}, solo ingresa al siguiente enlace:\n${albumUrl}`
+        await navigator.clipboard.writeText(fullMessage)
+        setSharedLink(true)
+        setTimeout(() => setSharedLink(false), 3000)
+      } catch {
+        console.error('Error compartiendo:', error)
+      }
+    }
   }
 
   const downloadQR = () => {
@@ -36,6 +84,57 @@ export default function AlbumPage() {
     a.href = url
     a.download = `${eventName} - QR Invitados.png`
     a.click()
+  }
+
+  const shareQR = async () => {
+    const canvas = document.querySelector('canvas')
+    if (!canvas) return
+
+    try {
+      // Intentar usar Web Share API
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((b) => {
+          if (b) {
+            resolve(b)
+          } else {
+            reject(new Error('Failed to generate QR blob'))
+          }
+        }, 'image/png')
+      })
+      const file = new File([blob], `${eventName} - QR Invitados.png`, { type: 'image/png' })
+      
+      if (navigator.share) {
+        await navigator.share({
+          files: [file],
+          title: `${eventName} - Álbum de fotos`,
+          text: `Comparte tus fotos del evento _${eventName}_, solo ingresa al siguiente enlace: ` + albumUrl
+        })
+        setShared(true)
+        setTimeout(() => setShared(false), 3000)
+      } else if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: `${eventName} - Álbum de fotos`,
+          text: `Comparte tus fotos del evento _${eventName}_, solo ingresa al siguiente enlace:` + albumUrl
+        })
+        setShared(true)
+        setTimeout(() => setShared(false), 3000)
+      } else {
+        // Fallback: copiar URL al portapapeles
+        await navigator.clipboard.writeText(albumUrl)
+        setShared(true)
+        setTimeout(() => setShared(false), 3000)
+      }
+    } catch (error) {
+      // Si el usuario cancela o hay error, simple fallback
+      try {
+        await navigator.clipboard.writeText(albumUrl)
+        setShared(true)
+        setTimeout(() => setShared(false), 3000)
+      } catch {
+        console.error('Error compartiendo:', error)
+      }
+    }
   }
 
   return (
@@ -91,24 +190,38 @@ export default function AlbumPage() {
             </p>
             <textarea
               value={albumUrl}
-              onChange={e => setAlbumUrl(e.target.value)}
+              onChange={handleUrlChange}
               placeholder="https://photos.google.com/share/..."
               rows={3}
               className="w-full resize-none rounded-lg border border-[#e0e0e0] bg-white px-3 py-2.5 text-xs leading-relaxed text-[#1D1E20] outline-none transition focus:border-[#48C9B0]"
             />
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className={`mt-2 w-full rounded-lg py-2.5 text-sm font-semibold transition
-                ${saved
-                  ? 'border border-[#48C9B0] bg-[#f0fdfb] text-[#1a9e88]'
-                  : saving
+            {saved && (
+              <p className="mt-2 text-xs text-[#48C9B0]">✓ Link guardado automáticamente</p>
+            )}
+            <div className="mt-2 flex gap-2">
+              <button
+                onClick={() => handleSave(false)}
+                disabled={saving || !albumUrl.trim()}
+                className={`flex-1 rounded-lg py-2.5 text-sm font-semibold transition
+                  ${saving
                     ? 'bg-[#a0e0d8] text-white'
                     : 'bg-[#48C9B0] text-white hover:bg-[#3ab89f]'
-                } disabled:cursor-not-allowed`}
-            >
-              {saved ? '✓ Link guardado' : saving ? 'Guardando...' : 'Guardar link'}
-            </button>
+                  } disabled:cursor-not-allowed disabled:opacity-50`}
+              >
+                {saving ? 'Guardando...' : '💾 Guardar'}
+              </button>
+              <button
+                onClick={shareLinkHandler}
+                disabled={sharedLink || !albumUrl.trim()}
+                className={`flex-1 rounded-lg py-2.5 text-sm font-semibold transition
+                  ${sharedLink
+                    ? 'border border-[#48C9B0] bg-[#f0fdfb] text-[#1a9e88]'
+                    : 'bg-[#48C9B0] text-white hover:bg-[#3ab89f]'
+                  } disabled:cursor-default disabled:opacity-50`}
+              >
+                {sharedLink ? '✓ Compartido' : '📤 Compartir'}
+              </button>
+            </div>
           </div>
 
           {/* ── Paso 3 ── */}
@@ -125,12 +238,25 @@ export default function AlbumPage() {
                 <div className="rounded-xl border border-[#e8e8e8] bg-white p-4">
                   <QRCodeCanvas value={albumUrl} size={140} />
                 </div>
-                <button
-                  onClick={downloadQR}
-                  className="w-full rounded-lg border border-[#48C9B0] py-2.5 text-sm font-semibold text-[#1a9e88] transition hover:bg-[#f0fdfb]"
-                >
-                  ⬇️ Descargar QR
-                </button>
+                <div className="flex w-full gap-2">
+                  <button
+                    onClick={downloadQR}
+                    className="flex-1 rounded-lg border border-[#48C9B0] py-2.5 text-sm font-semibold text-[#1a9e88] transition hover:bg-[#f0fdfb]"
+                  >
+                    ⬇️ Descargar QR
+                  </button>
+                  <button
+                    onClick={shareQR}
+                    disabled={shared}
+                    className={`flex-1 rounded-lg py-2.5 text-sm font-semibold transition
+                      ${shared
+                        ? 'border border-[#48C9B0] bg-[#f0fdfb] text-[#1a9e88]'
+                        : 'bg-[#48C9B0] text-white hover:bg-[#3ab89f]'
+                      } disabled:cursor-default`}
+                  >
+                    {shared ? '✓ Compartido' : '📤 Compartir'}
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="rounded-xl border border-dashed border-[#e0e0e0] py-8 text-center">

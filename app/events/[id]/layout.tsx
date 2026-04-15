@@ -177,50 +177,8 @@ export default function EventLayout({ children }: { children: React.ReactNode })
           className="hidden shrink-0 flex-col overflow-hidden border-r border-[#e8e8e8] bg-[#f8f5f0] lg:flex"
           style={{ width: collapsed ? '56px' : '224px', transition: 'width 0.2s ease' }}
         >
-          {/* Header sidebar: logo + toggle */}
-          <div
-            className="flex shrink-0 items-center border-b border-[#e8e8e8]"
-            style={{
-              height: '56px',
-              padding: collapsed ? '0' : '0 12px 0 16px',
-              justifyContent: collapsed ? 'center' : 'space-between',
-            }}
-          >
-            {!collapsed && (
-              <span className="truncate text-sm font-bold text-[#1D1E20]" style={{ fontFamily: 'Georgia, serif' }}>
-                Guest<span className="text-[#48C9B0]">Flow</span>
-              </span>
-            )}
-            <button
-              onClick={toggleSidebar}
-              title={collapsed ? 'Expandir' : 'Colapsar'}
-              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[#e0e0e0] text-[#aaa] transition hover:border-[#48C9B0] hover:text-[#48C9B0]"
-            >
-              {collapsed
-                ? <PanelLeftOpen width={14} height={14} />
-                : <PanelLeftClose width={14} height={14} />
-              }
-            </button>
-          </div>
-
-          {/* Evento info — solo expandido */}
-          {!collapsed && (
-            <div className="shrink-0 border-b border-[#e8e8e8] px-4 py-4">
-              {event?.event_type && (
-                <p className="mb-1 text-[11px] text-[#999]">{EVENT_TYPE_LABELS[event.event_type] || event.event_type}</p>
-              )}
-              <p className="text-sm font-bold leading-snug text-[#1D1E20]">{event?.name || '...'}</p>
-              {event?.event_date && (
-                <p className="mt-1 text-[11px] text-[#999]">{formatDate(event.event_date)}</p>
-              )}
-              {event?.venue && (
-                <p className="mt-0.5 text-[11px] text-[#aaa]">📍 {event.venue}</p>
-              )}
-            </div>
-          )}
-
           {/* Nav */}
-          <nav className="flex-1 py-2">
+          <nav className="py-2">
             {NAV_ITEMS.map(item => (
               <button
                 key={item.path}
@@ -239,17 +197,26 @@ export default function EventLayout({ children }: { children: React.ReactNode })
             ))}
           </nav>
 
-          {/* Footer — solo expandido */}
-          {!collapsed && (
-            <div className="shrink-0 border-t border-[#e8e8e8] px-4 py-3">
-              <button
-                onClick={() => router.push('/dashboard')}
-                className="text-[11px] text-[#bbb] transition hover:text-[#48C9B0]"
-              >
-                ← Mis eventos
-              </button>
-            </div>
-          )}
+          {/* Spacer */}
+          <div className="flex-1" />
+
+          {/* Toggle button — en la parte más baja */}
+          <div className="shrink-0 border-t border-[#e8e8e8] px-4 py-3">
+            <button
+              onClick={toggleSidebar}
+              title={collapsed ? 'Expandir' : 'Colapsar'}
+              className={`flex w-full items-center rounded-md border border-[#e0e0e0] text-[#aaa] transition hover:border-[#48C9B0] hover:text-[#48C9B0]
+                ${collapsed ? 'h-7 justify-center' : 'gap-2 px-2.5 py-2'}`}
+            >
+              {collapsed
+                ? <PanelLeftOpen width={14} height={14} />
+                : <>
+                    <PanelLeftClose width={14} height={14} />
+                    <span className="text-xs font-medium">Colapsar</span>
+                  </>
+              }
+            </button>
+          </div>
         </aside>
 
         {/* ══ DRAWER — tablet ══ */}

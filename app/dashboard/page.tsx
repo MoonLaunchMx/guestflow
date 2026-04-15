@@ -137,13 +137,24 @@ export default function Dashboard() {
     const target = getEventDateTime(event)
     const diff = target.getTime() - now.getTime()
     if (diff <= 0) return '¡Es hoy!'
-    const days    = Math.floor(diff / (1000 * 60 * 60 * 24))
-    const hours   = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
-    const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
-    const seconds = Math.floor((diff % (1000 * 60)) / 1000)
-    if (days > 0) return days + 'd ' + hours + 'h ' + minutes + 'm ' + seconds + 's'
-    if (hours > 0) return hours + 'h ' + minutes + 'm ' + seconds + 's'
-    return minutes + 'm ' + seconds + 's'
+    
+    const totalDays    = Math.floor(diff / (1000 * 60 * 60 * 24))
+    const months       = Math.floor(totalDays / 30)
+    const days         = totalDays % 30
+    const hours        = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
+    const minutes      = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+    const seconds      = Math.floor((diff % (1000 * 60)) / 1000)
+    
+    // Si falta más de 24 horas: mostrar Meses, Días y Horas
+    if (totalDays >= 1) {
+      if (months > 0) {
+        return `${months}m ${days}d ${hours}h`
+      }
+      return `${days}d ${hours}h`
+    }
+    
+    // Si falta MENOS de 24 horas: mostrar Horas, Minutos y Segundos
+    return `${hours}h ${minutes}m ${seconds}s`
   }
 
   const confirmPct = (e: EventWithStats) =>
@@ -404,7 +415,7 @@ export default function Dashboard() {
                 <div className="mt-3 border-t border-[#f0f0f0] pt-2">
                   {sameDay.map(e => (
                     <p key={e.id} className="text-xs text-[#aaa]">
-                      También hoy: <span className="font-semibold text-[#888]">{e.name}</span>
+                      También tienes: <span className="font-semibold text-[#888]">{e.name}</span>
                       {e.event_time && ' a las ' + formatTime(e.event_time)}
                     </p>
                   ))}

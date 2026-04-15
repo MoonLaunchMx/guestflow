@@ -85,6 +85,11 @@ type EditMember = {
   rsvp_status: 'pending' | 'confirmed' | 'declined'
 }
 
+// Normaliza un número de teléfono: quita todo excepto dígitos
+function normalizePhone(phone: string): string {
+  return phone.replace(/\D/g, '')
+}
+
 function TagSelector({ availableTags, selectedTags, onChange }: {
   availableTags: string[]
   selectedTags: string[]
@@ -150,6 +155,13 @@ const EVENT_STATUS_STYLES: Record<string, { dot: string; badge: string; label: s
   completed: { dot: 'bg-[#888]',    badge: 'border-[#e0e0e0] bg-[#f8f8f8] text-[#888]',    label: 'Completado' },
 }
 
+// Tipos para el resultado de validación de duplicados en CSV
+type CsvDuplicateResult = {
+  hasDuplicates: boolean
+  rows: Array<{ event_id: string | string[]; name: string; phone: string | null; email: string | null; party_size: number; rsvp_status: string; tags: never[] }>
+  duplicates: Array<{ row: number; name: string; phone: string; conflictWith: string }>
+}
+
 export default function EventPage() {
   const { id } = useParams()
 
@@ -165,6 +177,10 @@ export default function EventPage() {
   const [csvError, setCsvError] = useState('')
   const [csvSuccess, setCsvSuccess] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
+
+  // Estado para preview/confirmación de CSV
+  const [csvPreview, setCsvPreview] = useState<CsvDuplicateResult | null>(null)
+  const [csvImporting, setCsvImporting] = useState(false)
 
   const [editGuest, setEditGuest] = useState<Guest | null>(null)
   const [editName, setEditName] = useState('')
@@ -199,14 +215,49 @@ export default function EventPage() {
   const [statusSaving, setStatusSaving] = useState(false)
   const statusDropdownRef = useRef<HTMLDivElement>(null)
 
+  const [sortField, setSortField] = useState<'name' | 'phone' | 'notes' | 'status' | null>('name')
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
+
   useEffect(() => { loadEvent(); loadGuests() }, [])
 
   useEffect(() => {
     let result = guests
     if (filter !== 'all') result = result.filter(g => g.rsvp_status === filter)
     if (search) result = result.filter(g => g.name.toLowerCase().includes(search.toLowerCase()))
+    
+    // Ordenamiento
+    if (sortField) {
+      result = [...result].sort((a, b) => {
+        let aVal: any = ''
+        let bVal: any = ''
+        
+        switch (sortField) {
+          case 'name':
+            aVal = a.name.toLowerCase()
+            bVal = b.name.toLowerCase()
+            break
+          case 'phone':
+            aVal = a.phone?.toLowerCase() || ''
+            bVal = b.phone?.toLowerCase() || ''
+            break
+          case 'notes':
+            aVal = a.notes?.toLowerCase() || ''
+            bVal = b.notes?.toLowerCase() || ''
+            break
+          case 'status':
+            aVal = a.rsvp_status
+            bVal = b.rsvp_status
+            break
+        }
+        
+        if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1
+        if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1
+        return 0
+      })
+    }
+    
     setFiltered(result)
-  }, [guests, filter, search])
+  }, [guests, filter, search, sortField, sortDirection])
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -294,9 +345,36 @@ export default function EventPage() {
     setEditMembers(guest.party_members.map(m => ({ id: m.id, name: m.name, phone: m.phone || '', rsvp_status: m.rsvp_status })))
   }
 
+  const handleHeaderClick = (field: 'name' | 'phone' | 'notes' | 'status') => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+    } else {
+      setSortField(field)
+      setSortDirection('asc')
+    }
+  }
+
+  const getSortIndicator = (field: 'name' | 'phone' | 'notes' | 'status') => {
+    if (sortField !== field) return ' ▢'
+    return sortDirection === 'asc' ? ' ▲' : ' ▼'
+  }
+
   const handleEditSave = async () => {
     if (!editGuest) return
     if (!editName) { setEditError('El nombre es obligatorio'); return }
+
+    // Validar duplicado de WhatsApp al editar (excluir el invitado actual)
+    if (editPhone) {
+      const normalizedEdit = normalizePhone(editPhone)
+      if (normalizedEdit.length > 0) {
+        const duplicate = guests.find(g => g.id !== editGuest.id && g.phone && normalizePhone(g.phone) === normalizedEdit)
+        if (duplicate) {
+          setEditError(`Este WhatsApp ya está registrado para "${duplicate.name}"`)
+          return
+        }
+      }
+    }
+
     setEditSaving(true); setEditError('')
     const { error } = await supabase.from('guests').update({ name: editName, phone: editPhone || null, email: editEmail || null, party_size: 1 + editMembers.length, notes: editNotes || null, tags: editTags }).eq('id', editGuest.id)
     if (error) { setEditError('Error: ' + error.message); setEditSaving(false); return }
@@ -306,7 +384,7 @@ export default function EventPage() {
     if (toDelete.length > 0) await supabase.from('party_members').delete().in('id', toDelete)
     for (const m of editMembers.filter(m => m.id)) await supabase.from('party_members').update({ name: m.name, phone: m.phone || null, rsvp_status: m.rsvp_status }).eq('id', m.id!)
     const toInsert = editMembers.filter(m => !m.id)
-    if (toInsert.length > 0) await supabase.from('party_members').insert(toInsert.map(m => ({ guest_id: editGuest.id, event_id: id, name: m.name, phone: m.phone || null, rsvp_status: m.rsvp_status })))
+    if (toInsert.length > 0) await supabase.from('party_members').insert(toInsert.map(m => ({ guest_id: editGuest.id, event_id: id as string, name: m.name, phone: m.phone || null, rsvp_status: m.rsvp_status })))
     await loadGuests(); setEditGuest(null); setEditSaving(false)
   }
 
@@ -356,6 +434,19 @@ export default function EventPage() {
 
   const handleAddGuest = async () => {
     if (!name) { setFormError('El nombre es obligatorio'); return }
+
+    // Validar duplicado de WhatsApp
+    if (phone) {
+      const normalizedNew = normalizePhone(phone)
+      if (normalizedNew.length > 0) {
+        const duplicate = guests.find(g => g.phone && normalizePhone(g.phone) === normalizedNew)
+        if (duplicate) {
+          setFormError(`Este WhatsApp ya está registrado para "${duplicate.name}"`)
+          return
+        }
+      }
+    }
+
     setSaving(true); setFormError('')
     const { data: guestData, error } = await supabase.from('guests').insert({ event_id: id, name, phone: phone || null, email: email || null, party_size: 1 + newMembers.length, notes: notes || null, tags: newTags, rsvp_status: 'pending' }).select().single()
     if (error || !guestData) { setFormError('Error: ' + error?.message); setSaving(false); return }
@@ -365,9 +456,11 @@ export default function EventPage() {
     await loadGuests(); resetForm(); setShowModal(false); setSaving(false)
   }
 
+  // Procesa el CSV y genera un preview con info de duplicados, sin importar todavía
   const handleCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return
-    setCsvError(''); setCsvSuccess('')
+    setCsvError(''); setCsvSuccess(''); setCsvPreview(null)
+
     const text = await file.text()
     const lines = text.split('\n').filter(l => l.trim())
     if (lines.length < 2) { setCsvError('El archivo está vacío'); return }
@@ -377,17 +470,77 @@ export default function EventPage() {
     const phoneIdx = headers.findIndex(h => h.includes('tel') || h.includes('phone') || h.includes('whatsapp') || h.includes('celular'))
     const emailIdx = headers.findIndex(h => h.includes('email') || h.includes('correo'))
     if (nameIdx === -1) { setCsvError('No se encontró columna "nombre"'); return }
+
     const rows = lines.slice(1).map(line => {
       const cols = line.split(sep).map(c => c.trim().replace(/"/g, ''))
-      return { event_id: id, name: cols[nameIdx] || '', phone: phoneIdx >= 0 ? cols[phoneIdx] || null : null, email: emailIdx >= 0 ? cols[emailIdx] || null : null, party_size: 1, rsvp_status: 'pending', tags: [] }
+      return {
+        event_id: id as string,
+        name: cols[nameIdx] || '',
+        phone: phoneIdx >= 0 ? cols[phoneIdx] || null : null,
+        email: emailIdx >= 0 ? cols[emailIdx] || null : null,
+        party_size: 1,
+        rsvp_status: 'pending',
+        tags: [] as never[],
+      }
     }).filter(r => r.name)
+
     if (!rows.length) { setCsvError('No se encontraron invitados válidos'); return }
-    const { error } = await supabase.from('guests').insert(rows)
-    if (error) { setCsvError('Error al importar: ' + error.message); return }
-    for (let i = 0; i < rows.length; i++) await supabase.rpc('increment_guests', { event_id_input: id })
-    setEvent(prev => prev ? { ...prev, total_guests: prev.total_guests + rows.length } : prev)
-    await loadGuests(); setCsvSuccess('✓ ' + rows.length + ' invitados importados correctamente')
+
+    // Detectar duplicados: contra invitados existentes y dentro del mismo archivo
+    const duplicates: CsvDuplicateResult['duplicates'] = []
+    const seenInFile = new Map<string, string>() // normalizedPhone -> name
+
+    rows.forEach((row, idx) => {
+      if (!row.phone) return
+      const norm = normalizePhone(row.phone)
+      if (!norm) return
+
+      // Duplicado con invitado ya existente
+      const existingGuest = guests.find(g => g.phone && normalizePhone(g.phone) === norm)
+      if (existingGuest) {
+        duplicates.push({ row: idx + 2, name: row.name, phone: row.phone, conflictWith: existingGuest.name + ' (ya registrado)' })
+        return
+      }
+
+      // Duplicado dentro del mismo archivo
+      if (seenInFile.has(norm)) {
+        duplicates.push({ row: idx + 2, name: row.name, phone: row.phone, conflictWith: seenInFile.get(norm)! + ' (misma importación)' })
+        return
+      }
+
+      seenInFile.set(norm, row.name)
+    })
+
+    setCsvPreview({ hasDuplicates: duplicates.length > 0, rows, duplicates })
     if (fileRef.current) fileRef.current.value = ''
+  }
+
+  // Confirma e importa las filas del CSV (excluyendo duplicados si los hay)
+  const confirmCsvImport = async (skipDuplicates: boolean) => {
+    if (!csvPreview) return
+    setCsvImporting(true); setCsvError('')
+
+    let rowsToImport = csvPreview.rows
+    if (skipDuplicates) {
+      const duplicateNames = new Set(csvPreview.duplicates.map(d => d.name + '|' + d.phone))
+      rowsToImport = csvPreview.rows.filter(r => !duplicateNames.has(r.name + '|' + r.phone))
+    }
+
+    if (!rowsToImport.length) {
+      setCsvError('No quedan invitados para importar después de excluir duplicados')
+      setCsvImporting(false)
+      setCsvPreview(null)
+      return
+    }
+
+    const { error } = await supabase.from('guests').insert(rowsToImport)
+    if (error) { setCsvError('Error al importar: ' + error.message); setCsvImporting(false); return }
+    for (let i = 0; i < rowsToImport.length; i++) await supabase.rpc('increment_guests', { event_id_input: id })
+    setEvent(prev => prev ? { ...prev, total_guests: prev.total_guests + rowsToImport.length } : prev)
+    await loadGuests()
+    setCsvSuccess('✓ ' + rowsToImport.length + ' invitados importados' + (skipDuplicates && csvPreview.duplicates.length > 0 ? ' (' + csvPreview.duplicates.length + ' duplicados omitidos)' : ''))
+    setCsvPreview(null)
+    setCsvImporting(false)
   }
 
   const exportCSV = () => {
@@ -435,7 +588,7 @@ const statusOptions = [
 ].filter(o => o.status !== event?.event_status)
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden', background: '#ffffff', color: '#1D1E20' }}>
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'visible', background: '#ffffff', color: '#1D1E20' }}>
 
       {/* PANEL SUPERIOR */}
       <div style={{ flexShrink: 0, borderBottom: '1px solid #e8e8e8' }} className="px-4 pt-4 pb-0 sm:px-6 sm:pt-5 lg:px-10 lg:pt-6">
@@ -551,7 +704,7 @@ const statusOptions = [
                 </div>
               )}
               <button onClick={exportCSV} className="hidden whitespace-nowrap rounded-lg border border-[#e0e0e0] px-3 py-1.5 text-xs text-[#666] transition hover:border-[#48C9B0] hover:text-[#48C9B0] sm:block">⬇️ Exportar</button>
-              <button onClick={() => { setCsvError(''); setCsvSuccess(''); setShowCsvModal(true) }} className="hidden whitespace-nowrap rounded-lg border border-[#e0e0e0] px-3 py-1.5 text-xs text-[#666] transition hover:border-[#48C9B0] hover:text-[#48C9B0] sm:block">📂 Importar</button>
+              <button onClick={() => { setCsvError(''); setCsvSuccess(''); setCsvPreview(null); setShowCsvModal(true) }} className="hidden whitespace-nowrap rounded-lg border border-[#e0e0e0] px-3 py-1.5 text-xs text-[#666] transition hover:border-[#48C9B0] hover:text-[#48C9B0] sm:block">📂 Importar</button>
               <button onClick={() => { resetForm(); setShowModal(true) }} className="shrink-0 whitespace-nowrap rounded-lg bg-[#48C9B0] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#3ab89f] sm:px-4 sm:text-sm">+ Agregar</button>
             </div>
           </div>
@@ -641,12 +794,15 @@ const statusOptions = [
             </div>
 
             {/* Desktop */}
-            <div className="hidden overflow-hidden rounded-xl border border-[#e8e8e8] sm:block">
+            <div className="hidden rounded-xl border border-[#e8e8e8] sm:block">
               <div className="grid items-center border-b border-[#e8e8e8] bg-[#f8f8f8] px-4 py-2" style={{ gridTemplateColumns: '40px 2fr 1.5fr 1fr 1.5fr 140px 40px' }}>
                 <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} style={{ cursor: 'pointer', accentColor: '#48C9B0' }} />
-                {['Nombre', 'Tags', 'Notas', 'Teléfono', 'Status', ''].map(h => (
-                  <div key={h} className="text-[11px] font-semibold uppercase tracking-wide text-[#aaa]">{h}</div>
-                ))}
+                <button onClick={() => handleHeaderClick('name')} className="text-left text-[11px] font-semibold uppercase tracking-wide text-[#aaa] hover:text-[#1D1E20] transition cursor-pointer">Nombre{getSortIndicator('name')}</button>
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-[#aaa]">Tags</div>
+                <button onClick={() => handleHeaderClick('notes')} className="text-left text-[11px] font-semibold uppercase tracking-wide text-[#aaa] hover:text-[#1D1E20] transition cursor-pointer">Notas{getSortIndicator('notes')}</button>
+                <button onClick={() => handleHeaderClick('phone')} className="text-left text-[11px] font-semibold uppercase tracking-wide text-[#aaa] hover:text-[#1D1E20] transition cursor-pointer">Teléfono{getSortIndicator('phone')}</button>
+                <button onClick={() => handleHeaderClick('status')} className="text-left text-[11px] font-semibold uppercase tracking-wide text-[#aaa] hover:text-[#1D1E20] transition cursor-pointer">Status{getSortIndicator('status')}</button>
+                <div></div>
               </div>
               {filtered.map((guest, gIdx) => {
                 const groupColor = guest.party_members.length > 0 ? GROUP_COLORS[gIdx % GROUP_COLORS.length] : null
@@ -800,40 +956,104 @@ const statusOptions = [
       {/* MODAL: CSV */}
       {showCsvModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-lg rounded-2xl border border-[#e8e8e8] bg-white p-6 shadow-xl sm:p-8">
+          <div className="w-full max-w-lg rounded-2xl border border-[#e8e8e8] bg-white p-6 shadow-xl sm:p-8" style={{ maxHeight: '90vh', overflowY: 'auto' }}>
             <div className="mb-5 flex items-center justify-between">
               <h2 className="text-lg font-bold text-[#1D1E20] sm:text-xl">Importar invitados</h2>
-              <button onClick={() => setShowCsvModal(false)} className="text-xl text-[#aaa]">✕</button>
+              <button onClick={() => { setShowCsvModal(false); setCsvPreview(null) }} className="text-xl text-[#aaa]">✕</button>
             </div>
-            <div className="mb-6">
-              <div className="mb-2 flex items-center gap-2.5">
-                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#48C9B0] text-xs font-bold text-white">1</div>
-                <span className="text-sm font-semibold text-[#1D1E20]">Descarga la plantilla</span>
+
+            {/* Sin preview: flujo normal */}
+            {!csvPreview && (
+              <>
+                <div className="mb-6">
+                  <div className="mb-2 flex items-center gap-2.5">
+                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#48C9B0] text-xs font-bold text-white">1</div>
+                    <span className="text-sm font-semibold text-[#1D1E20]">Descarga la plantilla</span>
+                  </div>
+                  <p className="mb-3 ml-8 text-xs leading-relaxed text-[#666]">Llénala en Excel o Google Sheets y guárdala como CSV.</p>
+                  <div className="mb-3 ml-8 rounded-lg border border-[#e8e8e8] bg-[#f8f8f8] p-3 font-mono text-xs leading-relaxed">
+                    <span className="font-semibold text-[#b8860b]">nombre</span> — obligatorio<br/>
+                    <span className="font-semibold text-[#48C9B0]">telefono</span> — WhatsApp (opcional)<br/>
+                    <span className="font-semibold text-[#48C9B0]">email</span> — correo (opcional)
+                  </div>
+                  <button onClick={downloadTemplate} className="ml-8 rounded-lg border border-[#48C9B0] px-4 py-2 text-xs text-[#1a9e88] transition hover:bg-[#f0fdfb]">⬇️ Descargar plantilla CSV</button>
+                </div>
+                <div className="mb-6 border-t border-[#f0f0f0]" />
+                <div>
+                  <div className="mb-2 flex items-center gap-2.5">
+                    <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#48C9B0] text-xs font-bold text-white">2</div>
+                    <span className="text-sm font-semibold text-[#1D1E20]">Sube tu archivo</span>
+                  </div>
+                  {csvError && <div className="mb-3 ml-8 rounded-lg border border-[#ffc0c0] bg-[#fff0f0] p-2.5 text-xs text-[#cc3333]">{csvError}</div>}
+                  {csvSuccess && <div className="mb-3 ml-8 rounded-lg border border-[#a0e0c0] bg-[#f0fff6] p-2.5 text-xs text-[#2a7a50]">{csvSuccess}</div>}
+                  <label className="ml-8 inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[#48C9B0] px-4 py-2 text-xs font-semibold text-white">
+                    📁 Seleccionar archivo CSV
+                    <input ref={fileRef} type="file" accept=".csv,.txt" onChange={handleCSV} className="hidden" />
+                  </label>
+                </div>
+                <div className="mt-6 text-right">
+                  <button onClick={() => setShowCsvModal(false)} className="rounded-lg border border-[#e0e0e0] px-5 py-2 text-xs text-[#888]">Cerrar</button>
+                </div>
+              </>
+            )}
+
+            {/* Con preview: mostrar resumen y pedir confirmación */}
+            {csvPreview && (
+              <div>
+                {/* Resumen */}
+                <div className="mb-4 rounded-xl border border-[#e8e8e8] bg-[#f8f8f8] p-4">
+                  <p className="mb-1 text-sm font-semibold text-[#1D1E20]">Resumen del archivo</p>
+                  <p className="text-xs text-[#666]">{csvPreview.rows.length} invitados encontrados</p>
+                  {csvPreview.hasDuplicates && (
+                    <p className="mt-1 text-xs font-semibold text-[#cc3333]">{csvPreview.duplicates.length} con WhatsApp duplicado</p>
+                  )}
+                </div>
+
+                {/* Lista de duplicados */}
+                {csvPreview.hasDuplicates && (
+                  <div className="mb-4">
+                    <p className="mb-2 text-xs font-semibold text-[#cc3333]">⚠️ Números duplicados detectados:</p>
+                    <div className="flex max-h-40 flex-col gap-1 overflow-y-auto rounded-lg border border-[#ffc0c0] bg-[#fff8f8] p-3">
+                      {csvPreview.duplicates.map((d, i) => (
+                        <div key={i} className="text-xs text-[#cc3333]">
+                          <span className="font-semibold">{d.name}</span> ({d.phone}) — duplica a <span className="font-semibold">{d.conflictWith}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {csvError && <div className="mb-3 rounded-lg border border-[#ffc0c0] bg-[#fff0f0] p-2.5 text-xs text-[#cc3333]">{csvError}</div>}
+                {csvSuccess && <div className="mb-3 rounded-lg border border-[#a0e0c0] bg-[#f0fff6] p-2.5 text-xs text-[#2a7a50]">{csvSuccess}</div>}
+
+                <div className="flex flex-col gap-2">
+                  {csvPreview.hasDuplicates ? (
+                    <button
+                      onClick={() => confirmCsvImport(true)}
+                      disabled={csvImporting}
+                      className="w-full rounded-lg bg-[#48C9B0] py-3 text-sm font-semibold text-white disabled:opacity-60"
+                    >
+                      {csvImporting ? 'Importando...' : `Importar ${csvPreview.rows.length - csvPreview.duplicates.length} sin duplicados`}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => confirmCsvImport(false)}
+                      disabled={csvImporting}
+                      className="w-full rounded-lg bg-[#48C9B0] py-3 text-sm font-semibold text-white disabled:opacity-60"
+                    >
+                      {csvImporting ? 'Importando...' : `Confirmar importación (${csvPreview.rows.length} invitados)`}
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setCsvPreview(null)}
+                    disabled={csvImporting}
+                    className="w-full rounded-lg border border-[#e0e0e0] py-2.5 text-xs text-[#888] disabled:opacity-60"
+                  >
+                    Cancelar
+                  </button>
+                </div>
               </div>
-              <p className="mb-3 ml-8 text-xs leading-relaxed text-[#666]">Llénala en Excel o Google Sheets y guárdala como CSV.</p>
-              <div className="mb-3 ml-8 rounded-lg border border-[#e8e8e8] bg-[#f8f8f8] p-3 font-mono text-xs leading-relaxed">
-                <span className="font-semibold text-[#b8860b]">nombre</span> — obligatorio<br/>
-                <span className="font-semibold text-[#48C9B0]">telefono</span> — WhatsApp (opcional)<br/>
-                <span className="font-semibold text-[#48C9B0]">email</span> — correo (opcional)
-              </div>
-              <button onClick={downloadTemplate} className="ml-8 rounded-lg border border-[#48C9B0] px-4 py-2 text-xs text-[#1a9e88] transition hover:bg-[#f0fdfb]">⬇️ Descargar plantilla CSV</button>
-            </div>
-            <div className="mb-6 border-t border-[#f0f0f0]" />
-            <div>
-              <div className="mb-2 flex items-center gap-2.5">
-                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#48C9B0] text-xs font-bold text-white">2</div>
-                <span className="text-sm font-semibold text-[#1D1E20]">Sube tu archivo</span>
-              </div>
-              {csvError   && <div className="mb-3 ml-8 rounded-lg border border-[#ffc0c0] bg-[#fff0f0] p-2.5 text-xs text-[#cc3333]">{csvError}</div>}
-              {csvSuccess && <div className="mb-3 ml-8 rounded-lg border border-[#a0e0c0] bg-[#f0fff6] p-2.5 text-xs text-[#2a7a50]">{csvSuccess}</div>}
-              <label className="ml-8 inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[#48C9B0] px-4 py-2 text-xs font-semibold text-white">
-                📁 Seleccionar archivo CSV
-                <input ref={fileRef} type="file" accept=".csv,.txt" onChange={handleCSV} className="hidden" />
-              </label>
-            </div>
-            <div className="mt-6 text-right">
-              <button onClick={() => setShowCsvModal(false)} className="rounded-lg border border-[#e0e0e0] px-5 py-2 text-xs text-[#888]">Cerrar</button>
-            </div>
+            )}
           </div>
         </div>
       )}

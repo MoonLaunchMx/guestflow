@@ -63,7 +63,7 @@ function getTagColor(index: number) {
 }
 
 function TemplateInput({
-  index, value, name, onChange, onNameChange, placeholder,
+  index, value, name, onChange, onNameChange, placeholder, onDelete, onClear, canDelete,
 }: {
   index: number
   value: string
@@ -71,6 +71,9 @@ function TemplateInput({
   onChange: (val: string) => void
   onNameChange: (val: string) => void
   placeholder: string
+  onDelete?: () => void
+  onClear?: () => void
+  canDelete?: boolean
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const [editingName, setEditingName] = useState(false)
@@ -104,30 +107,52 @@ function TemplateInput({
 
   return (
     <div>
-      <div className="mb-1.5 flex items-center gap-1.5">
-        {editingName ? (
-          <input
-            ref={nameInputRef}
-            value={nameInput}
-            onChange={e => setNameInput(e.target.value)}
-            onBlur={commitName}
-            onKeyDown={e => {
-              if (e.key === 'Enter') commitName()
-              if (e.key === 'Escape') { setEditingName(false); setNameInput(name) }
-            }}
-            className="rounded border border-[#48C9B0] bg-white px-2 py-0.5 text-xs font-semibold text-[#1D1E20] outline-none"
-            style={{ minWidth: 0, width: Math.max(nameInput.length, 8) + 'ch' }}
-          />
-        ) : (
-          <button
-            onDoubleClick={startEditName}
-            title="Doble click para renombrar"
-            className="group flex items-center gap-1 text-xs font-semibold text-[#555] transition hover:text-[#48C9B0]"
-          >
-            {name}
-            <span className="opacity-0 text-[10px] text-[#bbb] transition group-hover:opacity-100">✎</span>
-          </button>
-        )}
+      <div className="mb-1.5 flex items-center justify-between gap-1.5">
+        <div className="flex items-center gap-1.5">
+          {editingName ? (
+            <input
+              ref={nameInputRef}
+              value={nameInput}
+              onChange={e => setNameInput(e.target.value)}
+              onBlur={commitName}
+              onKeyDown={e => {
+                if (e.key === 'Enter') commitName()
+                if (e.key === 'Escape') { setEditingName(false); setNameInput(name) }
+              }}
+              className="rounded border border-[#48C9B0] bg-white px-2 py-0.5 text-xs font-semibold text-[#1D1E20] outline-none"
+              style={{ minWidth: 0, width: Math.max(nameInput.length, 8) + 'ch' }}
+            />
+          ) : (
+            <button
+              onDoubleClick={startEditName}
+              title="Doble click para renombrar"
+              className="group flex items-center gap-1 text-xs font-semibold text-[#555] transition hover:text-[#48C9B0]"
+            >
+              {name}
+              <span className="opacity-0 text-[10px] text-[#bbb] transition group-hover:opacity-100">✎</span>
+            </button>
+          )}
+        </div>
+        <div className="flex items-center gap-3">
+          {onClear && (
+            <button
+              onClick={onClear}
+              title="Limpiar contenido"
+              className="text-xs text-[#888] transition hover:text-[#1D1E20]"
+            >
+              Limpiar
+            </button>
+          )}
+          {canDelete && onDelete && (
+            <button
+              onClick={onDelete}
+              title="Eliminar plantilla"
+              className="text-xs text-[#cc3333] transition hover:text-[#aa2222]"
+            >
+              - Eliminar
+            </button>
+          )}
+        </div>
       </div>
       <textarea
         ref={textareaRef}
@@ -161,6 +186,8 @@ export default function ConfiguracionPage() {
   const [saving, setSaving]               = useState(false)
   const [saved, setSaved]                 = useState(false)
   const [error, setError]                 = useState('')
+  const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
+  const hasChangesRef = useRef(false)
 
   const [name, setName]                   = useState('')
   const [eventType, setEventType]         = useState('')
@@ -212,8 +239,15 @@ export default function ConfiguracionPage() {
       if (Array.isArray(data.message_templates)) {
         const loaded = [...data.message_templates, ...Array(10).fill('')].slice(0, 10)
         setTemplates(loaded)
-        const filled = loaded.filter((t: string) => t.trim()).length
-        setVisibleTemplates(Math.max(2, filled))
+        // Encontrar el índice de la última plantilla con contenido
+        let lastFilledIndex = -1
+        for (let i = loaded.length - 1; i >= 0; i--) {
+          if (loaded[i]?.trim()) {
+            lastFilledIndex = i
+            break
+          }
+        }
+        setVisibleTemplates(Math.max(2, lastFilledIndex + 1))
       }
 
       if (Array.isArray(data.template_names)) {
@@ -228,7 +262,7 @@ export default function ConfiguracionPage() {
     setLoading(false)
   }
 
-  const handleSave = async () => {
+  const handleSave = async (autoSave = false) => {
     if (!name) { setError('El nombre es obligatorio'); return }
     setSaving(true); setError(''); setSaved(false)
     const { error: err } = await supabase.from('events').update({
@@ -240,8 +274,32 @@ export default function ConfiguracionPage() {
     }).eq('id', id)
     if (err) { setError('Error: ' + err.message); setSaving(false); return }
     setSaving(false); setSaved(true)
-    setTimeout(() => window.location.reload(), 800)
+    hasChangesRef.current = false
+    if (!autoSave) {
+      setTimeout(() => window.location.reload(), 800)
+    } else {
+      setTimeout(() => setSaved(false), 2000)
+    }
   }
+
+  const scheduleAutoSave = () => {
+    hasChangesRef.current = true
+    // Limpiar timeout anterior
+    if (autoSaveTimeoutRef.current) clearTimeout(autoSaveTimeoutRef.current)
+    // Programar nuevo guardado después de 2 segundos de inactividad
+    autoSaveTimeoutRef.current = setTimeout(() => {
+      if (hasChangesRef.current && name) {
+        handleSave(true)
+      }
+    }, 2000)
+  }
+
+  // Limpiar timeout al desmontar
+  useEffect(() => {
+    return () => {
+      if (autoSaveTimeoutRef.current) clearTimeout(autoSaveTimeoutRef.current)
+    }
+  }, [])
 
   const handleStatusChange = async (newStatus: EventStatus) => {
     setStatusSaving(true)
@@ -257,10 +315,13 @@ export default function ConfiguracionPage() {
     if (!trimmed || guestTags.includes(trimmed)) return
     setGuestTags(prev => [...prev, trimmed])
     setNewTag('')
+    scheduleAutoSave()
   }
 
-  const handleRemoveTag = (tag: string) =>
+  const handleRemoveTag = (tag: string) => {
     setGuestTags(prev => prev.filter(t => t !== tag))
+    scheduleAutoSave()
+  }
 
   const handleGenerateToken = () => setPlaylistToken(generateToken())
 
@@ -276,16 +337,50 @@ export default function ConfiguracionPage() {
     if (!trimmed || categories.includes(trimmed)) return
     setCategories(prev => [...prev, trimmed])
     setNewCategory('')
+    scheduleAutoSave()
   }
 
-  const handleRemoveCategory = (cat: string) =>
+  const handleRemoveCategory = (cat: string) => {
     setCategories(prev => prev.filter(c => c !== cat))
+    scheduleAutoSave()
+  }
 
-  const updateTemplate = (i: number, value: string) =>
+  const updateTemplate = (i: number, value: string) => {
     setTemplates(prev => prev.map((t, idx) => idx === i ? value : t))
+    scheduleAutoSave()
+  }
 
-  const updateTemplateName = (i: number, value: string) =>
+  const updateTemplateName = (i: number, value: string) => {
     setTemplateNames(prev => prev.map((n, idx) => idx === i ? value : n))
+    scheduleAutoSave()
+  }
+
+  const handleDeleteTemplate = (i: number) => {
+    if (!confirm('¿Eliminar esta plantilla? No se puede deshacer.')) return
+    // Remover la plantilla en el índice especificado
+    const newTemplates = templates.filter((_, idx) => idx !== i)
+    // Asegurarse de que siempre hay 10 posiciones (rellenando con vacíos al final)
+    while (newTemplates.length < 10) {
+      newTemplates.push('')
+    }
+    
+    const newNames = templateNames.filter((_, idx) => idx !== i)
+    while (newNames.length < 10) {
+      newNames.push(DEFAULT_NAMES[newNames.length])
+    }
+    
+    setTemplates(newTemplates)
+    setTemplateNames(newNames)
+    
+    // Reducir visibleTemplates en 1, pero no menos de 1
+    setVisibleTemplates(Math.max(1, visibleTemplates - 1))
+    scheduleAutoSave()
+  }
+
+  const handleClearTemplate = (i: number) => {
+    setTemplates(prev => prev.map((t, idx) => idx === i ? '' : t))
+    scheduleAutoSave()
+  }
 
   const openMaps = () => {
     window.open('https://maps.google.com?q=' + encodeURIComponent(address), '_blank')
@@ -339,7 +434,7 @@ export default function ConfiguracionPage() {
             <p className="mt-0.5 text-xs text-[#666] sm:text-sm">Datos generales y plantillas de WhatsApp</p>
           </div>
           <button
-            onClick={handleSave}
+            onClick={() => handleSave(false)}
             disabled={saving}
             className={(saved ? 'border border-[#48C9B0] bg-[#f0fdfb] text-[#1a9e88]' : saving ? 'bg-[#a0e0d8] text-white' : 'bg-[#48C9B0] text-white hover:bg-[#3ab89f]') + ' shrink-0 rounded-lg px-4 py-2 text-sm font-semibold transition disabled:cursor-not-allowed sm:px-5 sm:py-2.5'}
           >
@@ -366,7 +461,7 @@ export default function ConfiguracionPage() {
 
                   <div>
                     <label className="mb-1.5 block text-xs font-medium text-[#555]">Nombre *</label>
-                    <input type="text" value={name} onChange={e => setName(e.target.value)}
+                    <input type="text" value={name} onChange={e => { setName(e.target.value); scheduleAutoSave() }}
                       placeholder="Boda Ana & Carlos"
                       className="w-full rounded-lg border border-[#d0d0d0] bg-white px-3 py-2.5 text-sm text-[#1D1E20] outline-none transition focus:border-[#48C9B0]"
                     />
@@ -376,7 +471,7 @@ export default function ConfiguracionPage() {
                     <label className="mb-1.5 block text-xs font-medium text-[#555]">Tipo de evento</label>
                     <div className="grid grid-cols-2 gap-1.5">
                       {EVENT_TYPES.map(type => (
-                        <button key={type.value} onClick={() => setEventType(type.value)}
+                        <button key={type.value} onClick={() => { setEventType(type.value); scheduleAutoSave() }}
                           className={'rounded-lg border px-2.5 py-2 text-left text-xs transition ' + (eventType === type.value ? 'border-[#48C9B0] bg-[#f0fdfb] font-semibold text-[#1a9e88]' : 'border-[#e0e0e0] bg-white text-[#444] hover:border-[#48C9B0] hover:text-[#1a9e88]')}>
                           {type.label}
                         </button>
@@ -387,14 +482,14 @@ export default function ConfiguracionPage() {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="mb-1.5 block text-xs font-medium text-[#555]">Fecha</label>
-                      <input type="date" value={eventDate} onChange={e => setEventDate(e.target.value)}
+                      <input type="date" value={eventDate} onChange={e => { setEventDate(e.target.value); scheduleAutoSave() }}
                         style={{ colorScheme: 'light' }}
                         className="w-full rounded-lg border border-[#d0d0d0] bg-white px-3 py-2.5 text-sm text-[#1D1E20] outline-none transition focus:border-[#48C9B0]"
                       />
                     </div>
                     <div>
                       <label className="mb-1.5 block text-xs font-medium text-[#555]">Hora</label>
-                      <input type="time" value={eventTime} onChange={e => setEventTime(e.target.value)}
+                      <input type="time" value={eventTime} onChange={e => { setEventTime(e.target.value); scheduleAutoSave() }}
                         style={{ colorScheme: 'light' }}
                         className="w-full rounded-lg border border-[#d0d0d0] bg-white px-3 py-2.5 text-sm text-[#1D1E20] outline-none transition focus:border-[#48C9B0]"
                       />
@@ -403,7 +498,7 @@ export default function ConfiguracionPage() {
 
                   <div>
                     <label className="mb-1.5 block text-xs font-medium text-[#555]">Venue</label>
-                    <input type="text" value={venue} onChange={e => setVenue(e.target.value)}
+                    <input type="text" value={venue} onChange={e => { setVenue(e.target.value); scheduleAutoSave() }}
                       placeholder="Hacienda San Miguel"
                       className="w-full rounded-lg border border-[#d0d0d0] bg-white px-3 py-2.5 text-sm text-[#1D1E20] outline-none transition focus:border-[#48C9B0]"
                     />
@@ -412,7 +507,7 @@ export default function ConfiguracionPage() {
                   <div>
                     <label className="mb-1.5 block text-xs font-medium text-[#555]">Dirección</label>
                     <div className="flex gap-2">
-                      <input type="text" value={address} onChange={e => setAddress(e.target.value)}
+                      <input type="text" value={address} onChange={e => { setAddress(e.target.value); scheduleAutoSave() }}
                         placeholder="Carr. Saltillo-Monterrey Km 4.5"
                         className="flex-1 rounded-lg border border-[#d0d0d0] bg-white px-3 py-2.5 text-sm text-[#1D1E20] outline-none transition focus:border-[#48C9B0]"
                       />
@@ -476,14 +571,20 @@ export default function ConfiguracionPage() {
                 <h2 className="mb-1.5 text-base font-semibold text-[#1D1E20] sm:text-lg">💬 Plantillas de WhatsApp</h2>
                 <p className="mb-4 text-xs text-[#666]">Doble click en el nombre para renombrarlo. Usa los chips para insertar variables.</p>
                 <div className="flex flex-col gap-5">
-                  {templates.slice(0, visibleTemplates).map((template, i) => (
-                    <TemplateInput key={i} index={i} value={template}
-                      name={templateNames[i] || DEFAULT_NAMES[i]}
-                      onChange={val => updateTemplate(i, val)}
-                      onNameChange={val => updateTemplateName(i, val)}
-                      placeholder={i === 0 ? 'Hola {nombre}, te esperamos en {evento} el {fecha} a las {hora} 🎉' : 'Escribe aquí tu mensaje...'}
+                  {templates.slice(0, visibleTemplates).map((template, i) => {
+                    const actualIndex = i
+                    return (
+                    <TemplateInput key={actualIndex} index={actualIndex} value={template}
+                      name={templateNames[actualIndex] || DEFAULT_NAMES[actualIndex]}
+                      onChange={val => updateTemplate(actualIndex, val)}
+                      onNameChange={val => updateTemplateName(actualIndex, val)}
+                      placeholder={actualIndex === 0 ? 'Hola {nombre}, te esperamos en {evento} el {fecha} a las {hora} 🎉' : 'Escribe aquí tu mensaje...'}
+                      onDelete={() => handleDeleteTemplate(actualIndex)}
+                      onClear={() => handleClearTemplate(actualIndex)}
+                      canDelete={actualIndex > 0}
                     />
-                  ))}
+                    )
+                  })}
                   {visibleTemplates < 10 && (
                     <button onClick={() => setVisibleTemplates(v => Math.min(v + 1, 10))}
                       className="flex items-center gap-1.5 text-xs text-[#48C9B0] transition hover:text-[#3ab89f]">
