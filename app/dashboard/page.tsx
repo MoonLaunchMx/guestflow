@@ -59,8 +59,9 @@ export default function Dashboard() {
 
     if (!eventsData) { setLoading(false); return }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const eventsWithStats: EventWithStats[] = await Promise.all(
-      eventsData.map(async (event) => {
+      eventsData.map(async (event: any) => {
         const [{ data: guests }, { data: members }] = await Promise.all([
           supabase.from('guests').select('rsvp_status').eq('event_id', event.id),
           supabase.from('party_members').select('rsvp_status').eq('event_id', event.id),
@@ -70,9 +71,9 @@ export default function Dashboard() {
           ...event,
           event_status: event.event_status || 'active',
           total:     all.length,
-          confirmed: all.filter(g => g.rsvp_status === 'confirmed').length,
-          pending:   all.filter(g => g.rsvp_status === 'pending').length,
-          declined:  all.filter(g => g.rsvp_status === 'declined').length,
+          confirmed: all.filter((g: any) => g.rsvp_status === 'confirmed').length,
+          pending:   all.filter((g: any) => g.rsvp_status === 'pending').length,
+          declined:  all.filter((g: any) => g.rsvp_status === 'declined').length,
         }
       })
     )
