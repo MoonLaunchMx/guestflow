@@ -3,9 +3,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { PartyMember, Guest, Event, EventStatus, RsvpStatus } from '@/lib/types'
-
-// ─── CONSTANTES UI (sin cambios) ─────────────────────────────────────────────
+import { PartyMember, Guest, Event, EventSettings, EventStatus, RsvpStatus } from '@/lib/types'
 
 const STATUS_LABEL: Record<string, { label: string; color: string; bg: string; border: string }> = {
   pending:   { label: 'Pendiente',  color: '#b8860b', bg: '#fffbf0', border: '#f0d080' },
@@ -140,16 +138,24 @@ const EVENT_STATUS_STYLES: Record<string, { dot: string; badge: string; label: s
 
 type CsvDuplicateResult = {
   hasDuplicates: boolean
-  rows: Array<{ event_id: string | string[]; name: string; phone: string | null; email: string | null; party_size: number; rsvp_status: string; tags: never[] }>
+  rows: Array<{
+    event_id: string
+    name: string
+    phone: string | null
+    email: string | null
+    party_size: number
+    rsvp_status: string
+    tags: string[]
+    notes: string | null
+  }>
   duplicates: Array<{ row: number; name: string; phone: string; conflictWith: string }>
 }
-
-// ─── COMPONENTE PRINCIPAL ─────────────────────────────────────────────────────
 
 export default function EventPage() {
   const { id } = useParams()
 
   const [event, setEvent] = useState<Event | null>(null)
+  const [eventSettings, setEventSettings] = useState<EventSettings | null>(null)
   const [guests, setGuests] = useState<Guest[]>([])
   const [filtered, setFiltered] = useState<Guest[]>([])
   const [loading, setLoading] = useState(true)
@@ -248,6 +254,8 @@ export default function EventPage() {
   const loadEvent = async () => {
     const { data } = await supabase.from('events').select('*').eq('id', id).single()
     if (data) setEvent(data)
+    const { data: settings } = await supabase.from('event_settings').select('*').eq('event_id', id).single()
+    if (settings) setEventSettings(settings)
   }
 
   const loadGuests = async () => {
@@ -360,15 +368,16 @@ export default function EventPage() {
     if (!confirm('¿Eliminar ' + selected.size + ' invitados?')) return
     const ids = Array.from(selected)
     await supabase.from('guests').delete().in('id', ids)
-    for (let i = 0; i < ids.length; i++) await supabase.rpc('decrement_guests', { event_id_input: id })
+    await supabase.rpc('increment_guests_by', { event_id_input: id, amount: -ids.length })
     setGuests(prev => prev.filter(g => !selected.has(g.id)))
     setEvent(prev => prev ? { ...prev, total_guests: Math.max(0, prev.total_guests - ids.length) } : prev)
     setSelected(new Set()); setShowBulkMenu(false)
   }
 
   const buildWaText = (guest: Guest, templateIndex = 0) => {
-    const playlistUrl = event?.playlist_token ? window.location.origin + '/playlist/' + event.playlist_token : ''
-    const text = (event?.message_templates?.[templateIndex] || 'Hola {nombre}, te escribimos de parte de {evento}.')
+    const playlistUrl = eventSettings?.playlist_token ? window.location.origin + '/playlist/' + eventSettings.playlist_token : ''
+    const templates = eventSettings?.message_templates as string[] | null
+    const text = (templates?.[templateIndex] || 'Hola {nombre}, te escribimos de parte de {evento}.')
       .replace('{nombre}', guest.name)
       .replace('{evento}', event?.name || '')
       .replace('{fecha}', event?.event_date ? new Date(event.event_date).toLocaleDateString('es-MX') : '')
@@ -406,21 +415,41 @@ export default function EventPage() {
     await loadGuests(); resetForm(); setShowModal(false); setSaving(false)
   }
 
-  const handleCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]; if (!file) return
-    setCsvError(''); setCsvSuccess(''); setCsvPreview(null)
-    const text = await file.text()
+const handleCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const file = e.target.files?.[0]; if (!file) return
+  setCsvError(''); setCsvSuccess(''); setCsvPreview(null)
+
+  const parseCSV = (text: string) => {
     const lines = text.split('\n').filter(l => l.trim())
     if (lines.length < 2) { setCsvError('El archivo está vacío'); return }
     const sep = lines[0].includes(';') ? ';' : ','
-    const headers = lines[0].split(sep).map(h => h.trim().toLowerCase().replace(/"/g, ''))
-    const nameIdx  = headers.findIndex(h => h.includes('nombre') || h.includes('name'))
-    const phoneIdx = headers.findIndex(h => h.includes('tel') || h.includes('phone') || h.includes('whatsapp') || h.includes('celular'))
-    const emailIdx = headers.findIndex(h => h.includes('email') || h.includes('correo'))
+    const headers = lines[0].split(sep).map(h => h.trim().toLowerCase().replace(/"/g, '').replace(/\r/g, ''))
+    const nameIdx   = headers.findIndex(h => h.includes('nombre') || h.includes('name'))
+    const phoneIdx  = headers.findIndex(h => h.includes('tel') || h.includes('phone') || h.includes('whatsapp') || h.includes('celular'))
+    const emailIdx  = headers.findIndex(h => h.includes('email') || h.includes('correo'))
+    const notesIdx  = headers.findIndex(h => h.includes('nota') || h.includes('note'))
+    const tagsIdx   = headers.findIndex(h => h.includes('tag') || h.includes('etiqueta'))
+    const statusIdx = headers.findIndex(h => h.includes('status') || h.includes('estado') || h.includes('rsvp'))
+    const plusIdx   = headers.findIndex(h => h.includes('plus') || h.includes('acomp'))
     if (nameIdx === -1) { setCsvError('No se encontró columna "nombre"'); return }
+    const eventTags = event?.guest_tags || []
     const rows = lines.slice(1).map(line => {
-      const cols = line.split(sep).map(c => c.trim().replace(/"/g, ''))
-      return { event_id: id as string, name: cols[nameIdx] || '', phone: phoneIdx >= 0 ? cols[phoneIdx] || null : null, email: emailIdx >= 0 ? cols[emailIdx] || null : null, party_size: 1, rsvp_status: 'pending', tags: [] as never[] }
+      const cols = line.split(sep).map(c => c.trim().replace(/"/g, '').replace(/\r/g, ''))
+      const rawStatus = statusIdx >= 0 ? cols[statusIdx]?.toLowerCase() || '' : ''
+      const rsvpStatus = rawStatus.includes('conf') ? 'confirmed' : rawStatus.includes('decl') || rawStatus.includes('no') ? 'declined' : 'pending'
+      const rawTags = tagsIdx >= 0 ? cols[tagsIdx] || '' : ''
+      const parsedTags = rawTags ? rawTags.split(/[,|]/).map((t: string) => t.trim()).filter((t: string) => eventTags.includes(t)) : []
+      const plusOnes = plusIdx >= 0 ? parseInt(cols[plusIdx] || '0', 10) || 0 : 0
+      return {
+        event_id: id as string,
+        name: cols[nameIdx] || '',
+        phone: phoneIdx >= 0 ? cols[phoneIdx] || null : null,
+        email: emailIdx >= 0 ? cols[emailIdx] || null : null,
+        party_size: 1 + plusOnes,
+        rsvp_status: rsvpStatus,
+        tags: parsedTags,
+        notes: notesIdx >= 0 ? cols[notesIdx] || null : null,
+      }
     }).filter(r => r.name)
     if (!rows.length) { setCsvError('No se encontraron invitados válidos'); return }
     const duplicates: CsvDuplicateResult['duplicates'] = []
@@ -438,18 +467,38 @@ export default function EventPage() {
     if (fileRef.current) fileRef.current.value = ''
   }
 
+  // Intenta UTF-8 primero, si hay caracteres rotos reintenta con Windows-1252
+  const readerUtf8 = new FileReader()
+  readerUtf8.onload = (evt) => {
+    const text = evt.target?.result as string
+    if (!text) { setCsvError('No se pudo leer el archivo'); return }
+    // Detecta caracteres rotos típicos de Windows-1252 leído como UTF-8
+    if (text.includes('�') || text.includes('\uFFFD')) {
+      const readerLatin = new FileReader()
+      readerLatin.onload = (evt2) => {
+        const text2 = evt2.target?.result as string
+        if (text2) parseCSV(text2)
+      }
+      readerLatin.readAsText(file, 'windows-1252')
+    } else {
+      parseCSV(text)
+    }
+  }
+  readerUtf8.readAsText(file, 'UTF-8')
+}
+
   const confirmCsvImport = async (skipDuplicates: boolean) => {
     if (!csvPreview) return
     setCsvImporting(true); setCsvError('')
     let rowsToImport = csvPreview.rows
     if (skipDuplicates) {
-      const duplicateNames = new Set(csvPreview.duplicates.map(d => d.name + '|' + d.phone))
-      rowsToImport = csvPreview.rows.filter(r => !duplicateNames.has(r.name + '|' + r.phone))
+      const duplicateKeys = new Set(csvPreview.duplicates.map(d => d.name + '|' + d.phone))
+      rowsToImport = csvPreview.rows.filter(r => !duplicateKeys.has(r.name + '|' + r.phone))
     }
     if (!rowsToImport.length) { setCsvError('No quedan invitados para importar'); setCsvImporting(false); setCsvPreview(null); return }
     const { error } = await supabase.from('guests').insert(rowsToImport)
     if (error) { setCsvError('Error al importar: ' + error.message); setCsvImporting(false); return }
-    for (let i = 0; i < rowsToImport.length; i++) await supabase.rpc('increment_guests', { event_id_input: id })
+    await supabase.rpc('increment_guests_by', { event_id_input: id, amount: rowsToImport.length })
     setEvent(prev => prev ? { ...prev, total_guests: prev.total_guests + rowsToImport.length } : prev)
     await loadGuests()
     setCsvSuccess('✓ ' + rowsToImport.length + ' invitados importados' + (skipDuplicates && csvPreview.duplicates.length > 0 ? ' (' + csvPreview.duplicates.length + ' duplicados omitidos)' : ''))
@@ -457,18 +506,39 @@ export default function EventPage() {
   }
 
   const exportCSV = () => {
-    const headers = 'nombre,telefono,email,status,notas,tags'
-    const rows = guests.map(g => '"' + g.name + '","' + (g.phone || '') + '","' + (g.email || '') + '","' + STATUS_LABEL[g.rsvp_status].label + '","' + (g.notes || '').replace(/"/g, '""') + '","' + (g.tags || []).join(', ') + '"')
+    const headers = 'nombre,telefono,email,status,notas,tags,acompañantes'
+    const rows = guests.map(g => {
+      const memberNames = g.party_members.map(m => m.name || 'Acompañante').join(' | ')
+      return '"' + g.name + '","' + (g.phone || '') + '","' + (g.email || '') + '","' + STATUS_LABEL[g.rsvp_status].label + '","' + (g.notes || '').replace(/"/g, '""') + '","' + (g.tags || []).join(', ') + '","' + memberNames + '"'
+    })
     const csv = [headers, ...rows].join('\n')
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a'); a.href = url; a.download = 'invitados_' + (event?.name?.replace(/\s+/g, '_') || 'evento') + '.csv'; a.click()
     URL.revokeObjectURL(url)
   }
 
   const downloadTemplate = () => {
-    const csv = 'nombre,telefono,email\nMaria Jose,+52 81 1234 5678,mj@ejemplo.com\nPatrocleo Juarez,+52 55 9876 5432,\nAndres Garza,,andres@ejemplo.com'
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const eventTags = event?.guest_tags || []
+    const tagExample = eventTags.length >= 2 ? eventTags[0] + ',' + eventTags[1] : eventTags.length === 1 ? eventTags[0] : 'familia'
+    const headers = 'nombre,telefono,email,notas,tags,rsvp_status'
+    const examples = [
+      `"María José García","+52 81 1234 5678","mj@ejemplo.com","Mesa 3","${tagExample}","confirmed"`,
+      `"Patricio Juárez","+52 55 9876 5432","","Sin restricciones alimentarias","","pending"`,
+      `"Andrés Garza","","andres@ejemplo.com","Llegará tarde","","pending"`,
+    ]
+    const instructions = [
+      '',
+      '# INSTRUCCIONES:',
+      '# nombre      → obligatorio',
+      '# telefono    → formato +52 XX XXXX XXXX (opcional)',
+      '# email       → correo electrónico (opcional)',
+      '# notas       → texto libre (opcional)',
+      `# tags        → separados por coma, deben coincidir exactamente: ${eventTags.length ? eventTags.join(', ') : '(configura tags en Configuración)'}`,
+      '# rsvp_status → confirmed | pending | declined  (vacío = pending)',
+    ]
+    const csv = [headers, ...examples, ...instructions].join('\n')
+    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a'); a.href = url; a.download = 'plantilla_guestflow.csv'; a.click()
     URL.revokeObjectURL(url)
@@ -487,7 +557,8 @@ export default function EventPage() {
     return new Date(year, month - 1, day).toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
   }
 
-  const activeTemplates = event?.message_templates?.filter(t => t.trim()) || []
+  const activeTemplates = (eventSettings?.message_templates as string[] | null)?.filter((t: string) => t.trim()) || []
+  const templateNames = eventSettings?.template_names as string[] | null
   const availableTags = event?.guest_tags || []
 
   const displayStatus = getDisplayStatus()
@@ -503,7 +574,6 @@ export default function EventPage() {
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'visible', background: '#ffffff', color: '#1D1E20' }}>
 
-      {/* PANEL SUPERIOR */}
       <div style={{ flexShrink: 0, borderBottom: '1px solid #e8e8e8' }} className="px-4 pt-4 pb-0 sm:px-6 sm:pt-5 lg:px-10 lg:pt-6">
         <div className="mb-4">
           <div className="flex items-start justify-between gap-2">
@@ -546,7 +616,6 @@ export default function EventPage() {
           </div>
         </div>
 
-        {/* Métricas */}
         <div className="mb-4 grid grid-cols-4 gap-2">
           {[
             { label: 'Total', value: totalPersonas, color: '#1D1E20' },
@@ -561,7 +630,6 @@ export default function EventPage() {
           ))}
         </div>
 
-        {/* Barra herramientas */}
         <div className="mb-3 flex flex-col gap-2">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Buscar..."
@@ -610,7 +678,6 @@ export default function EventPage() {
         </div>
       </div>
 
-      {/* LISTA */}
       <div style={{ flex: 1, overflowY: 'auto' }} className="px-4 pb-6 pt-3 sm:px-6 lg:px-10">
         {loading ? (
           <p className="pt-5 text-sm text-[#999]">Cargando...</p>
@@ -740,10 +807,10 @@ export default function EventPage() {
                                 <div ref={waMenuRef} className="absolute left-0 top-full z-50 mt-1 min-w-[220px] rounded-xl border border-[#e8e8e8] bg-white p-1 shadow-lg">
                                   {activeTemplates.length === 0 ? (
                                     <p className="px-3 py-2.5 text-xs text-[#aaa]">No hay plantillas — ve a Configuración</p>
-                                  ) : activeTemplates.map((template, ti) => (
+                                  ) : activeTemplates.map((template: string, ti: number) => (
                                     <button key={ti} onClick={() => { window.open('https://wa.me/' + guest.phone!.replace(/\D/g, '') + '?text=' + buildWaText(guest, ti), '_blank'); setShowWaMenu(null) }}
                                       className="w-full rounded-lg px-3 py-2 text-left text-xs leading-snug text-[#1D1E20] hover:bg-[#f0fdfb]">
-                                      <span className="mb-0.5 block text-[10px] font-semibold text-[#48C9B0]">{event?.template_names?.[ti] || 'Plantilla ' + (ti + 1)}</span>
+                                      <span className="mb-0.5 block text-[10px] font-semibold text-[#48C9B0]">{templateNames?.[ti] || 'Plantilla ' + (ti + 1)}</span>
                                       {template.length > 60 ? template.substring(0, 60) + '...' : template}
                                     </button>
                                   ))}
@@ -871,7 +938,10 @@ export default function EventPage() {
                   <div className="mb-3 ml-8 rounded-lg border border-[#e8e8e8] bg-[#f8f8f8] p-3 font-mono text-xs leading-relaxed">
                     <span className="font-semibold text-[#b8860b]">nombre</span> — obligatorio<br/>
                     <span className="font-semibold text-[#48C9B0]">telefono</span> — WhatsApp (opcional)<br/>
-                    <span className="font-semibold text-[#48C9B0]">email</span> — correo (opcional)
+                    <span className="font-semibold text-[#48C9B0]">email</span> — correo (opcional)<br/>
+                    <span className="font-semibold text-[#48C9B0]">notas</span> — texto libre (opcional)<br/>
+                    <span className="font-semibold text-[#48C9B0]">tags</span> — separados por coma (opcional)<br/>
+                    <span className="font-semibold text-[#48C9B0]">rsvp_status</span> — confirmed | pending | declined
                   </div>
                   <button onClick={downloadTemplate} className="ml-8 rounded-lg border border-[#48C9B0] px-4 py-2 text-xs text-[#1a9e88] transition hover:bg-[#f0fdfb]">⬇️ Descargar plantilla CSV</button>
                 </div>
@@ -946,10 +1016,10 @@ export default function EventPage() {
               <p className="px-5 py-4 text-sm text-[#aaa]">No hay plantillas — configúralas en Configuración.</p>
             ) : (
               <div className="flex flex-col">
-                {activeTemplates.map((template, ti) => (
+                {activeTemplates.map((template: string, ti: number) => (
                   <button key={ti} onClick={() => { window.open('https://wa.me/' + showWaSheet.phone!.replace(/\D/g, '') + '?text=' + buildWaText(showWaSheet, ti), '_blank'); setShowWaSheet(null) }}
                     className="border-b border-[#f5f5f5] px-5 py-3.5 text-left transition active:bg-[#f0fdfb]">
-                    <p className="mb-0.5 text-[10px] font-semibold text-[#48C9B0]">{event?.template_names?.[ti] || 'Plantilla ' + (ti + 1)}</p>
+                    <p className="mb-0.5 text-[10px] font-semibold text-[#48C9B0]">{templateNames?.[ti] || 'Plantilla ' + (ti + 1)}</p>
                     <p className="text-sm text-[#1D1E20] line-clamp-2">{template.length > 80 ? template.substring(0, 80) + '...' : template}</p>
                   </button>
                 ))}

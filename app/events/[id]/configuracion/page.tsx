@@ -178,33 +178,35 @@ export default function ConfiguracionPage() {
   const [saving, setSaving]               = useState(false)
   const [saved, setSaved]                 = useState(false)
   const [error, setError]                 = useState('')
-  const autoSaveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
-  const hasChangesRef = useRef(false)
+  const autoSaveTimeoutRef                = useRef<NodeJS.Timeout | null>(null)
+  const hasChangesRef                     = useRef(false)
 
+  // — datos de events —
   const [name, setName]                   = useState('')
   const [eventType, setEventType]         = useState('')
   const [eventDate, setEventDate]         = useState('')
-  const [eventEndDate, setEventEndDate]   = useState('')  // ← nuevo
+  const [eventEndDate, setEventEndDate]   = useState('')
   const [eventTime, setEventTime]         = useState('')
   const [venue, setVenue]                 = useState('')
   const [address, setAddress]             = useState('')
-
-  const [templates, setTemplates]         = useState<string[]>(Array(10).fill(''))
-  const [templateNames, setTemplateNames] = useState<string[]>([...DEFAULT_NAMES])
-  const [visibleTemplates, setVisibleTemplates] = useState(2)
-
+  const [eventStatus, setEventStatus]     = useState<EventStatus>('active')
   const [guestTags, setGuestTags]         = useState<string[]>([])
   const [newTag, setNewTag]               = useState('')
 
+  // — datos de event_settings —
+  const [settingsId, setSettingsId]       = useState<string | null>(null)
+  const [templates, setTemplates]         = useState<string[]>(Array(10).fill(''))
+  const [templateNames, setTemplateNames] = useState<string[]>([...DEFAULT_NAMES])
+  const [visibleTemplates, setVisibleTemplates] = useState(2)
   const [playlistToken, setPlaylistToken] = useState('')
   const [categories, setCategories]       = useState<string[]>([])
   const [newCategory, setNewCategory]     = useState('')
   const [copied, setCopied]               = useState(false)
 
-  const [eventStatus, setEventStatus]     = useState<EventStatus>('active')
+  // — status dropdown —
   const [showStatusDropdown, setShowStatusDropdown] = useState(false)
   const [statusSaving, setStatusSaving]   = useState(false)
-  const dropdownRef = useRef<HTMLDivElement>(null)
+  const dropdownRef                       = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -219,19 +221,29 @@ export default function ConfiguracionPage() {
   useEffect(() => { loadEvent() }, [])
 
   const loadEvent = async () => {
-    const { data } = await supabase.from('events').select('*').eq('id', id).single()
-    if (data) {
-      setName(data.name || '')
-      setEventType(data.event_type || '')
-      setEventDate(data.event_date ? data.event_date.split('T')[0] : '')
-      setEventEndDate(data.event_end_date ? data.event_end_date.split('T')[0] : '')  // ← nuevo
-      setEventTime(data.event_time || '')
-      setVenue(data.venue || '')
-      setAddress(data.address || '')
-      setEventStatus(data.event_status || 'active')
+    // Cargar events y event_settings en paralelo
+    const [{ data: eventData }, { data: settingsData }] = await Promise.all([
+      supabase.from('events').select('*').eq('id', id).single(),
+      supabase.from('event_settings').select('*').eq('event_id', id).single(),
+    ])
 
-      if (Array.isArray(data.message_templates)) {
-        const loaded = [...data.message_templates, ...Array(10).fill('')].slice(0, 10)
+    if (eventData) {
+      setName(eventData.name || '')
+      setEventType(eventData.event_type || '')
+      setEventDate(eventData.event_date ? eventData.event_date.split('T')[0] : '')
+      setEventEndDate(eventData.event_end_date ? eventData.event_end_date.split('T')[0] : '')
+      setEventTime(eventData.event_time || '')
+      setVenue(eventData.venue || '')
+      setAddress(eventData.address || '')
+      setEventStatus(eventData.event_status || 'active')
+      setGuestTags(Array.isArray(eventData.guest_tags) ? eventData.guest_tags : [])
+    }
+
+    if (settingsData) {
+      setSettingsId(settingsData.id)
+
+      if (Array.isArray(settingsData.message_templates)) {
+        const loaded = [...settingsData.message_templates, ...Array(10).fill('')].slice(0, 10)
         setTemplates(loaded)
         let lastFilledIndex = -1
         for (let i = loaded.length - 1; i >= 0; i--) {
@@ -240,34 +252,52 @@ export default function ConfiguracionPage() {
         setVisibleTemplates(Math.max(2, lastFilledIndex + 1))
       }
 
-      if (Array.isArray(data.template_names)) {
-        const loadedNames = [...data.template_names, ...DEFAULT_NAMES].slice(0, 10)
+      if (Array.isArray(settingsData.template_names)) {
+        const loadedNames = [...settingsData.template_names, ...DEFAULT_NAMES].slice(0, 10)
         setTemplateNames(loadedNames.map((n: string, i: number) => n || DEFAULT_NAMES[i]))
       }
 
-      setGuestTags(Array.isArray(data.guest_tags) ? data.guest_tags : [])
-      setPlaylistToken(data.playlist_token || '')
-      setCategories(Array.isArray(data.playlist_categories) ? data.playlist_categories : [])
+      setPlaylistToken(settingsData.playlist_token || '')
+      setCategories(Array.isArray(settingsData.playlist_categories) ? settingsData.playlist_categories : [])
     }
+
     setLoading(false)
   }
 
   const handleSave = async (autoSave = false) => {
     if (!name) { setError('El nombre es obligatorio'); return }
     setSaving(true); setError(''); setSaved(false)
-    const { error: err } = await supabase.from('events').update({
-      name, event_type: eventType || null,
+
+    // Guardar en events
+    const { error: eventErr } = await supabase.from('events').update({
+      name,
+      event_type: eventType || null,
       event_date: eventDate || null,
-      event_end_date: eventEndDate || null,  // ← nuevo
+      event_end_date: eventEndDate || null,
       event_time: eventTime || null,
-      venue: venue || null, address: address || null,
-      message_templates: templates, template_names: templateNames,
-      guest_tags: guestTags, playlist_token: playlistToken || null,
-      playlist_categories: categories,
+      venue: venue || null,
+      address: address || null,
+      guest_tags: guestTags,
     }).eq('id', id)
-    if (err) { setError('Error: ' + err.message); setSaving(false); return }
+
+    if (eventErr) { setError('Error: ' + eventErr.message); setSaving(false); return }
+
+    // Guardar en event_settings — upsert por event_id
+    const { error: settingsErr } = await supabase.from('event_settings').upsert({
+      ...(settingsId ? { id: settingsId } : {}),
+      event_id: id,
+      message_templates: templates,
+      template_names: templateNames,
+      playlist_token: playlistToken || null,
+      playlist_categories: categories,
+      updated_at: new Date().toISOString(),
+    }, { onConflict: 'event_id' })
+
+    if (settingsErr) { setError('Error: ' + settingsErr.message); setSaving(false); return }
+
     setSaving(false); setSaved(true)
     hasChangesRef.current = false
+
     if (!autoSave) {
       setTimeout(() => window.location.reload(), 800)
     } else {
@@ -308,7 +338,10 @@ export default function ConfiguracionPage() {
     scheduleAutoSave()
   }
 
-  const handleGenerateToken = () => setPlaylistToken(generateToken())
+  const handleGenerateToken = () => {
+    setPlaylistToken(generateToken())
+    scheduleAutoSave()
+  }
 
   const handleCopyLink = () => {
     const url = window.location.origin + '/playlist/' + playlistToken
@@ -361,7 +394,6 @@ export default function ConfiguracionPage() {
     window.open('https://maps.google.com?q=' + encodeURIComponent(address), '_blank')
   }
 
-  // Calcula días del evento automáticamente si hay fecha inicio y fin
   const eventDays = eventDate && eventEndDate
     ? Math.max(1, Math.round((new Date(eventEndDate).getTime() - new Date(eventDate).getTime()) / (1000 * 60 * 60 * 24)) + 1)
     : null
@@ -451,7 +483,6 @@ export default function ConfiguracionPage() {
                     </div>
                   </div>
 
-                  {/* Fechas — inicio y fin en la misma fila */}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="mb-1.5 block text-xs font-medium text-[#555]">Fecha de inicio</label>
@@ -473,7 +504,6 @@ export default function ConfiguracionPage() {
                     </div>
                   </div>
 
-                  {/* Badge de duración — solo aparece si hay fecha inicio y fin */}
                   {eventDays && (
                     <div className="flex items-center gap-1.5 rounded-lg border border-[#c8ede7] bg-[#f0fdfb] px-3 py-2">
                       <span className="text-sm">📅</span>

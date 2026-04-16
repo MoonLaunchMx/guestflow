@@ -32,29 +32,29 @@ const PLATFORM_CONFIG = {
 
 export default function PlaylistPlannerPage() {
   const { id } = useParams()
-  const [allSongs, setAllSongs]       = useState<Song[]>([])
-  const [categories, setCategories]   = useState<string[]>([])
-  const [eventName, setEventName]     = useState('')
-  const [loading, setLoading]         = useState(true)
-  const [saving, setSaving]           = useState(false)
-  const [filterCat, setFilterCat]     = useState('todas')
-  const [filterPlat, setFilterPlat]   = useState('todas')
-  const [search, setSearch]           = useState('')
+  const [allSongs, setAllSongs]           = useState<Song[]>([])
+  const [categories, setCategories]       = useState<string[]>([])
+  const [eventName, setEventName]         = useState('')
+  const [loading, setLoading]             = useState(true)
+  const [saving, setSaving]               = useState(false)
+  const [filterCat, setFilterCat]         = useState('todas')
+  const [filterPlat, setFilterPlat]       = useState('todas')
+  const [search, setSearch]               = useState('')
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
-  const [noteValue, setNoteValue]     = useState('')
+  const [noteValue, setNoteValue]         = useState('')
 
   useEffect(() => { loadData() }, [])
 
   const loadData = async () => {
-    const { data: eventData } = await supabase
-      .from('events').select('name, playlist_categories').eq('id', id).single()
-    if (eventData) {
-      setEventName(eventData.name || '')
-      setCategories(Array.isArray(eventData.playlist_categories) ? eventData.playlist_categories : [])
-    }
-    const { data: songsData } = await supabase
-      .from('song_recommendations').select('*').eq('event_id', id)
-      .order('position', { ascending: true })
+    // Cargar evento y settings en paralelo
+    const [{ data: eventData }, { data: settingsData }, { data: songsData }] = await Promise.all([
+      supabase.from('events').select('name').eq('id', id).single(),
+      supabase.from('event_settings').select('playlist_categories').eq('event_id', id).single(),
+      supabase.from('song_recommendations').select('*').eq('event_id', id).order('position', { ascending: true }),
+    ])
+
+    if (eventData) setEventName(eventData.name || '')
+    if (settingsData) setCategories(Array.isArray(settingsData.playlist_categories) ? settingsData.playlist_categories : [])
     setAllSongs(songsData || [])
     setLoading(false)
   }
@@ -97,8 +97,8 @@ export default function PlaylistPlannerPage() {
   }
 
   const filtered = allSongs.filter(s => {
-    const matchCat   = filterCat  === 'todas' || s.category === filterCat
-    const matchPlat  = filterPlat === 'todas' || (s.spotify_url && detectPlatform(s.spotify_url) === filterPlat)
+    const matchCat    = filterCat  === 'todas' || s.category === filterCat
+    const matchPlat   = filterPlat === 'todas' || (s.spotify_url && detectPlatform(s.spotify_url) === filterPlat)
     const matchSearch = search === '' ||
       s.song_title.toLowerCase().includes(search.toLowerCase()) ||
       s.artist.toLowerCase().includes(search.toLowerCase()) ||
