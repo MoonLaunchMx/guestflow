@@ -3,8 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-
-type EventStatus = 'active' | 'paused' | 'cancelled'
+import { EventStatus } from '@/lib/types'
 
 const EVENT_TYPES = [
   { value: 'boda',        label: '💍 Boda' },
@@ -45,6 +44,7 @@ const STATUS_STYLES: Record<EventStatus, { dot: string; badge: string; label: st
   active:    { dot: 'bg-[#48C9B0]', badge: 'border-[#c8ede7] bg-[#f0fdfb] text-[#1a9e88]', label: 'Activo' },
   paused:    { dot: 'bg-blue-400',  badge: 'border-blue-200 bg-blue-50 text-blue-700',       label: 'Pausado' },
   cancelled: { dot: 'bg-red-400',   badge: 'border-red-200 bg-red-50 text-red-600',          label: 'Cancelado' },
+  completed: { dot: 'bg-[#888]',    badge: 'border-[#e0e0e0] bg-[#f8f8f8] text-[#888]',     label: 'Completado' },
 }
 
 const STATUS_OPTIONS: { status: EventStatus; label: string; dot: string }[] = [
@@ -135,20 +135,12 @@ function TemplateInput({
         </div>
         <div className="flex items-center gap-3">
           {onClear && (
-            <button
-              onClick={onClear}
-              title="Limpiar contenido"
-              className="text-xs text-[#888] transition hover:text-[#1D1E20]"
-            >
+            <button onClick={onClear} title="Limpiar contenido" className="text-xs text-[#888] transition hover:text-[#1D1E20]">
               Limpiar
             </button>
           )}
           {canDelete && onDelete && (
-            <button
-              onClick={onDelete}
-              title="Eliminar plantilla"
-              className="text-xs text-[#cc3333] transition hover:text-[#aa2222]"
-            >
+            <button onClick={onDelete} title="Eliminar plantilla" className="text-xs text-[#cc3333] transition hover:text-[#aa2222]">
               - Eliminar
             </button>
           )}
@@ -192,6 +184,7 @@ export default function ConfiguracionPage() {
   const [name, setName]                   = useState('')
   const [eventType, setEventType]         = useState('')
   const [eventDate, setEventDate]         = useState('')
+  const [eventEndDate, setEventEndDate]   = useState('')  // ← nuevo
   const [eventTime, setEventTime]         = useState('')
   const [venue, setVenue]                 = useState('')
   const [address, setAddress]             = useState('')
@@ -231,6 +224,7 @@ export default function ConfiguracionPage() {
       setName(data.name || '')
       setEventType(data.event_type || '')
       setEventDate(data.event_date ? data.event_date.split('T')[0] : '')
+      setEventEndDate(data.event_end_date ? data.event_end_date.split('T')[0] : '')  // ← nuevo
       setEventTime(data.event_time || '')
       setVenue(data.venue || '')
       setAddress(data.address || '')
@@ -239,13 +233,9 @@ export default function ConfiguracionPage() {
       if (Array.isArray(data.message_templates)) {
         const loaded = [...data.message_templates, ...Array(10).fill('')].slice(0, 10)
         setTemplates(loaded)
-        // Encontrar el índice de la última plantilla con contenido
         let lastFilledIndex = -1
         for (let i = loaded.length - 1; i >= 0; i--) {
-          if (loaded[i]?.trim()) {
-            lastFilledIndex = i
-            break
-          }
+          if (loaded[i]?.trim()) { lastFilledIndex = i; break }
         }
         setVisibleTemplates(Math.max(2, lastFilledIndex + 1))
       }
@@ -266,11 +256,14 @@ export default function ConfiguracionPage() {
     if (!name) { setError('El nombre es obligatorio'); return }
     setSaving(true); setError(''); setSaved(false)
     const { error: err } = await supabase.from('events').update({
-      name, event_type: eventType || null, event_date: eventDate || null,
-      event_time: eventTime || null, venue: venue || null,
-      address: address || null, message_templates: templates,
-      template_names: templateNames, guest_tags: guestTags,
-      playlist_token: playlistToken || null, playlist_categories: categories,
+      name, event_type: eventType || null,
+      event_date: eventDate || null,
+      event_end_date: eventEndDate || null,  // ← nuevo
+      event_time: eventTime || null,
+      venue: venue || null, address: address || null,
+      message_templates: templates, template_names: templateNames,
+      guest_tags: guestTags, playlist_token: playlistToken || null,
+      playlist_categories: categories,
     }).eq('id', id)
     if (err) { setError('Error: ' + err.message); setSaving(false); return }
     setSaving(false); setSaved(true)
@@ -284,28 +277,20 @@ export default function ConfiguracionPage() {
 
   const scheduleAutoSave = () => {
     hasChangesRef.current = true
-    // Limpiar timeout anterior
     if (autoSaveTimeoutRef.current) clearTimeout(autoSaveTimeoutRef.current)
-    // Programar nuevo guardado después de 2 segundos de inactividad
     autoSaveTimeoutRef.current = setTimeout(() => {
-      if (hasChangesRef.current && name) {
-        handleSave(true)
-      }
+      if (hasChangesRef.current && name) handleSave(true)
     }, 2000)
   }
 
-  // Limpiar timeout al desmontar
   useEffect(() => {
-    return () => {
-      if (autoSaveTimeoutRef.current) clearTimeout(autoSaveTimeoutRef.current)
-    }
+    return () => { if (autoSaveTimeoutRef.current) clearTimeout(autoSaveTimeoutRef.current) }
   }, [])
 
   const handleStatusChange = async (newStatus: EventStatus) => {
     setStatusSaving(true)
     setShowStatusDropdown(false)
-    const { error: err } = await supabase
-      .from('events').update({ event_status: newStatus }).eq('id', id)
+    const { error: err } = await supabase.from('events').update({ event_status: newStatus }).eq('id', id)
     if (!err) setEventStatus(newStatus)
     setStatusSaving(false)
   }
@@ -357,22 +342,12 @@ export default function ConfiguracionPage() {
 
   const handleDeleteTemplate = (i: number) => {
     if (!confirm('¿Eliminar esta plantilla? No se puede deshacer.')) return
-    // Remover la plantilla en el índice especificado
     const newTemplates = templates.filter((_, idx) => idx !== i)
-    // Asegurarse de que siempre hay 10 posiciones (rellenando con vacíos al final)
-    while (newTemplates.length < 10) {
-      newTemplates.push('')
-    }
-    
+    while (newTemplates.length < 10) newTemplates.push('')
     const newNames = templateNames.filter((_, idx) => idx !== i)
-    while (newNames.length < 10) {
-      newNames.push(DEFAULT_NAMES[newNames.length])
-    }
-    
+    while (newNames.length < 10) newNames.push(DEFAULT_NAMES[newNames.length])
     setTemplates(newTemplates)
     setTemplateNames(newNames)
-    
-    // Reducir visibleTemplates en 1, pero no menos de 1
     setVisibleTemplates(Math.max(1, visibleTemplates - 1))
     scheduleAutoSave()
   }
@@ -385,6 +360,11 @@ export default function ConfiguracionPage() {
   const openMaps = () => {
     window.open('https://maps.google.com?q=' + encodeURIComponent(address), '_blank')
   }
+
+  // Calcula días del evento automáticamente si hay fecha inicio y fin
+  const eventDays = eventDate && eventEndDate
+    ? Math.max(1, Math.round((new Date(eventEndDate).getTime() - new Date(eventDate).getTime()) / (1000 * 60 * 60 * 24)) + 1)
+    : null
 
   if (loading) return <div className="p-8 text-sm text-[#666]">Cargando...</div>
 
@@ -414,17 +394,11 @@ export default function ConfiguracionPage() {
                 </button>
                 {showStatusDropdown && (
                   <div className="absolute left-0 top-full z-50 mt-1.5 w-44 overflow-hidden rounded-xl border border-[#e8e8e8] bg-white shadow-lg">
-                    <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-[#bbb]">
-                      Cambiar estado
-                    </div>
+                    <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-[#bbb]">Cambiar estado</div>
                     {dropdownOptions.map(opt => (
-                      <button
-                        key={opt.status}
-                        onClick={() => handleStatusChange(opt.status)}
-                        className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-xs text-[#555] transition hover:bg-[#f8f8f8]"
-                      >
-                        <span className={'h-2 w-2 rounded-full ' + opt.dot} />
-                        {opt.label}
+                      <button key={opt.status} onClick={() => handleStatusChange(opt.status)}
+                        className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-xs text-[#555] transition hover:bg-[#f8f8f8]">
+                        <span className={'h-2 w-2 rounded-full ' + opt.dot} />{opt.label}
                       </button>
                     ))}
                   </div>
@@ -442,9 +416,7 @@ export default function ConfiguracionPage() {
           </button>
         </div>
         {error && (
-          <div className="mt-3 rounded-lg border border-[#ffc0c0] bg-[#fff0f0] px-3 py-2.5 text-xs text-[#cc3333]">
-            {error}
-          </div>
+          <div className="mt-3 rounded-lg border border-[#ffc0c0] bg-[#fff0f0] px-3 py-2.5 text-xs text-[#cc3333]">{error}</div>
         )}
       </div>
 
@@ -479,21 +451,45 @@ export default function ConfiguracionPage() {
                     </div>
                   </div>
 
+                  {/* Fechas — inicio y fin en la misma fila */}
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="mb-1.5 block text-xs font-medium text-[#555]">Fecha</label>
+                      <label className="mb-1.5 block text-xs font-medium text-[#555]">Fecha de inicio</label>
                       <input type="date" value={eventDate} onChange={e => { setEventDate(e.target.value); scheduleAutoSave() }}
                         style={{ colorScheme: 'light' }}
                         className="w-full rounded-lg border border-[#d0d0d0] bg-white px-3 py-2.5 text-sm text-[#1D1E20] outline-none transition focus:border-[#48C9B0]"
                       />
                     </div>
                     <div>
-                      <label className="mb-1.5 block text-xs font-medium text-[#555]">Hora</label>
-                      <input type="time" value={eventTime} onChange={e => { setEventTime(e.target.value); scheduleAutoSave() }}
+                      <label className="mb-1.5 block text-xs font-medium text-[#555]">
+                        Fecha de término
+                        <span className="ml-1 font-normal text-[#bbb]">(opcional)</span>
+                      </label>
+                      <input type="date" value={eventEndDate} min={eventDate || undefined}
+                        onChange={e => { setEventEndDate(e.target.value); scheduleAutoSave() }}
                         style={{ colorScheme: 'light' }}
                         className="w-full rounded-lg border border-[#d0d0d0] bg-white px-3 py-2.5 text-sm text-[#1D1E20] outline-none transition focus:border-[#48C9B0]"
                       />
                     </div>
+                  </div>
+
+                  {/* Badge de duración — solo aparece si hay fecha inicio y fin */}
+                  {eventDays && (
+                    <div className="flex items-center gap-1.5 rounded-lg border border-[#c8ede7] bg-[#f0fdfb] px-3 py-2">
+                      <span className="text-sm">📅</span>
+                      <span className="text-xs font-semibold text-[#1a9e88]">
+                        {eventDays === 1 ? '1 día' : `${eventDays} días`}
+                      </span>
+                      <span className="text-xs text-[#888]">de duración</span>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="mb-1.5 block text-xs font-medium text-[#555]">Hora</label>
+                    <input type="time" value={eventTime} onChange={e => { setEventTime(e.target.value); scheduleAutoSave() }}
+                      style={{ colorScheme: 'light' }}
+                      className="w-full rounded-lg border border-[#d0d0d0] bg-white px-3 py-2.5 text-sm text-[#1D1E20] outline-none transition focus:border-[#48C9B0]"
+                    />
                   </div>
 
                   <div>
@@ -512,11 +508,8 @@ export default function ConfiguracionPage() {
                         className="flex-1 rounded-lg border border-[#d0d0d0] bg-white px-3 py-2.5 text-sm text-[#1D1E20] outline-none transition focus:border-[#48C9B0]"
                       />
                       {address && (
-                        <button
-                          type="button"
-                          onClick={openMaps}
-                          className="shrink-0 flex items-center gap-1.5 rounded-lg border border-[#d0d0d0] bg-white px-3 py-2 text-xs text-[#666] transition hover:border-[#48C9B0] hover:text-[#1a9e88]"
-                        >
+                        <button type="button" onClick={openMaps}
+                          className="shrink-0 flex items-center gap-1.5 rounded-lg border border-[#d0d0d0] bg-white px-3 py-2 text-xs text-[#666] transition hover:border-[#48C9B0] hover:text-[#1a9e88]">
                           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
                             <circle cx="12" cy="10" r="3"/>
@@ -571,20 +564,17 @@ export default function ConfiguracionPage() {
                 <h2 className="mb-1.5 text-base font-semibold text-[#1D1E20] sm:text-lg">💬 Plantillas de WhatsApp</h2>
                 <p className="mb-4 text-xs text-[#666]">Doble click en el nombre para renombrarlo. Usa los chips para insertar variables.</p>
                 <div className="flex flex-col gap-5">
-                  {templates.slice(0, visibleTemplates).map((template, i) => {
-                    const actualIndex = i
-                    return (
-                    <TemplateInput key={actualIndex} index={actualIndex} value={template}
-                      name={templateNames[actualIndex] || DEFAULT_NAMES[actualIndex]}
-                      onChange={val => updateTemplate(actualIndex, val)}
-                      onNameChange={val => updateTemplateName(actualIndex, val)}
-                      placeholder={actualIndex === 0 ? 'Hola {nombre}, te esperamos en {evento} el {fecha} a las {hora} 🎉' : 'Escribe aquí tu mensaje...'}
-                      onDelete={() => handleDeleteTemplate(actualIndex)}
-                      onClear={() => handleClearTemplate(actualIndex)}
-                      canDelete={actualIndex > 0}
+                  {templates.slice(0, visibleTemplates).map((template, i) => (
+                    <TemplateInput key={i} index={i} value={template}
+                      name={templateNames[i] || DEFAULT_NAMES[i]}
+                      onChange={val => updateTemplate(i, val)}
+                      onNameChange={val => updateTemplateName(i, val)}
+                      placeholder={i === 0 ? 'Hola {nombre}, te esperamos en {evento} el {fecha} a las {hora} 🎉' : 'Escribe aquí tu mensaje...'}
+                      onDelete={() => handleDeleteTemplate(i)}
+                      onClear={() => handleClearTemplate(i)}
+                      canDelete={i > 0}
                     />
-                    )
-                  })}
+                  ))}
                   {visibleTemplates < 10 && (
                     <button onClick={() => setVisibleTemplates(v => Math.min(v + 1, 10))}
                       className="flex items-center gap-1.5 text-xs text-[#48C9B0] transition hover:text-[#3ab89f]">

@@ -2,19 +2,9 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { supabase } from '@/lib/supabase'
+import { Event, EventStatus } from '@/lib/types'
+
 export const dynamic = 'force-dynamic'
-
-type EventStatus = 'active' | 'paused' | 'cancelled'
-
-type Event = {
-  id: string
-  name: string
-  event_date: string
-  event_time: string | null
-  venue: string | null
-  total_guests: number
-  event_status: EventStatus
-}
 
 type EventWithStats = Event & {
   confirmed: number
@@ -58,16 +48,13 @@ export default function Dashboard() {
     if (!user) { window.location.href = '/'; return }
     setUserEmail(user.email || '')
     const welcomed = localStorage.getItem('gf_welcomed')
-    if (!welcomed) {
-      setShowWelcome(true)
-      localStorage.setItem('gf_welcomed', '1')
-    }
+    if (!welcomed) { setShowWelcome(true); localStorage.setItem('gf_welcomed', '1') }
   }
 
   const loadData = async () => {
     const { data: eventsData } = await supabase
       .from('events')
-      .select('id, name, event_date, event_time, venue, total_guests, event_status')
+      .select('id, name, event_date, event_end_date, event_time, venue, total_guests, event_status')
       .order('event_date', { ascending: true })
 
     if (!eventsData) { setLoading(false); return }
@@ -137,23 +124,16 @@ export default function Dashboard() {
     const target = getEventDateTime(event)
     const diff = target.getTime() - now.getTime()
     if (diff <= 0) return '¡Es hoy!'
-    
-    const totalDays    = Math.floor(diff / (1000 * 60 * 60 * 24))
-    const months       = Math.floor(totalDays / 30)
-    const days         = totalDays % 30
-    const hours        = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
-    const minutes      = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
-    const seconds      = Math.floor((diff % (1000 * 60)) / 1000)
-    
-    // Si falta más de 24 horas: mostrar Meses, Días y Horas
+    const totalDays = Math.floor(diff / (1000 * 60 * 60 * 24))
+    const months    = Math.floor(totalDays / 30)
+    const days      = totalDays % 30
+    const hours     = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60))
+    const minutes   = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60))
+    const seconds   = Math.floor((diff % (1000 * 60)) / 1000)
     if (totalDays >= 1) {
-      if (months > 0) {
-        return `${months}m ${days}d ${hours}h`
-      }
+      if (months > 0) return `${months}m ${days}d ${hours}h`
       return `${days}d ${hours}h`
     }
-    
-    // Si falta MENOS de 24 horas: mostrar Horas, Minutos y Segundos
     return `${hours}h ${minutes}m ${seconds}s`
   }
 
@@ -295,7 +275,7 @@ export default function Dashboard() {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-[#f8f8f8] font-sans text-[#1D1E20]">
 
-      {/* ══ MODAL BIENVENIDA ══ */}
+      {/* MODAL BIENVENIDA */}
       {showWelcome && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 px-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-7 shadow-2xl">
@@ -303,9 +283,7 @@ export default function Dashboard() {
               <span style={{ fontFamily: 'Georgia, serif' }} className="text-xl font-bold text-[#1D1E20]">
                 Guest<span className="text-[#48C9B0]">Flow</span>
               </span>
-              <span className="rounded-full border border-[#48C9B0]/40 bg-[#f0fdfb] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#48C9B0]">
-                Beta
-              </span>
+              <span className="rounded-full border border-[#48C9B0]/40 bg-[#f0fdfb] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#48C9B0]">Beta</span>
             </div>
             <h2 className="mb-2 text-lg font-bold text-[#1D1E20]">¡Bienvenido a GuestFlow!</h2>
             <p className="mb-4 text-sm leading-relaxed text-[#666]">
@@ -324,20 +302,14 @@ export default function Dashboard() {
                 </div>
               ))}
             </div>
-            <p className="mb-5 text-xs leading-relaxed text-[#888]">
-              Estás usando una versión beta. Tu feedback es muy valioso para mejorar la app.
-            </p>
+            <p className="mb-5 text-xs leading-relaxed text-[#888]">Estás usando una versión beta. Tu feedback es muy valioso para mejorar la app.</p>
             <div className="flex flex-col gap-2.5">
-              <button
-                onClick={() => window.open(FEEDBACK_URL, '_blank')}
-                className="w-full rounded-lg border border-[#48C9B0] bg-[#f0fdfb] py-2.5 text-sm font-semibold text-[#1a9e88] transition hover:bg-[#e0faf5]"
-              >
+              <button onClick={() => window.open(FEEDBACK_URL, '_blank')}
+                className="w-full rounded-lg border border-[#48C9B0] bg-[#f0fdfb] py-2.5 text-sm font-semibold text-[#1a9e88] transition hover:bg-[#e0faf5]">
                 Dar feedback →
               </button>
-              <button
-                onClick={() => setShowWelcome(false)}
-                className="w-full rounded-lg bg-[#1D1E20] py-2.5 text-sm font-semibold text-white transition hover:bg-[#2d2e30]"
-              >
+              <button onClick={() => setShowWelcome(false)}
+                className="w-full rounded-lg bg-[#1D1E20] py-2.5 text-sm font-semibold text-white transition hover:bg-[#2d2e30]">
                 Empezar
               </button>
             </div>
@@ -367,20 +339,16 @@ export default function Dashboard() {
               <h1 className="text-xl font-bold text-[#1D1E20] sm:text-2xl">Dashboard</h1>
               <p className="mt-0.5 text-xs text-[#888] sm:text-sm">Resumen de tus eventos</p>
             </div>
-            <button
-              onClick={() => window.location.href = '/events/new'}
-              className="rounded-lg bg-[#48C9B0] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#3ab89f] active:scale-95 sm:px-5 sm:py-2.5"
-            >
+            <button onClick={() => window.location.href = '/events/new'}
+              className="rounded-lg bg-[#48C9B0] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#3ab89f] active:scale-95 sm:px-5 sm:py-2.5">
               <span className="sm:hidden">+ Nuevo</span>
               <span className="hidden sm:inline">+ Nuevo evento</span>
             </button>
           </div>
 
           {!loading && nextEvent && (
-            <div
-              onClick={() => window.location.href = '/events/' + nextEvent.id}
-              className="mb-5 cursor-pointer rounded-2xl border border-[#48C9B0]/30 bg-white p-4 shadow-[0_2px_16px_rgba(72,201,176,0.1)] transition hover:shadow-[0_4px_24px_rgba(72,201,176,0.18)] sm:mb-6"
-            >
+            <div onClick={() => window.location.href = '/events/' + nextEvent.id}
+              className="mb-5 cursor-pointer rounded-2xl border border-[#48C9B0]/30 bg-white p-4 shadow-[0_2px_16px_rgba(72,201,176,0.1)] transition hover:shadow-[0_4px_24px_rgba(72,201,176,0.18)] sm:mb-6">
               <div className="flex items-stretch gap-4">
                 <div className="min-w-0 flex-1">
                   <span className="mb-1.5 inline-block rounded-full bg-[#e8f7f3] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#48C9B0]">

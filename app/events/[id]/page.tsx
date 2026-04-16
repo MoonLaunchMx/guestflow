@@ -3,25 +3,9 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { PartyMember, Guest } from '@/lib/types'
+import { PartyMember, Guest, Event, EventStatus, RsvpStatus } from '@/lib/types'
 
-type EventStatus = 'active' | 'paused' | 'cancelled'
-
-type Event = {
-  id: string
-  name: string
-  event_date: string
-  venue: string | null
-  address: string | null
-  event_type: string | null
-  total_guests: number
-  event_time: string | null
-  message_templates: string[]
-  template_names: string[]
-  playlist_token: string | null
-  guest_tags: string[]
-  event_status: EventStatus
-}
+// ─── CONSTANTES UI (sin cambios) ─────────────────────────────────────────────
 
 const STATUS_LABEL: Record<string, { label: string; color: string; bg: string; border: string }> = {
   pending:   { label: 'Pendiente',  color: '#b8860b', bg: '#fffbf0', border: '#f0d080' },
@@ -85,7 +69,6 @@ type EditMember = {
   rsvp_status: 'pending' | 'confirmed' | 'declined'
 }
 
-// Normaliza un número de teléfono: quita todo excepto dígitos
 function normalizePhone(phone: string): string {
   return phone.replace(/\D/g, '')
 }
@@ -155,12 +138,13 @@ const EVENT_STATUS_STYLES: Record<string, { dot: string; badge: string; label: s
   completed: { dot: 'bg-[#888]',    badge: 'border-[#e0e0e0] bg-[#f8f8f8] text-[#888]',    label: 'Completado' },
 }
 
-// Tipos para el resultado de validación de duplicados en CSV
 type CsvDuplicateResult = {
   hasDuplicates: boolean
   rows: Array<{ event_id: string | string[]; name: string; phone: string | null; email: string | null; party_size: number; rsvp_status: string; tags: never[] }>
   duplicates: Array<{ row: number; name: string; phone: string; conflictWith: string }>
 }
+
+// ─── COMPONENTE PRINCIPAL ─────────────────────────────────────────────────────
 
 export default function EventPage() {
   const { id } = useParams()
@@ -178,7 +162,6 @@ export default function EventPage() {
   const [csvSuccess, setCsvSuccess] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
-  // Estado para preview/confirmación de CSV
   const [csvPreview, setCsvPreview] = useState<CsvDuplicateResult | null>(null)
   const [csvImporting, setCsvImporting] = useState(false)
 
@@ -224,38 +207,21 @@ export default function EventPage() {
     let result = guests
     if (filter !== 'all') result = result.filter(g => g.rsvp_status === filter)
     if (search) result = result.filter(g => g.name.toLowerCase().includes(search.toLowerCase()))
-    
-    // Ordenamiento
     if (sortField) {
       result = [...result].sort((a, b) => {
         let aVal: any = ''
         let bVal: any = ''
-        
         switch (sortField) {
-          case 'name':
-            aVal = a.name.toLowerCase()
-            bVal = b.name.toLowerCase()
-            break
-          case 'phone':
-            aVal = a.phone?.toLowerCase() || ''
-            bVal = b.phone?.toLowerCase() || ''
-            break
-          case 'notes':
-            aVal = a.notes?.toLowerCase() || ''
-            bVal = b.notes?.toLowerCase() || ''
-            break
-          case 'status':
-            aVal = a.rsvp_status
-            bVal = b.rsvp_status
-            break
+          case 'name':   aVal = a.name.toLowerCase();         bVal = b.name.toLowerCase();         break
+          case 'phone':  aVal = a.phone?.toLowerCase() || ''; bVal = b.phone?.toLowerCase() || ''; break
+          case 'notes':  aVal = a.notes?.toLowerCase() || ''; bVal = b.notes?.toLowerCase() || ''; break
+          case 'status': aVal = a.rsvp_status;                bVal = b.rsvp_status;                break
         }
-        
         if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1
         if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1
         return 0
       })
     }
-    
     setFiltered(result)
   }, [guests, filter, search, sortField, sortDirection])
 
@@ -313,12 +279,12 @@ export default function EventPage() {
     setStatusSaving(false)
   }
 
-  const updateStatus = async (guestId: string, status: 'pending' | 'confirmed' | 'declined') => {
+  const updateStatus = async (guestId: string, status: RsvpStatus) => {
     await supabase.from('guests').update({ rsvp_status: status }).eq('id', guestId)
     setGuests(prev => prev.map(g => g.id === guestId ? { ...g, rsvp_status: status } : g))
   }
 
-  const updatePartyMemberStatus = async (memberId: string, guestId: string, status: 'pending' | 'confirmed' | 'declined') => {
+  const updatePartyMemberStatus = async (memberId: string, guestId: string, status: RsvpStatus) => {
     await supabase.from('party_members').update({ rsvp_status: status }).eq('id', memberId)
     setGuests(prev => prev.map(g => g.id === guestId ? { ...g, party_members: g.party_members.map(m => m.id === memberId ? { ...m, rsvp_status: status } : m) } : g))
   }
@@ -346,12 +312,8 @@ export default function EventPage() {
   }
 
   const handleHeaderClick = (field: 'name' | 'phone' | 'notes' | 'status') => {
-    if (sortField === field) {
-      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
-    } else {
-      setSortField(field)
-      setSortDirection('asc')
-    }
+    if (sortField === field) setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc')
+    else { setSortField(field); setSortDirection('asc') }
   }
 
   const getSortIndicator = (field: 'name' | 'phone' | 'notes' | 'status') => {
@@ -362,19 +324,13 @@ export default function EventPage() {
   const handleEditSave = async () => {
     if (!editGuest) return
     if (!editName) { setEditError('El nombre es obligatorio'); return }
-
-    // Validar duplicado de WhatsApp al editar (excluir el invitado actual)
     if (editPhone) {
       const normalizedEdit = normalizePhone(editPhone)
       if (normalizedEdit.length > 0) {
         const duplicate = guests.find(g => g.id !== editGuest.id && g.phone && normalizePhone(g.phone) === normalizedEdit)
-        if (duplicate) {
-          setEditError(`Este WhatsApp ya está registrado para "${duplicate.name}"`)
-          return
-        }
+        if (duplicate) { setEditError(`Este WhatsApp ya está registrado para "${duplicate.name}"`); return }
       }
     }
-
     setEditSaving(true); setEditError('')
     const { error } = await supabase.from('guests').update({ name: editName, phone: editPhone || null, email: editEmail || null, party_size: 1 + editMembers.length, notes: editNotes || null, tags: editTags }).eq('id', editGuest.id)
     if (error) { setEditError('Error: ' + error.message); setEditSaving(false); return }
@@ -393,7 +349,7 @@ export default function EventPage() {
   }
   const toggleSelectAll = () => { setSelected(selected.size === filtered.length ? new Set() : new Set(filtered.map(g => g.id))) }
 
-  const bulkUpdateStatus = async (status: 'pending' | 'confirmed' | 'declined') => {
+  const bulkUpdateStatus = async (status: RsvpStatus) => {
     const ids = Array.from(selected)
     await supabase.from('guests').update({ rsvp_status: status }).in('id', ids)
     setGuests(prev => prev.map(g => selected.has(g.id) ? { ...g, rsvp_status: status } : g))
@@ -434,19 +390,13 @@ export default function EventPage() {
 
   const handleAddGuest = async () => {
     if (!name) { setFormError('El nombre es obligatorio'); return }
-
-    // Validar duplicado de WhatsApp
     if (phone) {
       const normalizedNew = normalizePhone(phone)
       if (normalizedNew.length > 0) {
         const duplicate = guests.find(g => g.phone && normalizePhone(g.phone) === normalizedNew)
-        if (duplicate) {
-          setFormError(`Este WhatsApp ya está registrado para "${duplicate.name}"`)
-          return
-        }
+        if (duplicate) { setFormError(`Este WhatsApp ya está registrado para "${duplicate.name}"`); return }
       }
     }
-
     setSaving(true); setFormError('')
     const { data: guestData, error } = await supabase.from('guests').insert({ event_id: id, name, phone: phone || null, email: email || null, party_size: 1 + newMembers.length, notes: notes || null, tags: newTags, rsvp_status: 'pending' }).select().single()
     if (error || !guestData) { setFormError('Error: ' + error?.message); setSaving(false); return }
@@ -456,11 +406,9 @@ export default function EventPage() {
     await loadGuests(); resetForm(); setShowModal(false); setSaving(false)
   }
 
-  // Procesa el CSV y genera un preview con info de duplicados, sin importar todavía
   const handleCSV = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; if (!file) return
     setCsvError(''); setCsvSuccess(''); setCsvPreview(null)
-
     const text = await file.text()
     const lines = text.split('\n').filter(l => l.trim())
     if (lines.length < 2) { setCsvError('El archivo está vacío'); return }
@@ -470,77 +418,42 @@ export default function EventPage() {
     const phoneIdx = headers.findIndex(h => h.includes('tel') || h.includes('phone') || h.includes('whatsapp') || h.includes('celular'))
     const emailIdx = headers.findIndex(h => h.includes('email') || h.includes('correo'))
     if (nameIdx === -1) { setCsvError('No se encontró columna "nombre"'); return }
-
     const rows = lines.slice(1).map(line => {
       const cols = line.split(sep).map(c => c.trim().replace(/"/g, ''))
-      return {
-        event_id: id as string,
-        name: cols[nameIdx] || '',
-        phone: phoneIdx >= 0 ? cols[phoneIdx] || null : null,
-        email: emailIdx >= 0 ? cols[emailIdx] || null : null,
-        party_size: 1,
-        rsvp_status: 'pending',
-        tags: [] as never[],
-      }
+      return { event_id: id as string, name: cols[nameIdx] || '', phone: phoneIdx >= 0 ? cols[phoneIdx] || null : null, email: emailIdx >= 0 ? cols[emailIdx] || null : null, party_size: 1, rsvp_status: 'pending', tags: [] as never[] }
     }).filter(r => r.name)
-
     if (!rows.length) { setCsvError('No se encontraron invitados válidos'); return }
-
-    // Detectar duplicados: contra invitados existentes y dentro del mismo archivo
     const duplicates: CsvDuplicateResult['duplicates'] = []
-    const seenInFile = new Map<string, string>() // normalizedPhone -> name
-
+    const seenInFile = new Map<string, string>()
     rows.forEach((row, idx) => {
       if (!row.phone) return
       const norm = normalizePhone(row.phone)
       if (!norm) return
-
-      // Duplicado con invitado ya existente
       const existingGuest = guests.find(g => g.phone && normalizePhone(g.phone) === norm)
-      if (existingGuest) {
-        duplicates.push({ row: idx + 2, name: row.name, phone: row.phone, conflictWith: existingGuest.name + ' (ya registrado)' })
-        return
-      }
-
-      // Duplicado dentro del mismo archivo
-      if (seenInFile.has(norm)) {
-        duplicates.push({ row: idx + 2, name: row.name, phone: row.phone, conflictWith: seenInFile.get(norm)! + ' (misma importación)' })
-        return
-      }
-
+      if (existingGuest) { duplicates.push({ row: idx + 2, name: row.name, phone: row.phone, conflictWith: existingGuest.name + ' (ya registrado)' }); return }
+      if (seenInFile.has(norm)) { duplicates.push({ row: idx + 2, name: row.name, phone: row.phone, conflictWith: seenInFile.get(norm)! + ' (misma importación)' }); return }
       seenInFile.set(norm, row.name)
     })
-
     setCsvPreview({ hasDuplicates: duplicates.length > 0, rows, duplicates })
     if (fileRef.current) fileRef.current.value = ''
   }
 
-  // Confirma e importa las filas del CSV (excluyendo duplicados si los hay)
   const confirmCsvImport = async (skipDuplicates: boolean) => {
     if (!csvPreview) return
     setCsvImporting(true); setCsvError('')
-
     let rowsToImport = csvPreview.rows
     if (skipDuplicates) {
       const duplicateNames = new Set(csvPreview.duplicates.map(d => d.name + '|' + d.phone))
       rowsToImport = csvPreview.rows.filter(r => !duplicateNames.has(r.name + '|' + r.phone))
     }
-
-    if (!rowsToImport.length) {
-      setCsvError('No quedan invitados para importar después de excluir duplicados')
-      setCsvImporting(false)
-      setCsvPreview(null)
-      return
-    }
-
+    if (!rowsToImport.length) { setCsvError('No quedan invitados para importar'); setCsvImporting(false); setCsvPreview(null); return }
     const { error } = await supabase.from('guests').insert(rowsToImport)
     if (error) { setCsvError('Error al importar: ' + error.message); setCsvImporting(false); return }
     for (let i = 0; i < rowsToImport.length; i++) await supabase.rpc('increment_guests', { event_id_input: id })
     setEvent(prev => prev ? { ...prev, total_guests: prev.total_guests + rowsToImport.length } : prev)
     await loadGuests()
     setCsvSuccess('✓ ' + rowsToImport.length + ' invitados importados' + (skipDuplicates && csvPreview.duplicates.length > 0 ? ' (' + csvPreview.duplicates.length + ' duplicados omitidos)' : ''))
-    setCsvPreview(null)
-    setCsvImporting(false)
+    setCsvPreview(null); setCsvImporting(false)
   }
 
   const exportCSV = () => {
@@ -581,33 +494,27 @@ export default function EventPage() {
   const badgeStyle = EVENT_STATUS_STYLES[displayStatus]
   const isClickable = displayStatus !== 'completed'
 
-const statusOptions = [
-  { status: 'active' as EventStatus,    label: 'Activo',    dot: 'bg-[#48C9B0]' },
-  { status: 'paused' as EventStatus,    label: 'Pausado',   dot: 'bg-blue-400' },
-  { status: 'cancelled' as EventStatus, label: 'Cancelado', dot: 'bg-red-400' },
-].filter(o => o.status !== event?.event_status)
+  const statusOptions = [
+    { status: 'active' as EventStatus,    label: 'Activo',    dot: 'bg-[#48C9B0]' },
+    { status: 'paused' as EventStatus,    label: 'Pausado',   dot: 'bg-blue-400' },
+    { status: 'cancelled' as EventStatus, label: 'Cancelado', dot: 'bg-red-400' },
+  ].filter(o => o.status !== event?.event_status)
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'visible', background: '#ffffff', color: '#1D1E20' }}>
 
       {/* PANEL SUPERIOR */}
       <div style={{ flexShrink: 0, borderBottom: '1px solid #e8e8e8' }} className="px-4 pt-4 pb-0 sm:px-6 sm:pt-5 lg:px-10 lg:pt-6">
-
         <div className="mb-4">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-2">
                 <h1 className="text-lg font-bold text-[#1D1E20] sm:text-xl lg:text-2xl">{event?.name}</h1>
-                {event?.event_type && (
-                  <span className="text-xs text-[#888] sm:text-sm">{EVENT_TYPE_LABELS[event.event_type]}</span>
-                )}
+                {event?.event_type && <span className="text-xs text-[#888] sm:text-sm">{EVENT_TYPE_LABELS[event.event_type]}</span>}
                 {event && (
                   <div className="relative" ref={statusDropdownRef}>
-                    <button
-                      onClick={() => isClickable && setShowStatusDropdown(!showStatusDropdown)}
-                      disabled={statusSaving || !isClickable}
-                      className={'flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold transition ' + (isClickable ? 'hover:opacity-80' : 'cursor-default') + ' ' + badgeStyle.badge + ' disabled:opacity-60'}
-                    >
+                    <button onClick={() => isClickable && setShowStatusDropdown(!showStatusDropdown)} disabled={statusSaving || !isClickable}
+                      className={'flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold transition ' + (isClickable ? 'hover:opacity-80' : 'cursor-default') + ' ' + badgeStyle.badge + ' disabled:opacity-60'}>
                       <span className={'h-1.5 w-1.5 rounded-full ' + badgeStyle.dot} />
                       {statusSaving ? 'Guardando...' : badgeStyle.label}
                       {isClickable && (
@@ -622,8 +529,7 @@ const statusOptions = [
                         {statusOptions.map(opt => (
                           <button key={opt.status} onClick={() => handleStatusChange(opt.status)}
                             className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-xs text-[#555] transition hover:bg-[#f8f8f8]">
-                            <span className={'h-2 w-2 rounded-full ' + opt.dot} />
-                            {opt.label}
+                            <span className={'h-2 w-2 rounded-full ' + opt.dot} />{opt.label}
                           </button>
                         ))}
                       </div>
@@ -636,9 +542,7 @@ const statusOptions = [
                 {event?.venue ? ' · ' + event.venue : ''}
               </p>
             </div>
-            <button onClick={() => window.location.href = '/dashboard'} className="shrink-0 text-xs text-[#999] transition hover:text-[#48C9B0] sm:hidden">
-              ← Eventos
-            </button>
+            <button onClick={() => window.location.href = '/dashboard'} className="shrink-0 text-xs text-[#999] transition hover:text-[#48C9B0] sm:hidden">← Eventos</button>
           </div>
         </div>
 
@@ -662,7 +566,6 @@ const statusOptions = [
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Buscar..."
               className="w-full rounded-lg border border-[#e0e0e0] bg-[#f8f8f8] px-3 py-2 text-sm text-[#1D1E20] outline-none sm:w-48" />
-
             <div className="grid grid-cols-4 gap-1 w-full">
               {[
                 { key: 'all',       label: 'Todos',       labelShort: 'Todos', count: totalPersonas },
@@ -674,13 +577,10 @@ const statusOptions = [
                   className={'flex items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold transition ' + (filter === tab.key ? 'bg-[#1D1E20] text-white' : 'text-[#888] hover:bg-[#efefef]')}>
                   <span className="sm:hidden">{tab.labelShort}</span>
                   <span className="hidden sm:inline">{tab.label}</span>
-                  <span className={'rounded-full px-1.5 py-0.5 text-[10px] font-bold ' + (filter === tab.key ? 'bg-white/20 text-white' : 'bg-[#e8e8e8] text-[#666]')}>
-                    {tab.count}
-                  </span>
+                  <span className={'rounded-full px-1.5 py-0.5 text-[10px] font-bold ' + (filter === tab.key ? 'bg-white/20 text-white' : 'bg-[#e8e8e8] text-[#666]')}>{tab.count}</span>
                 </button>
               ))}
             </div>
-
             <div className="flex items-center justify-end gap-2 sm:ml-auto">
               {someSelected && (
                 <div className="relative flex-1 sm:flex-none" ref={bulkMenuRef}>
@@ -690,8 +590,7 @@ const statusOptions = [
                   {showBulkMenu && (
                     <div className="absolute right-0 top-full z-50 mt-1 min-w-[200px] rounded-xl border border-[#e8e8e8] bg-white p-1 shadow-lg">
                       <button onClick={bulkWhatsApp} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-[#25D366] hover:bg-[#f0fdfb]">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="#25D366">{WA_ICON}</svg>
-                        Enviar WhatsApp
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="#25D366">{WA_ICON}</svg>Enviar WhatsApp
                       </button>
                       <div className="my-1 h-px bg-[#f0f0f0]" />
                       <button onClick={() => bulkUpdateStatus('confirmed')} className="w-full rounded-lg px-3 py-2 text-left text-xs text-[#2a7a50] hover:bg-[#f0fff6]">✓ Marcar confirmados</button>
@@ -762,7 +661,7 @@ const statusOptions = [
                           )}
                         </div>
                         <div className="shrink-0">
-                          <select value={guest.rsvp_status} onChange={e => updateStatus(guest.id, e.target.value as 'pending' | 'confirmed' | 'declined')}
+                          <select value={guest.rsvp_status} onChange={e => updateStatus(guest.id, e.target.value as RsvpStatus)}
                             className="rounded-lg border px-2 py-1.5 text-xs font-semibold outline-none"
                             style={{ background: STATUS_LABEL[guest.rsvp_status].bg, borderColor: STATUS_LABEL[guest.rsvp_status].border, color: STATUS_LABEL[guest.rsvp_status].color, cursor: 'pointer' }}>
                             <option value="pending">Pendiente</option>
@@ -797,10 +696,10 @@ const statusOptions = [
             <div className="hidden rounded-xl border border-[#e8e8e8] sm:block">
               <div className="grid items-center border-b border-[#e8e8e8] bg-[#f8f8f8] px-4 py-2" style={{ gridTemplateColumns: '40px 2fr 1.5fr 1fr 1.5fr 140px 40px' }}>
                 <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} style={{ cursor: 'pointer', accentColor: '#48C9B0' }} />
-                <button onClick={() => handleHeaderClick('name')} className="text-left text-[11px] font-semibold uppercase tracking-wide text-[#aaa] hover:text-[#1D1E20] transition cursor-pointer">Nombre{getSortIndicator('name')}</button>
+                <button onClick={() => handleHeaderClick('name')}   className="text-left text-[11px] font-semibold uppercase tracking-wide text-[#aaa] hover:text-[#1D1E20] transition cursor-pointer">Nombre{getSortIndicator('name')}</button>
                 <div className="text-[11px] font-semibold uppercase tracking-wide text-[#aaa]">Tags</div>
-                <button onClick={() => handleHeaderClick('notes')} className="text-left text-[11px] font-semibold uppercase tracking-wide text-[#aaa] hover:text-[#1D1E20] transition cursor-pointer">Notas{getSortIndicator('notes')}</button>
-                <button onClick={() => handleHeaderClick('phone')} className="text-left text-[11px] font-semibold uppercase tracking-wide text-[#aaa] hover:text-[#1D1E20] transition cursor-pointer">Teléfono{getSortIndicator('phone')}</button>
+                <button onClick={() => handleHeaderClick('notes')}  className="text-left text-[11px] font-semibold uppercase tracking-wide text-[#aaa] hover:text-[#1D1E20] transition cursor-pointer">Notas{getSortIndicator('notes')}</button>
+                <button onClick={() => handleHeaderClick('phone')}  className="text-left text-[11px] font-semibold uppercase tracking-wide text-[#aaa] hover:text-[#1D1E20] transition cursor-pointer">Teléfono{getSortIndicator('phone')}</button>
                 <button onClick={() => handleHeaderClick('status')} className="text-left text-[11px] font-semibold uppercase tracking-wide text-[#aaa] hover:text-[#1D1E20] transition cursor-pointer">Status{getSortIndicator('status')}</button>
                 <div></div>
               </div>
@@ -854,7 +753,7 @@ const statusOptions = [
                           </>
                         ) : <span className="text-xs text-[#ddd]">—</span>}
                       </div>
-                      <select value={guest.rsvp_status} onChange={e => updateStatus(guest.id, e.target.value as 'pending' | 'confirmed' | 'declined')}
+                      <select value={guest.rsvp_status} onChange={e => updateStatus(guest.id, e.target.value as RsvpStatus)}
                         className="w-[120px] cursor-pointer rounded-md border px-2 py-1 text-xs font-semibold outline-none"
                         style={{ background: STATUS_LABEL[guest.rsvp_status].bg, borderColor: STATUS_LABEL[guest.rsvp_status].border, color: STATUS_LABEL[guest.rsvp_status].color }}>
                         <option value="pending">Pendiente</option>
@@ -878,7 +777,7 @@ const statusOptions = [
                           </div>
                           <div /><div />
                           <div className="text-xs text-[#aaa]">{m.phone || ''}</div>
-                          <select value={m.rsvp_status} onChange={e => updatePartyMemberStatus(m.id, guest.id, e.target.value as 'pending' | 'confirmed' | 'declined')}
+                          <select value={m.rsvp_status} onChange={e => updatePartyMemberStatus(m.id, guest.id, e.target.value as RsvpStatus)}
                             className="w-[120px] cursor-pointer rounded-md border px-2 py-1 text-xs font-semibold outline-none"
                             style={{ background: STATUS_LABEL[m.rsvp_status].bg, borderColor: STATUS_LABEL[m.rsvp_status].border, color: STATUS_LABEL[m.rsvp_status].color }}>
                             <option value="pending">Pendiente</option>
@@ -961,8 +860,6 @@ const statusOptions = [
               <h2 className="text-lg font-bold text-[#1D1E20] sm:text-xl">Importar invitados</h2>
               <button onClick={() => { setShowCsvModal(false); setCsvPreview(null) }} className="text-xl text-[#aaa]">✕</button>
             </div>
-
-            {/* Sin preview: flujo normal */}
             {!csvPreview && (
               <>
                 <div className="mb-6">
@@ -996,20 +893,13 @@ const statusOptions = [
                 </div>
               </>
             )}
-
-            {/* Con preview: mostrar resumen y pedir confirmación */}
             {csvPreview && (
               <div>
-                {/* Resumen */}
                 <div className="mb-4 rounded-xl border border-[#e8e8e8] bg-[#f8f8f8] p-4">
                   <p className="mb-1 text-sm font-semibold text-[#1D1E20]">Resumen del archivo</p>
                   <p className="text-xs text-[#666]">{csvPreview.rows.length} invitados encontrados</p>
-                  {csvPreview.hasDuplicates && (
-                    <p className="mt-1 text-xs font-semibold text-[#cc3333]">{csvPreview.duplicates.length} con WhatsApp duplicado</p>
-                  )}
+                  {csvPreview.hasDuplicates && <p className="mt-1 text-xs font-semibold text-[#cc3333]">{csvPreview.duplicates.length} con WhatsApp duplicado</p>}
                 </div>
-
-                {/* Lista de duplicados */}
                 {csvPreview.hasDuplicates && (
                   <div className="mb-4">
                     <p className="mb-2 text-xs font-semibold text-[#cc3333]">⚠️ Números duplicados detectados:</p>
@@ -1022,35 +912,19 @@ const statusOptions = [
                     </div>
                   </div>
                 )}
-
                 {csvError && <div className="mb-3 rounded-lg border border-[#ffc0c0] bg-[#fff0f0] p-2.5 text-xs text-[#cc3333]">{csvError}</div>}
                 {csvSuccess && <div className="mb-3 rounded-lg border border-[#a0e0c0] bg-[#f0fff6] p-2.5 text-xs text-[#2a7a50]">{csvSuccess}</div>}
-
                 <div className="flex flex-col gap-2">
                   {csvPreview.hasDuplicates ? (
-                    <button
-                      onClick={() => confirmCsvImport(true)}
-                      disabled={csvImporting}
-                      className="w-full rounded-lg bg-[#48C9B0] py-3 text-sm font-semibold text-white disabled:opacity-60"
-                    >
+                    <button onClick={() => confirmCsvImport(true)} disabled={csvImporting} className="w-full rounded-lg bg-[#48C9B0] py-3 text-sm font-semibold text-white disabled:opacity-60">
                       {csvImporting ? 'Importando...' : `Importar ${csvPreview.rows.length - csvPreview.duplicates.length} sin duplicados`}
                     </button>
                   ) : (
-                    <button
-                      onClick={() => confirmCsvImport(false)}
-                      disabled={csvImporting}
-                      className="w-full rounded-lg bg-[#48C9B0] py-3 text-sm font-semibold text-white disabled:opacity-60"
-                    >
+                    <button onClick={() => confirmCsvImport(false)} disabled={csvImporting} className="w-full rounded-lg bg-[#48C9B0] py-3 text-sm font-semibold text-white disabled:opacity-60">
                       {csvImporting ? 'Importando...' : `Confirmar importación (${csvPreview.rows.length} invitados)`}
                     </button>
                   )}
-                  <button
-                    onClick={() => setCsvPreview(null)}
-                    disabled={csvImporting}
-                    className="w-full rounded-lg border border-[#e0e0e0] py-2.5 text-xs text-[#888] disabled:opacity-60"
-                  >
-                    Cancelar
-                  </button>
+                  <button onClick={() => setCsvPreview(null)} disabled={csvImporting} className="w-full rounded-lg border border-[#e0e0e0] py-2.5 text-xs text-[#888] disabled:opacity-60">Cancelar</button>
                 </div>
               </div>
             )}
