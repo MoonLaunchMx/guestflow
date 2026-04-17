@@ -107,7 +107,8 @@ export default function Dashboard() {
     return base
   }
 
-  const formatDate = (dateStr: string) => {
+  const formatDate = (dateStr: string | null) => {
+    if (!dateStr) return ''
     const [year, month, day] = dateStr.split('T')[0].split('-').map(Number)
     return new Date(year, month - 1, day).toLocaleDateString('es-MX', {
       day: 'numeric', month: 'long', year: 'numeric',
