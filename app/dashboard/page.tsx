@@ -95,6 +95,7 @@ export default function Dashboard() {
   }
 
   const getEventDateTime = (event: Event): Date => {
+    if (!event.event_date) return new Date()
     const [year, month, day] = event.event_date.split('T')[0].split('-').map(Number)
     const base = new Date(year, month - 1, day)
     if (event.event_time) {
