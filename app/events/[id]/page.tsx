@@ -67,6 +67,12 @@ type EditMember = {
   rsvp_status: 'pending' | 'confirmed' | 'declined'
 }
 
+// Mesa asignada al invitado
+type GuestTableInfo = {
+  tableNumber: number
+  tableName: string | null
+}
+
 function normalizePhone(phone: string): string {
   return phone.replace(/\D/g, '')
 }
@@ -161,6 +167,9 @@ export default function EventPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<'all' | 'pending' | 'confirmed' | 'declined'>('all')
+
+  // Mapa guestId → mesa asignada
+  const [guestTableMap, setGuestTableMap] = useState<Map<string, GuestTableInfo>>(new Map())
 
   const [showModal, setShowModal] = useState(false)
   const [showCsvModal, setShowCsvModal] = useState(false)
@@ -262,6 +271,27 @@ export default function EventPage() {
     const { data: guestsData } = await supabase.from('guests').select('*').eq('event_id', id).order('name')
     if (!guestsData) { setLoading(false); return }
     const { data: membersData } = await supabase.from('party_members').select('*').eq('event_id', id).order('created_at')
+
+    // Cargar mesas asignadas
+    const { data: seatsData } = await supabase
+      .from('table_seats')
+      .select('guest_id, table_id')
+      .eq('event_id', id)
+    const { data: tablesData } = await supabase
+      .from('tables')
+      .select('id, number, name')
+      .eq('event_id', id)
+
+    // Construir mapa guestId → mesa
+    const tableById = new Map((tablesData || []).map(t => [t.id, t]))
+    const map = new Map<string, GuestTableInfo>()
+    for (const seat of (seatsData || [])) {
+      if (!seat.guest_id) continue
+      const table = tableById.get(seat.table_id)
+      if (table) map.set(seat.guest_id, { tableNumber: table.number, tableName: table.name })
+    }
+    setGuestTableMap(map)
+
     setGuests(guestsData.map(g => ({ ...g, tags: g.tags || [], party_members: (membersData || []).filter(m => m.guest_id === g.id) })))
     setLoading(false)
   }
@@ -415,77 +445,68 @@ export default function EventPage() {
     await loadGuests(); resetForm(); setShowModal(false); setSaving(false)
   }
 
-const handleCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
-  const file = e.target.files?.[0]; if (!file) return
-  setCsvError(''); setCsvSuccess(''); setCsvPreview(null)
-
-  const parseCSV = (text: string) => {
-    const lines = text.split('\n').filter(l => l.trim())
-    if (lines.length < 2) { setCsvError('El archivo está vacío'); return }
-    const sep = lines[0].includes(';') ? ';' : ','
-    const headers = lines[0].split(sep).map(h => h.trim().toLowerCase().replace(/"/g, '').replace(/\r/g, ''))
-    const nameIdx   = headers.findIndex(h => h.includes('nombre') || h.includes('name'))
-    const phoneIdx  = headers.findIndex(h => h.includes('tel') || h.includes('phone') || h.includes('whatsapp') || h.includes('celular'))
-    const emailIdx  = headers.findIndex(h => h.includes('email') || h.includes('correo'))
-    const notesIdx  = headers.findIndex(h => h.includes('nota') || h.includes('note'))
-    const tagsIdx   = headers.findIndex(h => h.includes('tag') || h.includes('etiqueta'))
-    const statusIdx = headers.findIndex(h => h.includes('status') || h.includes('estado') || h.includes('rsvp'))
-    const plusIdx   = headers.findIndex(h => h.includes('plus') || h.includes('acomp'))
-    if (nameIdx === -1) { setCsvError('No se encontró columna "nombre"'); return }
-    const eventTags = event?.guest_tags || []
-    const rows = lines.slice(1).map(line => {
-      const cols = line.split(sep).map(c => c.trim().replace(/"/g, '').replace(/\r/g, ''))
-      const rawStatus = statusIdx >= 0 ? cols[statusIdx]?.toLowerCase() || '' : ''
-      const rsvpStatus = rawStatus.includes('conf') ? 'confirmed' : rawStatus.includes('decl') || rawStatus.includes('no') ? 'declined' : 'pending'
-      const rawTags = tagsIdx >= 0 ? cols[tagsIdx] || '' : ''
-      const parsedTags = rawTags ? rawTags.split(/[,|]/).map((t: string) => t.trim()).filter((t: string) => eventTags.includes(t)) : []
-      const plusOnes = plusIdx >= 0 ? parseInt(cols[plusIdx] || '0', 10) || 0 : 0
-      return {
-        event_id: id as string,
-        name: cols[nameIdx] || '',
-        phone: phoneIdx >= 0 ? cols[phoneIdx] || null : null,
-        email: emailIdx >= 0 ? cols[emailIdx] || null : null,
-        party_size: 1 + plusOnes,
-        rsvp_status: rsvpStatus,
-        tags: parsedTags,
-        notes: notesIdx >= 0 ? cols[notesIdx] || null : null,
-      }
-    }).filter(r => r.name)
-    if (!rows.length) { setCsvError('No se encontraron invitados válidos'); return }
-    const duplicates: CsvDuplicateResult['duplicates'] = []
-    const seenInFile = new Map<string, string>()
-    rows.forEach((row, idx) => {
-      if (!row.phone) return
-      const norm = normalizePhone(row.phone)
-      if (!norm) return
-      const existingGuest = guests.find(g => g.phone && normalizePhone(g.phone) === norm)
-      if (existingGuest) { duplicates.push({ row: idx + 2, name: row.name, phone: row.phone, conflictWith: existingGuest.name + ' (ya registrado)' }); return }
-      if (seenInFile.has(norm)) { duplicates.push({ row: idx + 2, name: row.name, phone: row.phone, conflictWith: seenInFile.get(norm)! + ' (misma importación)' }); return }
-      seenInFile.set(norm, row.name)
-    })
-    setCsvPreview({ hasDuplicates: duplicates.length > 0, rows, duplicates })
-    if (fileRef.current) fileRef.current.value = ''
-  }
-
-  // Intenta UTF-8 primero, si hay caracteres rotos reintenta con Windows-1252
-  const readerUtf8 = new FileReader()
-  readerUtf8.onload = (evt) => {
-    const text = evt.target?.result as string
-    if (!text) { setCsvError('No se pudo leer el archivo'); return }
-    // Detecta caracteres rotos típicos de Windows-1252 leído como UTF-8
-    if (text.includes('�') || text.includes('\uFFFD')) {
-      const readerLatin = new FileReader()
-      readerLatin.onload = (evt2) => {
-        const text2 = evt2.target?.result as string
-        if (text2) parseCSV(text2)
-      }
-      readerLatin.readAsText(file, 'windows-1252')
-    } else {
-      parseCSV(text)
+  const handleCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]; if (!file) return
+    setCsvError(''); setCsvSuccess(''); setCsvPreview(null)
+    const parseCSV = (text: string) => {
+      const lines = text.split('\n').filter(l => l.trim())
+      if (lines.length < 2) { setCsvError('El archivo está vacío'); return }
+      const sep = lines[0].includes(';') ? ';' : ','
+      const headers = lines[0].split(sep).map(h => h.trim().toLowerCase().replace(/"/g, '').replace(/\r/g, ''))
+      const nameIdx   = headers.findIndex(h => h.includes('nombre') || h.includes('name'))
+      const phoneIdx  = headers.findIndex(h => h.includes('tel') || h.includes('phone') || h.includes('whatsapp') || h.includes('celular'))
+      const emailIdx  = headers.findIndex(h => h.includes('email') || h.includes('correo'))
+      const notesIdx  = headers.findIndex(h => h.includes('nota') || h.includes('note'))
+      const tagsIdx   = headers.findIndex(h => h.includes('tag') || h.includes('etiqueta'))
+      const statusIdx = headers.findIndex(h => h.includes('status') || h.includes('estado') || h.includes('rsvp'))
+      const plusIdx   = headers.findIndex(h => h.includes('plus') || h.includes('acomp'))
+      if (nameIdx === -1) { setCsvError('No se encontró columna "nombre"'); return }
+      const eventTags = event?.guest_tags || []
+      const rows = lines.slice(1).map(line => {
+        const cols = line.split(sep).map(c => c.trim().replace(/"/g, '').replace(/\r/g, ''))
+        const rawStatus = statusIdx >= 0 ? cols[statusIdx]?.toLowerCase() || '' : ''
+        const rsvpStatus = rawStatus.includes('conf') ? 'confirmed' : rawStatus.includes('decl') || rawStatus.includes('no') ? 'declined' : 'pending'
+        const rawTags = tagsIdx >= 0 ? cols[tagsIdx] || '' : ''
+        const parsedTags = rawTags ? rawTags.split(/[,|]/).map((t: string) => t.trim()).filter((t: string) => eventTags.includes(t)) : []
+        const plusOnes = plusIdx >= 0 ? parseInt(cols[plusIdx] || '0', 10) || 0 : 0
+        return {
+          event_id: id as string,
+          name: cols[nameIdx] || '',
+          phone: phoneIdx >= 0 ? cols[phoneIdx] || null : null,
+          email: emailIdx >= 0 ? cols[emailIdx] || null : null,
+          party_size: 1 + plusOnes,
+          rsvp_status: rsvpStatus,
+          tags: parsedTags,
+          notes: notesIdx >= 0 ? cols[notesIdx] || null : null,
+        }
+      }).filter(r => r.name)
+      if (!rows.length) { setCsvError('No se encontraron invitados válidos'); return }
+      const duplicates: CsvDuplicateResult['duplicates'] = []
+      const seenInFile = new Map<string, string>()
+      rows.forEach((row, idx) => {
+        if (!row.phone) return
+        const norm = normalizePhone(row.phone)
+        if (!norm) return
+        const existingGuest = guests.find(g => g.phone && normalizePhone(g.phone) === norm)
+        if (existingGuest) { duplicates.push({ row: idx + 2, name: row.name, phone: row.phone, conflictWith: existingGuest.name + ' (ya registrado)' }); return }
+        if (seenInFile.has(norm)) { duplicates.push({ row: idx + 2, name: row.name, phone: row.phone, conflictWith: seenInFile.get(norm)! + ' (misma importación)' }); return }
+        seenInFile.set(norm, row.name)
+      })
+      setCsvPreview({ hasDuplicates: duplicates.length > 0, rows, duplicates })
+      if (fileRef.current) fileRef.current.value = ''
     }
+    const readerUtf8 = new FileReader()
+    readerUtf8.onload = (evt) => {
+      const text = evt.target?.result as string
+      if (!text) { setCsvError('No se pudo leer el archivo'); return }
+      if (text.includes('�') || text.includes('\uFFFD')) {
+        const readerLatin = new FileReader()
+        readerLatin.onload = (evt2) => { const text2 = evt2.target?.result as string; if (text2) parseCSV(text2) }
+        readerLatin.readAsText(file, 'windows-1252')
+      } else { parseCSV(text) }
+    }
+    readerUtf8.readAsText(file, 'UTF-8')
   }
-  readerUtf8.readAsText(file, 'UTF-8')
-}
 
   const confirmCsvImport = async (skipDuplicates: boolean) => {
     if (!csvPreview) return
@@ -506,10 +527,14 @@ const handleCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
   }
 
   const exportCSV = () => {
-    const headers = 'nombre,telefono,email,status,notas,tags,acompañantes'
+    const headers = 'nombre,telefono,email,status,mesa,notas,tags,acompañantes'
     const rows = guests.map(g => {
       const memberNames = g.party_members.map(m => m.name || 'Acompañante').join(' | ')
-      return '"' + g.name + '","' + (g.phone || '') + '","' + (g.email || '') + '","' + STATUS_LABEL[g.rsvp_status].label + '","' + (g.notes || '').replace(/"/g, '""') + '","' + (g.tags || []).join(', ') + '","' + memberNames + '"'
+      const tableInfo = guestTableMap.get(g.id)
+      const mesaLabel = tableInfo
+        ? `Mesa ${tableInfo.tableNumber}${tableInfo.tableName ? ' - ' + tableInfo.tableName : ''}`
+        : ''
+      return '"' + g.name + '","' + (g.phone || '') + '","' + (g.email || '') + '","' + STATUS_LABEL[g.rsvp_status].label + '","' + mesaLabel + '","' + (g.notes || '').replace(/"/g, '""') + '","' + (g.tags || []).join(', ') + '","' + memberNames + '"'
     })
     const csv = [headers, ...rows].join('\n')
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
@@ -528,8 +553,7 @@ const handleCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
       `"Andrés Garza","","andres@ejemplo.com","Llegará tarde","","pending"`,
     ]
     const instructions = [
-      '',
-      '# INSTRUCCIONES:',
+      '', '# INSTRUCCIONES:',
       '# nombre      → obligatorio',
       '# telefono    → formato +52 XX XXXX XXXX (opcional)',
       '# email       → correo electrónico (opcional)',
@@ -542,6 +566,13 @@ const handleCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a'); a.href = url; a.download = 'plantilla_guestflow.csv'; a.click()
     URL.revokeObjectURL(url)
+  }
+
+  // Helper para formatear label de mesa
+const getTableLabel = (guestId: string): string => {
+    const t = guestTableMap.get(guestId)
+    if (!t) return ''
+    return `Mesa ${t.tableNumber}`
   }
 
   const totalPersonas = guests.reduce((acc, g) => acc + 1 + g.party_members.length, 0)
@@ -695,6 +726,7 @@ const handleCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
                 const groupColor = guest.party_members.length > 0 ? GROUP_COLORS[gIdx % GROUP_COLORS.length] : null
                 const guestTags = guest.tags || []
                 const isSelected = selected.has(guest.id)
+                const tableLabel = getTableLabel(guest.id)
                 return (
                   <div key={guest.id}>
                     <div className={'rounded-xl border bg-white px-3 py-3 transition ' + (isSelected ? 'border-[#48C9B0] bg-[#f0fdfb]' : 'border-[#e8e8e8]') + (groupColor ? ' rounded-b-none border-b-0' : '')}>
@@ -717,15 +749,13 @@ const handleCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
                             {guest.name}
                             {guest.party_members.length > 0 && <span className="ml-1 text-xs font-normal" style={{ color: groupColor || '#aaa' }}>+{guest.party_members.length}</span>}
                           </p>
-                          {guestTags.length > 0 && (
-                            <div className="mt-1 flex flex-wrap gap-1">
-                              {guestTags.map(tag => {
-                                const tagIdx = availableTags.indexOf(tag)
-                                const col = getTagColor(tagIdx >= 0 ? tagIdx : 0)
-                                return <span key={tag} className="rounded-full border px-1.5 py-0.5 text-[10px] font-medium" style={{ background: col.bg, borderColor: col.border, color: col.text }}>{tag}</span>
-                              })}
-                            </div>
-                          )}
+                          <div className="mt-0.5 flex flex-wrap items-center gap-1">
+                            {guestTags.map(tag => {
+                              const tagIdx = availableTags.indexOf(tag)
+                              const col = getTagColor(tagIdx >= 0 ? tagIdx : 0)
+                              return <span key={tag} className="rounded-full border px-1.5 py-0.5 text-[10px] font-medium" style={{ background: col.bg, borderColor: col.border, color: col.text }}>{tag}</span>
+                            })}
+                          </div>
                         </div>
                         <div className="shrink-0">
                           <select value={guest.rsvp_status} onChange={e => updateStatus(guest.id, e.target.value as RsvpStatus)}
@@ -761,24 +791,29 @@ const handleCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
 
             {/* Desktop */}
             <div className="hidden rounded-xl border border-[#e8e8e8] sm:block">
-              <div className="grid items-center border-b border-[#e8e8e8] bg-[#f8f8f8] px-4 py-2" style={{ gridTemplateColumns: '40px 2fr 1.5fr 1fr 1.5fr 140px 40px' }}>
+              {/* Header — añadimos columna Mesa entre Tags y Notas */}
+              <div className="grid items-center border-b border-[#e8e8e8] bg-[#f8f8f8] px-4 py-2"
+                style={{ gridTemplateColumns: '40px 2fr 1.2fr 100px 1fr 1.5fr 140px 40px' }}>
                 <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} style={{ cursor: 'pointer', accentColor: '#48C9B0' }} />
                 <button onClick={() => handleHeaderClick('name')}   className="text-left text-[11px] font-semibold uppercase tracking-wide text-[#aaa] hover:text-[#1D1E20] transition cursor-pointer">Nombre{getSortIndicator('name')}</button>
                 <div className="text-[11px] font-semibold uppercase tracking-wide text-[#aaa]">Tags</div>
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-[#aaa]">Mesa</div>
                 <button onClick={() => handleHeaderClick('notes')}  className="text-left text-[11px] font-semibold uppercase tracking-wide text-[#aaa] hover:text-[#1D1E20] transition cursor-pointer">Notas{getSortIndicator('notes')}</button>
                 <button onClick={() => handleHeaderClick('phone')}  className="text-left text-[11px] font-semibold uppercase tracking-wide text-[#aaa] hover:text-[#1D1E20] transition cursor-pointer">Teléfono{getSortIndicator('phone')}</button>
                 <button onClick={() => handleHeaderClick('status')} className="text-left text-[11px] font-semibold uppercase tracking-wide text-[#aaa] hover:text-[#1D1E20] transition cursor-pointer">Status{getSortIndicator('status')}</button>
-                <div></div>
+                <div />
               </div>
+
               {filtered.map((guest, gIdx) => {
                 const groupColor = guest.party_members.length > 0 ? GROUP_COLORS[gIdx % GROUP_COLORS.length] : null
                 const isLastGuest = gIdx === filtered.length - 1
                 const hasMembers = guest.party_members.length > 0
                 const guestTags = guest.tags || []
+                const tableLabel = getTableLabel(guest.id)
                 return (
                   <div key={guest.id}>
                     <div className={'grid items-center px-4 py-2.5 transition ' + (selected.has(guest.id) ? 'bg-[#f0fdfb]' : gIdx % 2 === 0 ? 'bg-white hover:bg-[#f5f5f5]' : 'bg-[#fafafa] hover:bg-[#f5f5f5]') + (!hasMembers && !isLastGuest ? ' border-b border-[#f0f0f0]' : '') + (hasMembers ? ' border-b border-[#f0f0f0]' : '')}
-                      style={{ gridTemplateColumns: '40px 2fr 1.5fr 1fr 1.5fr 140px 40px' }}>
+                      style={{ gridTemplateColumns: '40px 2fr 1.2fr 100px 1fr 1.5fr 140px 40px' }}>
                       <input type="checkbox" checked={selected.has(guest.id)} onChange={() => toggleSelect(guest.id)} style={{ cursor: 'pointer', accentColor: '#48C9B0' }} />
                       <div onClick={() => openEdit(guest)} className="flex cursor-pointer items-center gap-1.5">
                         {groupColor && <div className="mr-1 h-5 w-[3px] shrink-0 rounded-full" style={{ background: groupColor }} />}
@@ -791,6 +826,13 @@ const handleCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
                           const col = getTagColor(tagIdx >= 0 ? tagIdx : 0)
                           return <span key={tag} className="rounded-full border px-2 py-0.5 text-[10px] font-medium" style={{ background: col.bg, borderColor: col.border, color: col.text }}>{tag}</span>
                         }) : <span className="text-[#ddd] text-xs">—</span>}
+                      </div>
+                      {/* Columna Mesa — solo lectura */}
+                      <div>
+                        {tableLabel
+                          ? <span className="rounded-full border border-[#c8ede7] bg-[#f0fdfb] px-2 py-0.5 text-[10px] font-semibold text-[#1a9e88]">{tableLabel}</span>
+                          : <span className="text-[#ddd] text-xs">—</span>
+                        }
                       </div>
                       <div onClick={() => openEdit(guest)} className="cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap text-xs text-[#aaa] hover:text-[#1D1E20]" title={guest.notes || ''}>
                         {guest.notes || <span className="text-[#ddd]">—</span>}
@@ -835,7 +877,7 @@ const handleCSV = (e: React.ChangeEvent<HTMLInputElement>) => {
                       const isLastMember = mi === guest.party_members.length - 1
                       return (
                         <div key={m.id} className={'grid items-center px-4 py-1.5 bg-[#fafafa] ' + (isLastMember && !isLastGuest ? 'border-b-2 border-[#f0f0f0]' : 'border-b border-[#f8f8f8]')}
-                          style={{ gridTemplateColumns: '40px 2fr 1.5fr 1fr 1.5fr 140px 40px' }}>
+                          style={{ gridTemplateColumns: '40px 2fr 1.2fr 100px 1fr 1.5fr 140px 40px' }}>
                           <div />
                           <div className="flex items-center gap-2 pl-4">
                             <div className="h-4 w-[2px] shrink-0 rounded-full opacity-40" style={{ background: groupColor }} />

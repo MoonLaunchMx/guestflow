@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, usePathname, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { Users, Images, Music2, Settings, UtensilsCrossed, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { Users, Images, Music2, Settings, UtensilsCrossed, LayoutGrid, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
 import { Event } from '@/lib/types'
 
 const EVENT_TYPE_LABELS: Record<string, string> = {
@@ -22,6 +22,13 @@ const NAV_ITEMS = [
     path: '',
     iconOutline: <Users width={18} height={18} strokeWidth={1.5} />,
     iconFilled:  <Users width={18} height={18} strokeWidth={2.5} />,
+  },
+  {
+    label: 'Mesas',
+    labelMobile: 'Mesas',
+    path: '/mesas',
+    iconOutline: <LayoutGrid width={18} height={18} strokeWidth={1.5} />,
+    iconFilled:  <LayoutGrid width={18} height={18} strokeWidth={2.5} />,
   },
   {
     label: 'Álbum',

@@ -88,3 +88,32 @@ export type FoodItem = {
   unit: 'g' | 'kg' | 'pz' | 'L' | 'ml'
   custom?: boolean
 }
+
+// ─── SEATING ─────────────────────────────────────────────────────────────────
+
+export type TableShape = 'round' | 'rectangle'
+
+export type Table = {
+  id: string
+  event_id: string
+  number: number
+  name: string | null
+  capacity: number
+  shape: TableShape
+  position_x: number
+  position_y: number
+  created_at: string
+  // computed client-side
+  seats?: TableSeat[]
+}
+
+export type TableSeat = {
+  id: string
+  table_id: string
+  event_id: string
+  seat_number: number
+  guest_id: string | null
+  created_at: string
+  // joined client-side
+  guest?: Pick<Guest, 'id' | 'name' | 'rsvp_status'>
+}
