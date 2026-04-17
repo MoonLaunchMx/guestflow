@@ -66,10 +66,6 @@ const WA_ICON = (
   </svg>
 )
 
-// Bottom nav: 2 izquierda + WA FAB + 2 derecha
-const LEFT_ITEMS  = NAV_ITEMS.slice(0, 2)
-const RIGHT_ITEMS = NAV_ITEMS.slice(2, 4)
-
 export default function EventLayout({ children }: { children: React.ReactNode }) {
   const { id } = useParams()
   const pathname = usePathname()
@@ -259,40 +255,61 @@ export default function EventLayout({ children }: { children: React.ReactNode })
         </main>
       </div>
 
-      {/* ══ BOTTOM NAV — solo mobile ══ */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 flex items-end border-t border-[#e8e8e8] bg-white sm:hidden">
-        {LEFT_ITEMS.map(item => (
-          <button
-            key={item.path}
-            onClick={() => navigate(item.path)}
-            className={`flex flex-1 flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition
-              ${isActive(item.path) ? 'text-[#48C9B0]' : 'text-[#bbb]'}`}
-          >
-            {isActive(item.path) ? item.iconFilled : item.iconOutline}
-            <span>{item.labelMobile ?? item.label}</span>
-          </button>
-        ))}
-        <div className="flex flex-1 flex-col items-center justify-end pb-1">
+      {/* ══ BOTTOM NAV — solo mobile (scroll horizontal) ══ */}
+      <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-[#e8e8e8] bg-white sm:hidden">
+        {/* Contenedor scrollable */}
+        <div
+          className="flex items-end overflow-x-auto"
+          style={{
+            scrollSnapType: 'x mandatory',
+            WebkitOverflowScrolling: 'touch',
+            scrollbarWidth: 'none',
+            msOverflowStyle: 'none',
+          }}
+        >
+          {/* Ocultar scrollbar en webkit */}
+          <style>{`
+            .bottom-scroll::-webkit-scrollbar { display: none; }
+          `}</style>
+
+          {NAV_ITEMS.map((item, i) => {
+            // Deja espacio libre al centro para el FAB (entre índice 2 y 3)
+            const isBeforeFab = i === 2
+            return (
+              <>
+                <button
+                  key={item.path}
+                  onClick={() => navigate(item.path)}
+                  className={`flex shrink-0 flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition
+                    ${isActive(item.path) ? 'text-[#48C9B0]' : 'text-[#bbb]'}`}
+                  style={{
+                    minWidth: '72px',
+                    scrollSnapAlign: 'start',
+                  }}
+                >
+                  {isActive(item.path) ? item.iconFilled : item.iconOutline}
+                  <span>{item.labelMobile ?? item.label}</span>
+                </button>
+                {/* Espacio para el FAB entre item 2 y 3 */}
+                {isBeforeFab && (
+                  <div key="fab-spacer" className="shrink-0" style={{ minWidth: '72px' }} />
+                )}
+              </>
+            )
+          })}
+        </div>
+
+        {/* FAB WhatsApp — fijo al centro, encima del nav */}
+        <div className="pointer-events-none absolute inset-0 flex items-end justify-center pb-1">
           <button
             onClick={() => router.push('/mensajes')}
-            className="relative -top-4 flex h-14 w-14 flex-col items-center justify-center rounded-full bg-[#48C9B0] text-white shadow-[0_4px_16px_rgba(72,201,176,0.5)] transition active:scale-95"
+            className="pointer-events-auto relative -top-4 flex h-14 w-14 flex-col items-center justify-center rounded-full bg-[#48C9B0] text-white shadow-[0_4px_16px_rgba(72,201,176,0.5)] transition active:scale-95"
           >
             <span className="flex h-6 w-6 items-center justify-center">{WA_ICON}</span>
             <span className="mt-0.5 text-[9px] font-semibold leading-none">Hub</span>
           </button>
         </div>
-        {RIGHT_ITEMS.map(item => (
-          <button
-            key={item.path}
-            onClick={() => navigate(item.path)}
-            className={`flex flex-1 flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition
-              ${isActive(item.path) ? 'text-[#48C9B0]' : 'text-[#bbb]'}`}
-          >
-            {isActive(item.path) ? item.iconFilled : item.iconOutline}
-            <span>{item.labelMobile ?? item.label}</span>
-          </button>
-        ))}
-      </nav>
+      </div>
 
     </div>
   )
