@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useParams, usePathname, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { Users, Images, Music2, Settings, UtensilsCrossed, LayoutGrid, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
@@ -60,12 +60,6 @@ const NAV_ITEMS = [
   },
 ]
 
-const WA_ICON = (
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
-    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-  </svg>
-)
-
 export default function EventLayout({ children }: { children: React.ReactNode }) {
   const { id } = useParams()
   const pathname = usePathname()
@@ -74,6 +68,7 @@ export default function EventLayout({ children }: { children: React.ReactNode })
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [authChecked, setAuthChecked] = useState(false)
   const [collapsed, setCollapsed] = useState(false)
+  const navScrollRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const stored = localStorage.getItem('gf_sidebar_collapsed')
@@ -110,6 +105,26 @@ export default function EventLayout({ children }: { children: React.ReactNode })
     }
     loadEvent()
   }, [id, authChecked])
+
+  // Centrar el ítem activo en el nav al cambiar de ruta
+  useEffect(() => {
+    const container = navScrollRef.current
+    if (!container) return
+
+    const activeIndex = NAV_ITEMS.findIndex(item => {
+      const full = `/events/${id}${item.path}`
+      if (item.path === '') return pathname === `/events/${id}`
+      return pathname.startsWith(full)
+    })
+
+    if (activeIndex === -1) return
+
+    // Cada ítem ocupa 1/5 del ancho total del contenedor
+    const itemWidth = container.scrollWidth / NAV_ITEMS.length
+    // Queremos que el ítem activo quede en la posición central (índice 2 de 5 visibles)
+    const scrollTo = itemWidth * activeIndex - itemWidth * 2
+    container.scrollTo({ left: Math.max(0, scrollTo), behavior: 'smooth' })
+  }, [pathname, id])
 
   const formatDate = (d: string) => {
     const [year, month, day] = d.split('T')[0].split('-').map(Number)
@@ -255,61 +270,34 @@ export default function EventLayout({ children }: { children: React.ReactNode })
         </main>
       </div>
 
-      {/* ══ BOTTOM NAV — solo mobile (scroll horizontal) ══ */}
-      <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-[#e8e8e8] bg-white sm:hidden">
-        {/* Contenedor scrollable */}
-        <div
-          className="flex items-end overflow-x-auto"
-          style={{
-            scrollSnapType: 'x mandatory',
-            WebkitOverflowScrolling: 'touch',
-            scrollbarWidth: 'none',
-            msOverflowStyle: 'none',
-          }}
-        >
-          {/* Ocultar scrollbar en webkit */}
-          <style>{`
-            .bottom-scroll::-webkit-scrollbar { display: none; }
-          `}</style>
-
-          {NAV_ITEMS.map((item, i) => {
-            // Deja espacio libre al centro para el FAB (entre índice 2 y 3)
-            const isBeforeFab = i === 2
-            return (
-              <>
-                <button
-                  key={item.path}
-                  onClick={() => navigate(item.path)}
-                  className={`flex shrink-0 flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition
-                    ${isActive(item.path) ? 'text-[#48C9B0]' : 'text-[#bbb]'}`}
-                  style={{
-                    minWidth: '72px',
-                    scrollSnapAlign: 'start',
-                  }}
-                >
-                  {isActive(item.path) ? item.iconFilled : item.iconOutline}
-                  <span>{item.labelMobile ?? item.label}</span>
-                </button>
-                {/* Espacio para el FAB entre item 2 y 3 */}
-                {isBeforeFab && (
-                  <div key="fab-spacer" className="shrink-0" style={{ minWidth: '72px' }} />
-                )}
-              </>
-            )
-          })}
-        </div>
-
-        {/* FAB WhatsApp — fijo al centro, encima del nav */}
-        <div className="pointer-events-none absolute inset-0 flex items-end justify-center pb-1">
+      {/* ══ BOTTOM NAV — solo mobile ══ */}
+      <nav
+        ref={navScrollRef}
+        className="fixed bottom-0 left-0 right-0 z-40 flex overflow-x-auto border-t border-[#e8e8e8] bg-white sm:hidden"
+        style={{
+          scrollSnapType: 'x mandatory',
+          WebkitOverflowScrolling: 'touch',
+          scrollbarWidth: 'none',
+          msOverflowStyle: 'none',
+        }}
+      >
+        <style>{`.gf-bottom-nav::-webkit-scrollbar { display: none; }`}</style>
+        {NAV_ITEMS.map(item => (
           <button
-            onClick={() => router.push('/mensajes')}
-            className="pointer-events-auto relative -top-4 flex h-14 w-14 flex-col items-center justify-center rounded-full bg-[#48C9B0] text-white shadow-[0_4px_16px_rgba(72,201,176,0.5)] transition active:scale-95"
+            key={item.path}
+            onClick={() => navigate(item.path)}
+            className={`flex shrink-0 flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition
+              ${isActive(item.path) ? 'text-[#48C9B0]' : 'text-[#bbb]'}`}
+            style={{
+              width: '20vw',
+              scrollSnapAlign: 'center',
+            }}
           >
-            <span className="flex h-6 w-6 items-center justify-center">{WA_ICON}</span>
-            <span className="mt-0.5 text-[9px] font-semibold leading-none">Hub</span>
+            {isActive(item.path) ? item.iconFilled : item.iconOutline}
+            <span>{item.labelMobile ?? item.label}</span>
           </button>
-        </div>
-      </div>
+        ))}
+      </nav>
 
     </div>
   )
