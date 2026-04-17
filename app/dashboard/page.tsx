@@ -175,7 +175,7 @@ export default function Dashboard() {
   const sameDay = nextEvent
     ? activeEvents.filter(e =>
         e.id !== nextEvent.id &&
-        e.event_date.split('T')[0] === nextEvent.event_date.split('T')[0]
+        e.event_date?.split('T')[0] === nextEvent.event_date?.split('T')[0]
       )
     : []
 
