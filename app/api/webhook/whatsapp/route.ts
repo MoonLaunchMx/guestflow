@@ -11,8 +11,10 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json()
+    console.log('[Webhook] Body recibido:', JSON.stringify(body))
 
     const incomingMessage = normalize360dialogPayload(body)
+    console.log('[Webhook] Mensaje normalizado:', incomingMessage)
 
     if (!incomingMessage) {
       return NextResponse.json({ ok: true, skipped: 'no text message' })
@@ -22,22 +24,20 @@ export async function POST(request: NextRequest) {
 
     const { data: guests, error: guestError } = await supabase
       .from('guests')
-      .select('id, name, first_name, last_name, event_id, rsvp_status')
+      .select('id, name, event_id, rsvp_status')
       .eq('phone', phone)
       .limit(1)
 
+    console.log('[Webhook] Guests encontrados:', JSON.stringify(guests))
+    console.log('[Webhook] Guest error:', JSON.stringify(guestError))
+
     if (guestError || !guests || guests.length === 0) {
-      console.log(`Mensaje de número no registrado: ${phone}`)
+      console.log(`[Webhook] Número no registrado: ${phone}`)
       return NextResponse.json({ ok: true, skipped: 'guest not found' })
     }
 
     const guest = guests[0]
-
-    // Usar name si existe, si no concatenar first_name + last_name
-    const guestName =
-      guest.name?.trim() ||
-      [guest.first_name, guest.last_name].filter(Boolean).join(' ') ||
-      'Invitado'
+    const guestName = guest.name?.trim() || 'Invitado'
 
     const { data: event } = await supabase
       .from('events')
