@@ -4,7 +4,6 @@ import { createClient } from '@supabase/supabase-js'
 import { interpretRSVPMessage } from '@/lib/ai-rsvp'
 
 export async function POST(request: NextRequest) {
-  // Cliente adentro de la función — se inicializa en runtime, no en build time
   const supabase = createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -21,16 +20,24 @@ export async function POST(request: NextRequest) {
 
     const { phone, text } = incomingMessage
 
-    const { data: guest, error: guestError } = await supabase
+    const { data: guests, error: guestError } = await supabase
       .from('guests')
-      .select('id, name, event_id, rsvp_status')
+      .select('id, name, first_name, last_name, event_id, rsvp_status')
       .eq('phone', phone)
-      .single()
+      .limit(1)
 
-    if (guestError || !guest) {
+    if (guestError || !guests || guests.length === 0) {
       console.log(`Mensaje de número no registrado: ${phone}`)
       return NextResponse.json({ ok: true, skipped: 'guest not found' })
     }
+
+    const guest = guests[0]
+
+    // Usar name si existe, si no concatenar first_name + last_name
+    const guestName =
+      guest.name?.trim() ||
+      [guest.first_name, guest.last_name].filter(Boolean).join(' ') ||
+      'Invitado'
 
     const { data: event } = await supabase
       .from('events')
@@ -48,9 +55,9 @@ export async function POST(request: NextRequest) {
       sent_at: new Date().toISOString(),
     })
 
-    const interpretation = await interpretRSVPMessage(text, guest.name, eventName)
+    const interpretation = await interpretRSVPMessage(text, guestName, eventName)
 
-    console.log(`[AI RSVP] ${guest.name}: "${text}" → ${interpretation.intent} (${interpretation.confidence})`)
+    console.log(`[AI RSVP] ${guestName}: "${text}" → ${interpretation.intent} (${interpretation.confidence})`)
 
     if (interpretation.intent !== 'ambiguous' && interpretation.confidence !== 'low') {
       const newStatus = interpretation.intent
@@ -61,13 +68,13 @@ export async function POST(request: NextRequest) {
           .update({ rsvp_status: newStatus })
           .eq('id', guest.id)
 
-        console.log(`[RSVP] ${guest.name}: ${guest.rsvp_status} → ${newStatus}`)
+        console.log(`[RSVP] ${guestName}: ${guest.rsvp_status} → ${newStatus}`)
       }
     }
 
     return NextResponse.json({
       ok: true,
-      guest: guest.name,
+      guest: guestName,
       message: text,
       interpretation,
     })
