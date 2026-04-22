@@ -1,6 +1,4 @@
 // lib/ai-rsvp.ts
-// Interpreta mensajes de WhatsApp y determina el intent de RSVP
-
 export type RSVPIntent = 'confirmed' | 'declined' | 'ambiguous'
 
 export interface RSVPInterpretation {
@@ -24,43 +22,52 @@ export async function interpretRSVPMessage(
     body: JSON.stringify({
       model: 'claude-haiku-4-5-20251001',
       max_tokens: 200,
-      system: `Eres un asistente que interpreta respuestas de invitados a eventos. 
+      system: `Eres un asistente que interpreta respuestas de invitados a eventos.
 Tu única tarea es determinar si un mensaje indica confirmación de asistencia, declinación, o es ambiguo.
 
-Responde ÚNICAMENTE con JSON válido en este formato exacto, sin texto adicional:
-{"intent": "confirmed" | "declined" | "ambiguous", "confidence": "high" | "medium" | "low", "reasoning": "explicación breve en español"}
+Responde ÚNICAMENTE con JSON válido, sin markdown, sin backticks, sin texto adicional antes o después:
+{"intent": "confirmed", "confidence": "high", "reasoning": "explicación breve"}
 
-Ejemplos de confirmación: "sí voy", "ahí estaremos", "confirmado", "claro que sí", "simón", "de una", "allá nos vemos", "con gusto asistimos", "contad con nosotros"
-Ejemplos de declinación: "no puedo", "no voy a poder", "nel", "qué pena pero no", "no nos será posible", "lamentablemente no"
-Ambiguo: preguntas, saludos, mensajes sin relación clara con el RSVP`,
+Valores posibles para intent: "confirmed", "declined", "ambiguous"
+Valores posibles para confidence: "high", "medium", "low"
+
+Ejemplos de confirmación: "sí voy", "ahí estaremos", "confirmado", "claro que sí", "simón", "de una", "allá nos vemos", "con gusto asistimos"
+Ejemplos de declinación: "no puedo", "no voy a poder", "nel", "qué pena pero no", "no nos será posible"
+Ambiguo: preguntas, saludos, mensajes sin relación clara con asistencia`,
       messages: [
         {
           role: 'user',
-          content: `Evento: "${eventName}"
-Invitado: "${guestName}"
-Mensaje recibido: "${message}"
-
-¿Cuál es el intent de RSVP?`,
+          content: `Evento: "${eventName}"\nInvitado: "${guestName}"\nMensaje: "${message}"\n\nResponde solo con JSON:`,
         },
       ],
     }),
   })
 
   if (!response.ok) {
+    const errorText = await response.text()
+    console.error('[AI RSVP] Anthropic error:', errorText)
     throw new Error(`Anthropic API error: ${response.status}`)
   }
 
   const data = await response.json()
-  const text = data.content[0].text.trim()
+  const raw = data.content[0].text.trim()
+  
+  console.log('[AI RSVP] Respuesta raw:', raw)
+
+  // Limpiar markdown por si Claude lo incluye de todas formas
+  const clean = raw
+    .replace(/```json\n?/g, '')
+    .replace(/```\n?/g, '')
+    .trim()
 
   try {
-    return JSON.parse(text) as RSVPInterpretation
+    return JSON.parse(clean) as RSVPInterpretation
   } catch {
-    // Si Claude no devuelve JSON válido (no debería pasar), fallback seguro
+    console.error('[AI RSVP] JSON inválido:', clean)
     return {
       intent: 'ambiguous',
       confidence: 'low',
-      reasoning: 'No se pudo interpretar la respuesta del modelo',
+      reasoning: 'No se pudo parsear la respuesta del modelo',
     }
   }
 }
