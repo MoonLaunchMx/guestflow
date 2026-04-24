@@ -117,3 +117,18 @@ export type TableSeat = {
   // joined client-side
   guest?: Pick<Guest, 'id' | 'name' | 'rsvp_status'>
 }
+
+export type TimelineTask = {
+  id: string
+  event_id: string
+  title: string
+  emoji: string | null
+  category: 'evento' | 'tarea' | 'recordatorio' | 'reunion' | 'entrega' | 'pago' | 'comunicacion' | 'otro'
+  task_date: string
+  task_time: string | null
+  notes: string | null
+  is_highlighted: boolean
+  is_completed: boolean
+  reminder_date: string | null
+  created_at: string
+}

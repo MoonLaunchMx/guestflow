@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, usePathname, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { Users, Images, Music2, Settings, UtensilsCrossed, LayoutGrid, PanelLeftClose, PanelLeftOpen } from 'lucide-react'
+import { Users, Images, Music2, Settings, UtensilsCrossed, LayoutGrid, PanelLeftClose, PanelLeftOpen, CalendarDays } from 'lucide-react'
 import { Event } from '@/lib/types'
 
 const EVENT_TYPE_LABELS: Record<string, string> = {
@@ -31,6 +31,13 @@ const NAV_ITEMS = [
     iconFilled:  <LayoutGrid width={18} height={18} strokeWidth={2.5} />,
   },
   {
+    label: 'Timeline',
+    labelMobile: 'Timeline',
+    path: '/timeline',
+    iconOutline: <CalendarDays width={18} height={18} strokeWidth={1.5} />,
+    iconFilled:  <CalendarDays width={18} height={18} strokeWidth={2.5} />,
+  },
+  {
     label: 'Álbum',
     labelMobile: 'Álbum',
     path: '/album',
@@ -44,13 +51,7 @@ const NAV_ITEMS = [
     iconOutline: <Music2 width={18} height={18} strokeWidth={1.5} />,
     iconFilled:  <Music2 width={18} height={18} strokeWidth={2.5} />,
   },
-  {
-    label: 'Comida',
-    labelMobile: 'Comida',
-    path: '/comida',
-    iconOutline: <UtensilsCrossed width={18} height={18} strokeWidth={1.5} />,
-    iconFilled:  <UtensilsCrossed width={18} height={18} strokeWidth={2.5} />,
-  },
+
   {
     label: 'Configuración',
     labelMobile: 'Config',
@@ -106,7 +107,6 @@ export default function EventLayout({ children }: { children: React.ReactNode })
     loadEvent()
   }, [id, authChecked])
 
-  // Centrar el ítem activo en el nav al cambiar de ruta
   useEffect(() => {
     const container = navScrollRef.current
     if (!container) return
@@ -119,9 +119,7 @@ export default function EventLayout({ children }: { children: React.ReactNode })
 
     if (activeIndex === -1) return
 
-    // Cada ítem ocupa 1/5 del ancho total del contenedor
     const itemWidth = container.scrollWidth / NAV_ITEMS.length
-    // Queremos que el ítem activo quede en la posición central (índice 2 de 5 visibles)
     const scrollTo = itemWidth * activeIndex - itemWidth * 2
     container.scrollTo({ left: Math.max(0, scrollTo), behavior: 'smooth' })
   }, [pathname, id])
@@ -160,9 +158,13 @@ export default function EventLayout({ children }: { children: React.ReactNode })
 
       {/* ══ TABLET/DESKTOP HEADER ══ */}
       <header className="hidden h-14 shrink-0 items-center justify-between border-b border-[#e8e8e8] bg-white px-4 sm:flex sm:h-16 sm:px-6">
-        <span className="text-lg font-bold sm:text-xl" style={{ fontFamily: 'Georgia, serif' }}>
-          Guest<span className="text-[#48C9B0]">Flow</span>
-        </span>
+      <button
+        onClick={() => router.push('/dashboard')}
+        className="text-lg font-bold sm:text-xl"
+        style={{ fontFamily: 'Georgia, serif' }}
+      >
+        Guest<span className="text-[#48C9B0]">Flow</span>
+      </button>
         {event && (
           <span className="hidden max-w-[240px] truncate text-sm font-semibold text-[#1D1E20] sm:block lg:max-w-sm">
             {event.name}
@@ -185,6 +187,7 @@ export default function EventLayout({ children }: { children: React.ReactNode })
         </div>
       </header>
 
+
       {/* ══ BODY ══ */}
       <div className="flex min-h-0 flex-1 overflow-hidden">
 
@@ -194,6 +197,18 @@ export default function EventLayout({ children }: { children: React.ReactNode })
           style={{ width: collapsed ? '56px' : '224px', transition: 'width 0.2s ease' }}
         >
           <nav className="py-2">
+
+            <button
+  onClick={() => router.push('/dashboard')}
+  className="flex shrink-0 flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium text-[#bbb] transition hover:text-[#48C9B0]"
+  style={{ width: '20vw', scrollSnapAlign: 'center' }}
+>
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
+    <polyline points="9 22 9 12 15 12 15 22"/>
+  </svg>
+  <span>Inicio</span>
+</button>
             {NAV_ITEMS.map(item => (
               <button
                 key={item.path}
