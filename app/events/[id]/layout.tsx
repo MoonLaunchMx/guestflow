@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, usePathname, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { Users, Images, Music2, Settings, UtensilsCrossed, LayoutGrid, PanelLeftClose, PanelLeftOpen, CalendarDays } from 'lucide-react'
+import { Users, Images, Music2, Settings, LayoutGrid, PanelLeftClose, PanelLeftOpen, CalendarDays } from 'lucide-react'
 import { Event } from '@/lib/types'
 
 const EVENT_TYPE_LABELS: Record<string, string> = {
@@ -13,6 +13,13 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
   corporativo: '💼 Corporativo',
   bautizo:     '🕊️ Bautizo',
   otro:        '📅 Otro',
+}
+
+const EVENT_STATUS_STYLES: Record<string, { dot: string; badge: string; label: string }> = {
+  active:    { dot: 'bg-[#48C9B0]', badge: 'border-[#c8ede7] bg-[#f0fdfb] text-[#1a9e88]', label: 'Activo' },
+  paused:    { dot: 'bg-blue-400',  badge: 'border-blue-200 bg-blue-50 text-blue-700',      label: 'Pausado' },
+  cancelled: { dot: 'bg-red-400',   badge: 'border-red-200 bg-red-50 text-red-600',         label: 'Cancelado' },
+  completed: { dot: 'bg-[#888]',    badge: 'border-[#e0e0e0] bg-[#f8f8f8] text-[#888]',    label: 'Completado' },
 }
 
 const NAV_ITEMS = [
@@ -51,7 +58,6 @@ const NAV_ITEMS = [
     iconOutline: <Music2 width={18} height={18} strokeWidth={1.5} />,
     iconFilled:  <Music2 width={18} height={18} strokeWidth={2.5} />,
   },
-
   {
     label: 'Configuración',
     labelMobile: 'Config',
@@ -99,7 +105,7 @@ export default function EventLayout({ children }: { children: React.ReactNode })
     const loadEvent = async () => {
       const { data } = await supabase
         .from('events')
-        .select('id, name, event_date, event_end_date, venue, event_type')
+        .select('id, name, event_date, event_end_date, venue, event_type, event_status')
         .eq('id', id)
         .single()
       if (data) setEvent(data as any)
@@ -110,15 +116,12 @@ export default function EventLayout({ children }: { children: React.ReactNode })
   useEffect(() => {
     const container = navScrollRef.current
     if (!container) return
-
     const activeIndex = NAV_ITEMS.findIndex(item => {
       const full = `/events/${id}${item.path}`
       if (item.path === '') return pathname === `/events/${id}`
       return pathname.startsWith(full)
     })
-
     if (activeIndex === -1) return
-
     const itemWidth = container.scrollWidth / NAV_ITEMS.length
     const scrollTo = itemWidth * activeIndex - itemWidth * 2
     container.scrollTo({ left: Math.max(0, scrollTo), behavior: 'smooth' })
@@ -129,6 +132,19 @@ export default function EventLayout({ children }: { children: React.ReactNode })
     return new Date(year, month - 1, day).toLocaleDateString('es-MX', {
       day: 'numeric', month: 'long', year: 'numeric'
     })
+  }
+
+  const getDisplayStatus = (): 'active' | 'paused' | 'cancelled' | 'completed' => {
+    const es = event?.event_status || 'active'
+    if (es === 'paused' || es === 'cancelled') return es
+    if (event?.event_date) {
+      const [year, month, day] = event.event_date.split('T')[0].split('-').map(Number)
+      const eventDay = new Date(year, month - 1, day)
+      eventDay.setHours(0, 0, 0, 0)
+      const today = new Date(); today.setHours(0, 0, 0, 0)
+      if (eventDay < today) return 'completed'
+    }
+    return 'active'
   }
 
   const isActive = (path: string) => {
@@ -153,24 +169,50 @@ export default function EventLayout({ children }: { children: React.ReactNode })
     )
   }
 
+  const displayStatus = event ? getDisplayStatus() : null
+  const badgeStyle = displayStatus ? EVENT_STATUS_STYLES[displayStatus] : null
+
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-white font-sans text-[#1D1E20]">
 
-      {/* ══ TABLET/DESKTOP HEADER ══ */}
+      {/* ══ HEADER DESKTOP ══ */}
       <header className="hidden h-14 shrink-0 items-center justify-between border-b border-[#e8e8e8] bg-white px-4 sm:flex sm:h-16 sm:px-6">
-      <button
-        onClick={() => router.push('/dashboard')}
-        className="text-lg font-bold sm:text-xl"
-        style={{ fontFamily: 'Georgia, serif' }}
-      >
-        Guest<span className="text-[#48C9B0]">Flow</span>
-      </button>
+        {/* Logo */}
+        <button
+          onClick={() => router.push('/dashboard')}
+          className="shrink-0 text-lg font-bold sm:text-xl"
+          style={{ fontFamily: 'Georgia, serif' }}
+        >
+          Guest<span className="text-[#48C9B0]">Flow</span>
+        </button>
+
+        {/* Info del evento — centro */}
         {event && (
-          <span className="hidden max-w-[240px] truncate text-sm font-semibold text-[#1D1E20] sm:block lg:max-w-sm">
-            {event.name}
-          </span>
+          <div className="flex min-w-0 flex-1 items-center justify-center gap-2 px-4">
+            <span className="max-w-[200px] truncate text-sm font-semibold text-[#1D1E20] lg:max-w-xs">
+              {event.name}
+            </span>
+            {event.event_type && (
+              <span className="hidden text-xs text-[#888] lg:block">
+                {EVENT_TYPE_LABELS[event.event_type]}
+              </span>
+            )}
+            {badgeStyle && (
+              <span className={'flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ' + badgeStyle.badge}>
+                <span className={'h-1.5 w-1.5 rounded-full ' + badgeStyle.dot} />
+                {badgeStyle.label}
+              </span>
+            )}
+            {event.event_date && (
+              <span className="hidden text-xs text-[#aaa] lg:block">
+                {formatDate(event.event_date)}
+              </span>
+            )}
+          </div>
         )}
-        <div className="flex items-center gap-3">
+
+        {/* Derecha */}
+        <div className="flex shrink-0 items-center gap-3">
           <button onClick={() => router.push('/dashboard')} className="text-xs text-[#999] transition hover:text-[#48C9B0]">
             ← Mis eventos
           </button>
@@ -187,7 +229,6 @@ export default function EventLayout({ children }: { children: React.ReactNode })
         </div>
       </header>
 
-
       {/* ══ BODY ══ */}
       <div className="flex min-h-0 flex-1 overflow-hidden">
 
@@ -197,18 +238,6 @@ export default function EventLayout({ children }: { children: React.ReactNode })
           style={{ width: collapsed ? '56px' : '224px', transition: 'width 0.2s ease' }}
         >
           <nav className="py-2">
-
-            <button
-  onClick={() => router.push('/dashboard')}
-  className="flex shrink-0 flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium text-[#bbb] transition hover:text-[#48C9B0]"
-  style={{ width: '20vw', scrollSnapAlign: 'center' }}
->
-  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/>
-    <polyline points="9 22 9 12 15 12 15 22"/>
-  </svg>
-  <span>Inicio</span>
-</button>
             {NAV_ITEMS.map(item => (
               <button
                 key={item.path}
@@ -296,17 +325,13 @@ export default function EventLayout({ children }: { children: React.ReactNode })
           msOverflowStyle: 'none',
         }}
       >
-        <style>{`.gf-bottom-nav::-webkit-scrollbar { display: none; }`}</style>
         {NAV_ITEMS.map(item => (
           <button
             key={item.path}
             onClick={() => navigate(item.path)}
             className={`flex shrink-0 flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition
               ${isActive(item.path) ? 'text-[#48C9B0]' : 'text-[#bbb]'}`}
-            style={{
-              width: '20vw',
-              scrollSnapAlign: 'center',
-            }}
+            style={{ width: '20vw', scrollSnapAlign: 'center' }}
           >
             {isActive(item.path) ? item.iconFilled : item.iconOutline}
             <span>{item.labelMobile ?? item.label}</span>

@@ -11,15 +11,6 @@ const STATUS_LABEL: Record<string, { label: string; color: string; bg: string; b
   declined:  { label: 'Declinó',    color: '#cc3333', bg: '#fff0f0', border: '#ffc0c0' },
 }
 
-const EVENT_TYPE_LABELS: Record<string, string> = {
-  boda:        '💍 Boda',
-  cumpleanos:  '🎂 Cumpleaños',
-  fiesta:      '🎉 Fiesta',
-  corporativo: '💼 Evento corporativo',
-  bautizo:     '🕊️ Bautizo / Primera comunión',
-  otro:        '📅 Otro',
-}
-
 const GROUP_COLORS = [
   '#48C9B0', '#7F77DD', '#F0997B', '#378ADD',
   '#EF9F27', '#D4537E', '#639922', '#D85A30',
@@ -67,7 +58,6 @@ type EditMember = {
   rsvp_status: 'pending' | 'confirmed' | 'declined'
 }
 
-// Mesa asignada al invitado
 type GuestTableInfo = {
   tableNumber: number
   tableName: string | null
@@ -102,7 +92,7 @@ function TagSelector({ availableTags, selectedTags, onChange }: {
 }
 
 function MembersEditor({ value, onChange }: { value: EditMember[]; onChange: (v: EditMember[]) => void }) {
-  const MAX = 5
+  const MAX = 15
   const add = () => { if (value.length < MAX) onChange([...value, { name: '', phone: '', rsvp_status: 'pending' }]) }
   const remove = (i: number) => onChange(value.filter((_, idx) => idx !== i))
   const update = (i: number, field: keyof EditMember, val: string) =>
@@ -135,13 +125,6 @@ function MembersEditor({ value, onChange }: { value: EditMember[]; onChange: (v:
   )
 }
 
-const EVENT_STATUS_STYLES: Record<string, { dot: string; badge: string; label: string }> = {
-  active:    { dot: 'bg-[#48C9B0]', badge: 'border-[#c8ede7] bg-[#f0fdfb] text-[#1a9e88]', label: 'Activo' },
-  paused:    { dot: 'bg-blue-400',  badge: 'border-blue-200 bg-blue-50 text-blue-700',      label: 'Pausado' },
-  cancelled: { dot: 'bg-red-400',   badge: 'border-red-200 bg-red-50 text-red-600',         label: 'Cancelado' },
-  completed: { dot: 'bg-[#888]',    badge: 'border-[#e0e0e0] bg-[#f8f8f8] text-[#888]',    label: 'Completado' },
-}
-
 type CsvDuplicateResult = {
   hasDuplicates: boolean
   rows: Array<{
@@ -168,7 +151,6 @@ export default function EventPage() {
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<'all' | 'pending' | 'confirmed' | 'declined'>('all')
 
-  // Mapa guestId → mesa asignada
   const [guestTableMap, setGuestTableMap] = useState<Map<string, GuestTableInfo>>(new Map())
 
   const [showModal, setShowModal] = useState(false)
@@ -194,6 +176,10 @@ export default function EventPage() {
   const [showBulkMenu, setShowBulkMenu] = useState(false)
   const bulkMenuRef = useRef<HTMLDivElement>(null)
 
+  const [showBulkCompanionModal, setShowBulkCompanionModal] = useState(false)
+  const [bulkCompanionCount, setBulkCompanionCount] = useState(1)
+  const [bulkCompanionSaving, setBulkCompanionSaving] = useState(false)
+
   const [showWaMenu, setShowWaMenu] = useState<string | null>(null)
   const waMenuRef = useRef<HTMLDivElement>(null)
 
@@ -208,10 +194,6 @@ export default function EventPage() {
   const [newMembers, setNewMembers] = useState<EditMember[]>([])
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
-
-  const [showStatusDropdown, setShowStatusDropdown] = useState(false)
-  const [statusSaving, setStatusSaving] = useState(false)
-  const statusDropdownRef = useRef<HTMLDivElement>(null)
 
   const [sortField, setSortField] = useState<'name' | 'phone' | 'notes' | 'status' | null>('name')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
@@ -244,7 +226,6 @@ export default function EventPage() {
     const handleClick = (e: MouseEvent) => {
       if (bulkMenuRef.current && !bulkMenuRef.current.contains(e.target as Node)) setShowBulkMenu(false)
       if (waMenuRef.current && !waMenuRef.current.contains(e.target as Node)) setShowWaMenu(null)
-      if (statusDropdownRef.current && !statusDropdownRef.current.contains(e.target as Node)) setShowStatusDropdown(false)
     }
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
@@ -272,17 +253,9 @@ export default function EventPage() {
     if (!guestsData) { setLoading(false); return }
     const { data: membersData } = await supabase.from('party_members').select('*').eq('event_id', id).order('created_at')
 
-    // Cargar mesas asignadas
-    const { data: seatsData } = await supabase
-      .from('table_seats')
-      .select('guest_id, table_id')
-      .eq('event_id', id)
-    const { data: tablesData } = await supabase
-      .from('tables')
-      .select('id, number, name')
-      .eq('event_id', id)
+    const { data: seatsData } = await supabase.from('table_seats').select('guest_id, table_id').eq('event_id', id)
+    const { data: tablesData } = await supabase.from('tables').select('id, number, name').eq('event_id', id)
 
-    // Construir mapa guestId → mesa
     const tableById = new Map((tablesData || []).map(t => [t.id, t]))
     const map = new Map<string, GuestTableInfo>()
     for (const seat of (seatsData || [])) {
@@ -294,27 +267,6 @@ export default function EventPage() {
 
     setGuests(guestsData.map(g => ({ ...g, tags: g.tags || [], party_members: (membersData || []).filter(m => m.guest_id === g.id) })))
     setLoading(false)
-  }
-
-  const getDisplayStatus = (): 'active' | 'paused' | 'cancelled' | 'completed' => {
-    const es = event?.event_status || 'active'
-    if (es === 'paused' || es === 'cancelled') return es
-    if (event?.event_date) {
-      const [year, month, day] = event.event_date.split('T')[0].split('-').map(Number)
-      const eventDay = new Date(year, month - 1, day)
-      eventDay.setHours(0, 0, 0, 0)
-      const today = new Date(); today.setHours(0, 0, 0, 0)
-      if (eventDay < today) return 'completed'
-    }
-    return 'active'
-  }
-
-  const handleStatusChange = async (newStatus: EventStatus) => {
-    setStatusSaving(true)
-    setShowStatusDropdown(false)
-    const { error } = await supabase.from('events').update({ event_status: newStatus }).eq('id', id)
-    if (!error) setEvent(prev => prev ? { ...prev, event_status: newStatus } : prev)
-    setStatusSaving(false)
   }
 
   const updateStatus = async (guestId: string, status: RsvpStatus) => {
@@ -402,6 +354,39 @@ export default function EventPage() {
     setGuests(prev => prev.filter(g => !selected.has(g.id)))
     setEvent(prev => prev ? { ...prev, total_guests: Math.max(0, prev.total_guests - ids.length) } : prev)
     setSelected(new Set()); setShowBulkMenu(false)
+  }
+
+  const bulkAddCompanions = async () => {
+    if (bulkCompanionCount < 1) return
+    setBulkCompanionSaving(true)
+    const ids = Array.from(selected)
+    const rows: { guest_id: string; event_id: string; name: string; phone: null; rsvp_status: string }[] = []
+
+    for (const guestId of ids) {
+      const guest = guests.find(g => g.id === guestId)
+      if (!guest) continue
+      const canAdd = Math.max(0, 15 - guest.party_members.length)
+      const toAdd = Math.min(bulkCompanionCount, canAdd)
+      for (let i = 0; i < toAdd; i++) {
+        rows.push({ guest_id: guestId, event_id: id as string, name: '', phone: null, rsvp_status: 'pending' })
+      }
+    }
+
+    if (rows.length === 0) { setBulkCompanionSaving(false); setShowBulkCompanionModal(false); return }
+
+    await supabase.from('party_members').insert(rows)
+
+    for (const guestId of ids) {
+      const guest = guests.find(g => g.id === guestId)
+      if (!guest) continue
+      const canAdd = Math.max(0, 15 - guest.party_members.length)
+      const toAdd = Math.min(bulkCompanionCount, canAdd)
+      if (toAdd > 0) await supabase.from('guests').update({ party_size: guest.party_size + toAdd }).eq('id', guestId)
+    }
+
+    await loadGuests()
+    setBulkCompanionSaving(false); setShowBulkCompanionModal(false)
+    setBulkCompanionCount(1); setSelected(new Set()); setShowBulkMenu(false)
   }
 
   const buildWaText = (guest: Guest, templateIndex = 0) => {
@@ -531,9 +516,7 @@ export default function EventPage() {
     const rows = guests.map(g => {
       const memberNames = g.party_members.map(m => m.name || 'Acompañante').join(' | ')
       const tableInfo = guestTableMap.get(g.id)
-      const mesaLabel = tableInfo
-        ? `Mesa ${tableInfo.tableNumber}${tableInfo.tableName ? ' - ' + tableInfo.tableName : ''}`
-        : ''
+      const mesaLabel = tableInfo ? `Mesa ${tableInfo.tableNumber}${tableInfo.tableName ? ' - ' + tableInfo.tableName : ''}` : ''
       return '"' + g.name + '","' + (g.phone || '') + '","' + (g.email || '') + '","' + STATUS_LABEL[g.rsvp_status].label + '","' + mesaLabel + '","' + (g.notes || '').replace(/"/g, '""') + '","' + (g.tags || []).join(', ') + '","' + memberNames + '"'
     })
     const csv = [headers, ...rows].join('\n')
@@ -548,18 +531,18 @@ export default function EventPage() {
     const tagExample = eventTags.length >= 2 ? eventTags[0] + ',' + eventTags[1] : eventTags.length === 1 ? eventTags[0] : 'familia'
     const headers = 'nombre,telefono,email,notas,tags,rsvp_status'
     const examples = [
-      `"María José García","+52 81 1234 5678","mj@ejemplo.com","Mesa 3","${tagExample}","confirmed"`,
-      `"Patricio Juárez","+52 55 9876 5432","","Sin restricciones alimentarias","","pending"`,
-      `"Andrés Garza","","andres@ejemplo.com","Llegará tarde","","pending"`,
+      `"Maria Jose Garcia","+52 81 1234 5678","mj@ejemplo.com","Mesa 3","${tagExample}","confirmed"`,
+      `"Patricio Juarez","+52 55 9876 5432","","Sin restricciones alimentarias","","pending"`,
+      `"Andres Garza","","andres@ejemplo.com","Llegara tarde","","pending"`,
     ]
     const instructions = [
       '', '# INSTRUCCIONES:',
-      '# nombre      → obligatorio',
-      '# telefono    → formato +52 XX XXXX XXXX (opcional)',
-      '# email       → correo electrónico (opcional)',
-      '# notas       → texto libre (opcional)',
-      `# tags        → separados por coma, deben coincidir exactamente: ${eventTags.length ? eventTags.join(', ') : '(configura tags en Configuración)'}`,
-      '# rsvp_status → confirmed | pending | declined  (vacío = pending)',
+      '# nombre      -> obligatorio',
+      '# telefono    -> formato +52 XX XXXX XXXX (opcional)',
+      '# email       -> correo electronico (opcional)',
+      '# notas       -> texto libre (opcional)',
+      `# tags        -> separados por coma: ${eventTags.length ? eventTags.join(', ') : '(configura tags en Configuracion)'}`,
+      '# rsvp_status -> confirmed | pending | declined  (vacio = pending)',
     ]
     const csv = [headers, ...examples, ...instructions].join('\n')
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
@@ -568,8 +551,7 @@ export default function EventPage() {
     URL.revokeObjectURL(url)
   }
 
-  // Helper para formatear label de mesa
-const getTableLabel = (guestId: string): string => {
+  const getTableLabel = (guestId: string): string => {
     const t = guestTableMap.get(guestId)
     if (!t) return ''
     return `Mesa ${t.tableNumber}`
@@ -583,70 +565,21 @@ const getTableLabel = (guestId: string): string => {
   const allSelected = filtered.length > 0 && selected.size === filtered.length
   const someSelected = selected.size > 0
 
-  const formatDate = (d: string) => {
-    const [year, month, day] = d.split('T')[0].split('-').map(Number)
-    return new Date(year, month - 1, day).toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
-  }
-
   const activeTemplates = (eventSettings?.message_templates as string[] | null)?.filter((t: string) => t.trim()) || []
   const templateNames = eventSettings?.template_names as string[] | null
   const availableTags = event?.guest_tags || []
 
-  const displayStatus = getDisplayStatus()
-  const badgeStyle = EVENT_STATUS_STYLES[displayStatus]
-  const isClickable = displayStatus !== 'completed'
-
-  const statusOptions = [
-    { status: 'active' as EventStatus,    label: 'Activo',    dot: 'bg-[#48C9B0]' },
-    { status: 'paused' as EventStatus,    label: 'Pausado',   dot: 'bg-blue-400' },
-    { status: 'cancelled' as EventStatus, label: 'Cancelado', dot: 'bg-red-400' },
-  ].filter(o => o.status !== event?.event_status)
+  const maxCanAdd = selected.size === 0 ? 15 : Math.max(0, 15 - Math.max(
+    ...Array.from(selected).map(gid => guests.find(g => g.id === gid)?.party_members.length ?? 0)
+  ))
 
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'visible', background: '#ffffff', color: '#1D1E20' }}>
 
+      {/* ══ TOOLBAR ══ */}
       <div style={{ flexShrink: 0, borderBottom: '1px solid #e8e8e8' }} className="px-4 pt-4 pb-0 sm:px-6 sm:pt-5 lg:px-10 lg:pt-6">
-        <div className="mb-4">
-          <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-lg font-bold text-[#1D1E20] sm:text-xl lg:text-2xl">{event?.name}</h1>
-                {event?.event_type && <span className="text-xs text-[#888] sm:text-sm">{EVENT_TYPE_LABELS[event.event_type]}</span>}
-                {event && (
-                  <div className="relative" ref={statusDropdownRef}>
-                    <button onClick={() => isClickable && setShowStatusDropdown(!showStatusDropdown)} disabled={statusSaving || !isClickable}
-                      className={'flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold transition ' + (isClickable ? 'hover:opacity-80' : 'cursor-default') + ' ' + badgeStyle.badge + ' disabled:opacity-60'}>
-                      <span className={'h-1.5 w-1.5 rounded-full ' + badgeStyle.dot} />
-                      {statusSaving ? 'Guardando...' : badgeStyle.label}
-                      {isClickable && (
-                        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" className="opacity-60">
-                          <path d="M2 3.5l3 3 3-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                      )}
-                    </button>
-                    {showStatusDropdown && (
-                      <div className="absolute left-0 top-full z-50 mt-1.5 w-44 overflow-hidden rounded-xl border border-[#e8e8e8] bg-white shadow-lg">
-                        <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-[#bbb]">Cambiar estado</div>
-                        {statusOptions.map(opt => (
-                          <button key={opt.status} onClick={() => handleStatusChange(opt.status)}
-                            className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-xs text-[#555] transition hover:bg-[#f8f8f8]">
-                            <span className={'h-2 w-2 rounded-full ' + opt.dot} />{opt.label}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-              <p className="mt-0.5 text-xs text-[#888] sm:text-sm">
-                {event?.event_date ? formatDate(event.event_date) : ''}
-                {event?.venue ? ' · ' + event.venue : ''}
-              </p>
-            </div>
-            <button onClick={() => window.location.href = '/dashboard'} className="shrink-0 text-xs text-[#999] transition hover:text-[#48C9B0] sm:hidden">← Eventos</button>
-          </div>
-        </div>
 
+        {/* Métricas */}
         <div className="mb-4 grid grid-cols-4 gap-2">
           {[
             { label: 'Total', value: totalPersonas, color: '#1D1E20' },
@@ -661,6 +594,7 @@ const getTableLabel = (guestId: string): string => {
           ))}
         </div>
 
+        {/* Búsqueda + filtros + acciones */}
         <div className="mb-3 flex flex-col gap-2">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
             <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Buscar..."
@@ -696,6 +630,11 @@ const getTableLabel = (guestId: string): string => {
                       <button onClick={() => bulkUpdateStatus('declined')}  className="w-full rounded-lg px-3 py-2 text-left text-xs text-[#cc3333] hover:bg-[#fff0f0]">✕ Marcar declinados</button>
                       <button onClick={() => bulkUpdateStatus('pending')}   className="w-full rounded-lg px-3 py-2 text-left text-xs text-[#b8860b] hover:bg-[#fffbf0]">◷ Marcar pendientes</button>
                       <div className="my-1 h-px bg-[#f0f0f0]" />
+                      <button onClick={() => { setShowBulkMenu(false); setBulkCompanionCount(1); setShowBulkCompanionModal(true) }}
+                        className="w-full rounded-lg px-3 py-2 text-left text-xs text-[#555] hover:bg-[#f8f8f8]">
+                        👥 Agregar acompañante
+                      </button>
+                      <div className="my-1 h-px bg-[#f0f0f0]" />
                       <button onClick={bulkDelete} className="w-full rounded-lg px-3 py-2 text-left text-xs text-[#cc3333] hover:bg-[#fff0f0]">🗑 Eliminar seleccionados</button>
                     </div>
                   )}
@@ -709,6 +648,7 @@ const getTableLabel = (guestId: string): string => {
         </div>
       </div>
 
+      {/* ══ LISTA ══ */}
       <div style={{ flex: 1, overflowY: 'auto' }} className="px-4 pb-6 pt-3 sm:px-6 lg:px-10">
         {loading ? (
           <p className="pt-5 text-sm text-[#999]">Cargando...</p>
@@ -726,7 +666,6 @@ const getTableLabel = (guestId: string): string => {
                 const groupColor = guest.party_members.length > 0 ? GROUP_COLORS[gIdx % GROUP_COLORS.length] : null
                 const guestTags = guest.tags || []
                 const isSelected = selected.has(guest.id)
-                const tableLabel = getTableLabel(guest.id)
                 return (
                   <div key={guest.id}>
                     <div className={'rounded-xl border bg-white px-3 py-3 transition ' + (isSelected ? 'border-[#48C9B0] bg-[#f0fdfb]' : 'border-[#e8e8e8]') + (groupColor ? ' rounded-b-none border-b-0' : '')}>
@@ -779,7 +718,16 @@ const getTableLabel = (guestId: string): string => {
                             <div className="h-6 w-[3px] shrink-0 rounded-full opacity-40" style={{ background: groupColor }} />
                             <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold" style={{ background: groupColor + '22', color: groupColor }}>+{mi + 1}</div>
                             <span className="flex-1 truncate text-xs text-[#888]">{m.name || 'Acompañante'}</span>
-                            <span className="text-[10px] font-semibold" style={{ color: STATUS_LABEL[m.rsvp_status].color }}>{STATUS_LABEL[m.rsvp_status].label}</span>
+                            <select value={m.rsvp_status} onChange={e => updatePartyMemberStatus(m.id, guest.id, e.target.value as RsvpStatus)}
+                              className="rounded-lg border px-2 py-1.5 text-xs font-semibold outline-none"
+                              style={{ background: STATUS_LABEL[m.rsvp_status].bg, borderColor: STATUS_LABEL[m.rsvp_status].border, color: STATUS_LABEL[m.rsvp_status].color, cursor: 'pointer' }}>
+                              <option value="pending">Pendiente</option>
+                              <option value="confirmed">Confirmado</option>
+                              <option value="declined">Declinó</option>
+                            </select>
+                            <button onClick={() => deletePartyMember(m.id, guest.id)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#ffe0e0] bg-[#fff5f5]">
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#cc3333" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{TRASH_ICON}</svg>
+                            </button>
                           </div>
                         </div>
                       )
@@ -791,7 +739,6 @@ const getTableLabel = (guestId: string): string => {
 
             {/* Desktop */}
             <div className="hidden rounded-xl border border-[#e8e8e8] sm:block">
-              {/* Header — añadimos columna Mesa entre Tags y Notas */}
               <div className="grid items-center border-b border-[#e8e8e8] bg-[#f8f8f8] px-4 py-2"
                 style={{ gridTemplateColumns: '40px 2fr 1.2fr 100px 1fr 1.5fr 140px 40px' }}>
                 <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} style={{ cursor: 'pointer', accentColor: '#48C9B0' }} />
@@ -812,6 +759,7 @@ const getTableLabel = (guestId: string): string => {
                 const tableLabel = getTableLabel(guest.id)
                 return (
                   <div key={guest.id}>
+                    {/* Fila invitado principal */}
                     <div className={'grid items-center px-4 py-2.5 transition ' + (selected.has(guest.id) ? 'bg-[#f0fdfb]' : gIdx % 2 === 0 ? 'bg-white hover:bg-[#f5f5f5]' : 'bg-[#fafafa] hover:bg-[#f5f5f5]') + (!hasMembers && !isLastGuest ? ' border-b border-[#f0f0f0]' : '') + (hasMembers ? ' border-b border-[#f0f0f0]' : '')}
                       style={{ gridTemplateColumns: '40px 2fr 1.2fr 100px 1fr 1.5fr 140px 40px' }}>
                       <input type="checkbox" checked={selected.has(guest.id)} onChange={() => toggleSelect(guest.id)} style={{ cursor: 'pointer', accentColor: '#48C9B0' }} />
@@ -827,7 +775,6 @@ const getTableLabel = (guestId: string): string => {
                           return <span key={tag} className="rounded-full border px-2 py-0.5 text-[10px] font-medium" style={{ background: col.bg, borderColor: col.border, color: col.text }}>{tag}</span>
                         }) : <span className="text-[#ddd] text-xs">—</span>}
                       </div>
-                      {/* Columna Mesa — solo lectura */}
                       <div>
                         {tableLabel
                           ? <span className="rounded-full border border-[#c8ede7] bg-[#f0fdfb] px-2 py-0.5 text-[10px] font-semibold text-[#1a9e88]">{tableLabel}</span>
@@ -873,10 +820,12 @@ const getTableLabel = (guestId: string): string => {
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#cc3333" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{TRASH_ICON}</svg>
                       </button>
                     </div>
+
+                    {/* Filas acompañantes — py-2.5 para igualar altura con invitado principal */}
                     {groupColor && guest.party_members.map((m, mi) => {
                       const isLastMember = mi === guest.party_members.length - 1
                       return (
-                        <div key={m.id} className={'grid items-center px-4 py-1.5 bg-[#fafafa] ' + (isLastMember && !isLastGuest ? 'border-b-2 border-[#f0f0f0]' : 'border-b border-[#f8f8f8]')}
+                        <div key={m.id} className={'grid items-center px-4 py-2.5 bg-[#fafafa] ' + (isLastMember && !isLastGuest ? 'border-b-2 border-[#f0f0f0]' : 'border-b border-[#f8f8f8]')}
                           style={{ gridTemplateColumns: '40px 2fr 1.2fr 100px 1fr 1.5fr 140px 40px' }}>
                           <div />
                           <div className="flex items-center gap-2 pl-4">
@@ -1040,6 +989,45 @@ const getTableLabel = (guestId: string): string => {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Bulk acompañantes */}
+      {showBulkCompanionModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-xs rounded-2xl border border-[#e8e8e8] bg-white p-6 shadow-xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-base font-bold text-[#1D1E20]">Agregar acompañantes</h2>
+              <button onClick={() => setShowBulkCompanionModal(false)} className="text-xl text-[#aaa]">✕</button>
+            </div>
+            <p className="mb-4 text-xs text-[#888]">
+              Se agregará <span className="font-semibold text-[#1D1E20]">{bulkCompanionCount} acompañante{bulkCompanionCount > 1 ? 's' : ''}</span> a cada uno de los <span className="font-semibold text-[#1D1E20]">{selected.size} invitados</span> seleccionados.
+            </p>
+            {maxCanAdd === 0 ? (
+              <p className="mb-4 rounded-lg border border-[#ffc0c0] bg-[#fff0f0] p-2.5 text-xs text-[#cc3333]">
+                Todos los invitados seleccionados ya tienen 15 acompañantes (el máximo).
+              </p>
+            ) : (
+              <>
+                {bulkCompanionCount > maxCanAdd && (
+                  <p className="mb-3 rounded-lg border border-[#f0d080] bg-[#fffbf0] p-2.5 text-xs text-[#b8860b]">
+                    Algunos invitados ya tienen acompañantes — solo se agregarán los que quepan (máx. {maxCanAdd}).
+                  </p>
+                )}
+                <div className="mb-5 flex items-center justify-center gap-4">
+                  <button onClick={() => setBulkCompanionCount(c => Math.max(1, c - 1))} className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#e0e0e0] text-lg font-bold text-[#555] transition hover:border-[#48C9B0] hover:text-[#48C9B0]">−</button>
+                  <span className="w-8 text-center text-2xl font-bold text-[#1D1E20]">{bulkCompanionCount}</span>
+                  <button onClick={() => setBulkCompanionCount(c => Math.min(maxCanAdd, c + 1))} className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#e0e0e0] text-lg font-bold text-[#555] transition hover:border-[#48C9B0] hover:text-[#48C9B0]">+</button>
+                </div>
+              </>
+            )}
+            <div className="flex gap-2.5">
+              <button onClick={() => setShowBulkCompanionModal(false)} className="flex-1 rounded-lg border border-[#e0e0e0] py-2.5 text-sm text-[#888]">Cancelar</button>
+              <button onClick={bulkAddCompanions} disabled={bulkCompanionSaving || maxCanAdd === 0} className="flex-[2] rounded-lg bg-[#48C9B0] py-2.5 text-sm font-semibold text-white disabled:opacity-60">
+                {bulkCompanionSaving ? 'Guardando...' : 'Confirmar'}
+              </button>
+            </div>
           </div>
         </div>
       )}

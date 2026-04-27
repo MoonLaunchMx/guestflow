@@ -156,6 +156,23 @@ type MoveModal = {
 
 type EventInfo = { name: string; event_date: string | null; venue: string | null }
 
+// ── Donut chart para "Mesas listas" ──────────────────────────────────────
+function DonutChart({ value, total }: { value: number; total: number }) {
+  const pct = total === 0 ? 0 : Math.min(value / total, 1)
+  const r = 16
+  const circ = 2 * Math.PI * r
+  const dash = pct * circ
+  return (
+    <svg width="44" height="44" viewBox="0 0 44 44">
+      <circle cx="22" cy="22" r={r} fill="none" stroke="#e8e8e8" strokeWidth="5" />
+      <circle cx="22" cy="22" r={r} fill="none" stroke="#48C9B0" strokeWidth="5"
+        strokeDasharray={`${dash} ${circ}`}
+        strokeLinecap="round"
+        transform="rotate(-90 22 22)" />
+    </svg>
+  )
+}
+
 export default function MesasPage() {
   const { id: eventId } = useParams()
 
@@ -168,7 +185,7 @@ export default function MesasPage() {
   const [showComingSoon, setShowComingSoon] = useState(false)
   const [listSearch, setListSearch] = useState('')
 
-  // Modal mesa
+  // Modal mesa (crear/editar)
   const [showModal, setShowModal]     = useState(false)
   const [editTable, setEditTable]     = useState<TableRecord | null>(null)
   const [modalNumber, setModalNumber] = useState('')
@@ -177,6 +194,14 @@ export default function MesasPage() {
   const [modalShape, setModalShape]   = useState<'round' | 'rectangle'>('round')
   const [modalSaving, setModalSaving] = useState(false)
   const [modalError, setModalError]   = useState('')
+
+  // Modal bulk
+  const [showBulkModal, setShowBulkModal] = useState(false)
+  const [bulkCount, setBulkCount]         = useState('5')
+  const [bulkCap, setBulkCap]             = useState('8')
+  const [bulkShape, setBulkShape]         = useState<'round' | 'rectangle'>('round')
+  const [bulkSaving, setBulkSaving]       = useState(false)
+  const [bulkError, setBulkError]         = useState('')
 
   // Modal mover
   const [moveModal, setMoveModal]   = useState<MoveModal | null>(null)
@@ -265,10 +290,7 @@ export default function MesasPage() {
     setEditTags(guest.tags || [])
     setEditError('')
     setEditMembers(guest.party_members.map(m => ({
-      id: m.id,
-      name: m.name,
-      phone: '',
-      rsvp_status: m.rsvp_status,
+      id: m.id, name: m.name, phone: '', rsvp_status: m.rsvp_status,
     })))
   }
 
@@ -284,12 +306,8 @@ export default function MesasPage() {
     }
     setEditSaving(true); setEditError('')
     const { error } = await supabase.from('guests').update({
-      name: editName,
-      phone: editPhone || null,
-      email: editEmail || null,
-      party_size: 1 + editMembers.length,
-      notes: editNotes || null,
-      tags: editTags,
+      name: editName, phone: editPhone || null, email: editEmail || null,
+      party_size: 1 + editMembers.length, notes: editNotes || null, tags: editTags,
     }).eq('id', editGuest.id)
     if (error) { setEditError('Error: ' + error.message); setEditSaving(false); return }
 
@@ -298,23 +316,16 @@ export default function MesasPage() {
     const toDelete = existingIds.filter(id => !keepIds.includes(id))
     if (toDelete.length > 0) await supabase.from('party_members').delete().in('id', toDelete)
     for (const m of editMembers.filter(m => m.id)) {
-      await supabase.from('party_members').update({
-        name: m.name, phone: m.phone || null, rsvp_status: m.rsvp_status,
-      }).eq('id', m.id!)
+      await supabase.from('party_members').update({ name: m.name, phone: m.phone || null, rsvp_status: m.rsvp_status }).eq('id', m.id!)
     }
     const toInsert = editMembers.filter(m => !m.id)
     if (toInsert.length > 0) {
       await supabase.from('party_members').insert(toInsert.map(m => ({
-        guest_id: editGuest.id,
-        event_id: eventId as string,
-        name: m.name,
-        phone: m.phone || null,
-        rsvp_status: m.rsvp_status,
+        guest_id: editGuest.id, event_id: eventId as string,
+        name: m.name, phone: m.phone || null, rsvp_status: m.rsvp_status,
       })))
     }
-    await loadData()
-    setEditGuest(null)
-    setEditSaving(false)
+    await loadData(); setEditGuest(null); setEditSaving(false)
   }
 
   // ── Check-in ──────────────────────────────────────────────────────────────
@@ -323,10 +334,7 @@ export default function MesasPage() {
     await supabase.from('guests').update({ checked_in: !current }).eq('id', guestId)
     setTables(prev => prev.map(t => ({
       ...t,
-      seats: t.seats.map(s => {
-        if (s.guest?.id !== guestId) return s
-        return { ...s, guest: { ...s.guest!, checked_in: !current } }
-      })
+      seats: t.seats.map(s => s.guest?.id !== guestId ? s : { ...s, guest: { ...s.guest!, checked_in: !current } })
     })))
     setGuests(prev => prev.map(g => g.id === guestId ? { ...g, checked_in: !current } : g))
   }
@@ -337,113 +345,137 @@ export default function MesasPage() {
       ...t,
       seats: t.seats.map(s => {
         if (s.guest?.id !== guestId) return s
-        return {
-          ...s,
-          guest: {
-            ...s.guest!,
-            party_members: s.guest!.party_members.map(m =>
-              m.id === memberId ? { ...m, checked_in: !current } : m
-            )
-          }
-        }
+        return { ...s, guest: { ...s.guest!, party_members: s.guest!.party_members.map(m => m.id === memberId ? { ...m, checked_in: !current } : m) } }
       })
     })))
     setGuests(prev => prev.map(g =>
-      g.id === guestId
-        ? { ...g, party_members: g.party_members.map(m => m.id === memberId ? { ...m, checked_in: !current } : m) }
-        : g
+      g.id === guestId ? { ...g, party_members: g.party_members.map(m => m.id === memberId ? { ...m, checked_in: !current } : m) } : g
     ))
   }
 
   // ── Imprimir ──────────────────────────────────────────────────────────────
+  // Usamos un iframe oculto en el mismo DOM en lugar de window.open para evitar
+  // que la pestaña nueva bloquee la app mientras está abierta.
 
   const handlePrint = () => {
     const formatDate = (d: string) => {
       const [year, month, day] = d.split('T')[0].split('-').map(Number)
       return new Date(year, month - 1, day).toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
     }
+
     const rows: string[] = []
     let rowNum = 1
     for (const table of tables) {
+      // Nombre de mesa en una línea: "1 · Fam. Novia" o solo "1" si no tiene nombre
+      const mesaLabel = table.name ? `${table.number} · ${table.name}` : String(table.number)
       for (const seat of table.seats) {
         const g = seat.guest
         if (!g) continue
-        const tagsText = g.tags.join(', ') || '—'
-        const notesText = g.notes || '—'
-        rows.push(`
-          <tr class="main-row">
-            <td>${rowNum++}</td>
-            <td>${table.number}${table.name ? ' · ' + table.name : ''}</td>
-            <td class="name-cell">${g.name}</td>
-            <td>${STATUS_COLORS[g.rsvp_status].label}</td>
-            <td class="tags-cell">${tagsText}</td>
-            <td class="notes-cell">${notesText}</td>
-            <td class="checkbox-cell"><div class="print-checkbox"></div></td>
-          </tr>
-        `)
+        rows.push(`<tr class="main-row"><td class="num-cell">${rowNum++}</td><td class="mesa-cell">${mesaLabel}</td><td class="name-cell">${g.name}</td><td class="rsvp-cell">${STATUS_COLORS[g.rsvp_status].label}</td><td class="tags-cell">${g.tags.join(', ') || '—'}</td><td class="notes-cell">${g.notes || '—'}</td><td class="checkbox-cell"><div class="print-checkbox"></div></td></tr>`)
         for (const m of g.party_members) {
-          rows.push(`
-            <tr class="member-row">
-              <td>${rowNum++}</td>
-              <td></td>
-              <td class="name-cell member-name">↳ ${m.name || 'Acompañante'}</td>
-              <td>${STATUS_COLORS[m.rsvp_status].label}</td>
-              <td>—</td><td>—</td>
-              <td class="checkbox-cell"><div class="print-checkbox"></div></td>
-            </tr>
-          `)
+          rows.push(`<tr class="member-row"><td class="num-cell">${rowNum++}</td><td class="mesa-cell"></td><td class="name-cell member-name">↳ ${m.name || 'Acompañante'}</td><td class="rsvp-cell">${STATUS_COLORS[m.rsvp_status].label}</td><td>—</td><td>—</td><td class="checkbox-cell"><div class="print-checkbox"></div></td></tr>`)
         }
       }
     }
-    const totalPersonas = tables.reduce((acc, t) =>
-      acc + t.seats.reduce((a, s) => a + (s.guest ? 1 + s.guest.party_members.length : 0), 0), 0)
-    const html = `<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><title>Lista — ${eventInfo?.name || 'Evento'}</title>
-      <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 11px; color: #1D1E20; padding: 20px; }
-        .header { margin-bottom: 16px; padding-bottom: 12px; border-bottom: 2px solid #1D1E20; }
-        .header h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
-        .header-meta { display: flex; gap: 20px; margin-top: 6px; font-size: 10px; color: #888; }
-        table { width: 100%; border-collapse: collapse; table-layout: fixed; }
-        col.col-num { width: 24px; } col.col-mesa { width: 80px; } col.col-name { width: 22%; }
-        col.col-rsvp { width: 72px; } col.col-tags { width: 18%; } col.col-notes { width: auto; } col.col-check { width: 44px; }
-        thead th { text-align: left; font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #888; padding: 5px 6px; border-bottom: 1.5px solid #1D1E20; }
-        .main-row td { padding: 7px 6px; border-bottom: 1px solid #e8e8e8; vertical-align: top; }
-        .member-row td { padding: 4px 6px; border-bottom: 1px solid #f0f0f0; vertical-align: top; color: #666; }
-        .name-cell { font-weight: 600; } .member-name { font-weight: 400; padding-left: 14px !important; }
-        .tags-cell { font-size: 10px; color: #555; } .notes-cell { font-size: 10px; color: #777; }
-        .checkbox-cell { text-align: center; }
-        .print-checkbox { display: inline-block; width: 16px; height: 16px; border: 1.5px solid #1D1E20; border-radius: 3px; margin-top: 1px; }
-        .footer { margin-top: 16px; padding-top: 10px; border-top: 1px solid #e8e8e8; font-size: 9px; color: #aaa; display: flex; justify-content: space-between; }
-        @media print { body { padding: 0; } @page { margin: 1.2cm; size: A4 landscape; } tr { page-break-inside: avoid; } }
-      </style></head><body>
-      <div class="header">
-        <h1>${eventInfo?.name || 'Lista de invitados'}</h1>
-        <div class="header-meta">
-          ${eventInfo?.event_date ? `<span>📅 ${formatDate(eventInfo.event_date)}</span>` : ''}
-          ${eventInfo?.venue ? `<span>📍 ${eventInfo.venue}</span>` : ''}
-          <span>👥 ${totalPersonas} personas · ${tables.length} mesas</span>
-        </div>
-      </div>
-      <table>
-        <colgroup><col class="col-num"><col class="col-mesa"><col class="col-name"><col class="col-rsvp"><col class="col-tags"><col class="col-notes"><col class="col-check"></colgroup>
-        <thead><tr><th>#</th><th>Mesa</th><th>Nombre</th><th>RSVP</th><th>Tags</th><th>Notas</th><th style="text-align:center">Llegó</th></tr></thead>
-        <tbody>${rows.join('')}</tbody>
-      </table>
-      <div class="footer">
-        <span>GuestFlow — Lista de asistencia</span>
-        <span>Impreso el ${new Date().toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
-      </div></body></html>`
-    const win = window.open('', '_blank')
-    if (!win) return
-    win.document.write(html); win.document.close()
-    win.onload = () => { win.print() }
+
+    const totalPersonas = tables.reduce((acc, t) => acc + t.seats.reduce((a, s) => a + (s.guest ? 1 + s.guest.party_members.length : 0), 0), 0)
+    const printDate = new Date().toLocaleDateString('es-MX', { day: 'numeric', month: 'long', year: 'numeric' })
+
+    const html = `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Lista — ${eventInfo?.name || 'Evento'}</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 11px; color: #1D1E20; padding: 20px; }
+  .header { margin-bottom: 14px; padding-bottom: 10px; border-bottom: 2px solid #1D1E20; }
+  .header h1 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+  .header-meta { display: flex; gap: 20px; margin-top: 5px; font-size: 10px; color: #888; }
+  table { width: 100%; border-collapse: collapse; table-layout: auto; }
+  thead th { text-align: left; font-size: 9px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; color: #888; padding: 5px 8px; border-bottom: 1.5px solid #1D1E20; white-space: nowrap; }
+  .main-row td  { padding: 6px 8px; border-bottom: 1px solid #e8e8e8; vertical-align: middle; white-space: nowrap; }
+  .member-row td { padding: 3px 8px; border-bottom: 1px solid #f0f0f0; vertical-align: middle; color: #666; white-space: nowrap; }
+  .num-cell  { color: #bbb; font-size: 10px; }
+  .mesa-cell { font-size: 10px; color: #555; }
+  .name-cell { font-weight: 600; }
+  .member-name { font-weight: 400; padding-left: 14px !important; }
+  .rsvp-cell { font-size: 10px; }
+  .tags-cell { font-size: 10px; color: #555; }
+  .notes-cell { font-size: 10px; color: #777; }
+  .checkbox-cell { text-align: center; }
+  .print-checkbox { display: inline-block; width: 14px; height: 14px; border: 1.5px solid #1D1E20; border-radius: 3px; }
+  .footer { margin-top: 14px; padding-top: 8px; border-top: 1px solid #e8e8e8; font-size: 9px; color: #aaa; display: flex; justify-content: space-between; align-items: center; }
+  .footer-brand { font-weight: 700; color: #48C9B0; letter-spacing: 0.03em; }
+  @media print {
+    body { padding: 0; }
+    @page { margin: 1.2cm; size: A4 landscape; }
+    tr { page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+  <div class="header">
+    <h1>${eventInfo?.name || 'Lista de invitados'}</h1>
+    <div class="header-meta">
+      ${eventInfo?.event_date ? `<span>📅 ${formatDate(eventInfo.event_date)}</span>` : ''}
+      ${eventInfo?.venue    ? `<span>📍 ${eventInfo.venue}</span>`                  : ''}
+      <span>👥 ${totalPersonas} personas · ${tables.length} mesas</span>
+    </div>
+  </div>
+  <table>
+    <thead>
+      <tr>
+        <th>#</th><th>Mesa</th><th>Nombre</th>
+        <th>RSVP</th><th>Tags</th><th>Notas</th>
+        <th style="text-align:center">Llegó</th>
+      </tr>
+    </thead>
+    <tbody>${rows.join('')}</tbody>
+  </table>
+  <div class="footer">
+    <span class="footer-brand">GuestFlow</span>
+    <span>Lista de asistencia · Impreso el ${printDate}</span>
+  </div>
+</body>
+</html>`
+
+    // Iframe invisible — no abre pestaña nueva ni bloquea la app
+    const iframe = document.createElement('iframe')
+    iframe.style.cssText = 'position:fixed;top:-9999px;left:-9999px;width:1px;height:1px;border:none;'
+    document.body.appendChild(iframe)
+
+    const doc = iframe.contentDocument || iframe.contentWindow?.document
+    if (!doc) { document.body.removeChild(iframe); return }
+
+    doc.open(); doc.write(html); doc.close()
+
+    // Esperar a que cargue el contenido antes de imprimir
+    iframe.onload = () => {
+      try {
+        iframe.contentWindow?.focus()
+        iframe.contentWindow?.print()
+      } finally {
+        // Remover el iframe después de un delay prudente
+        setTimeout(() => {
+          if (document.body.contains(iframe)) document.body.removeChild(iframe)
+        }, 1000)
+      }
+    }
   }
 
   // ── Helpers ───────────────────────────────────────────────────────────────
 
   const getOccupied = (table: TableRecord) =>
     table.seats.filter(s => s.guest_id).reduce((acc, s) => acc + (s.party_size || 1), 0)
+
+  const nextTableNumber = () => {
+    if (tables.length === 0) return 1
+    const used = new Set(tables.map(t => t.number))
+    let n = 1
+    while (used.has(n)) n++
+    return n
+  }
 
   const guestSeatMap = new Map<string, { seatId: string; tableNumber: number; tableId: string; tableCapacity: number }>()
   for (const t of tables) {
@@ -456,32 +488,53 @@ export default function MesasPage() {
     ? guests.filter(g => g.name.toLowerCase().includes(assignSearch.toLowerCase()))
     : guests
 
+  // ── Stats ─────────────────────────────────────────────────────────────────
+
+  const confirmedGuests = guests.filter(g => g.rsvp_status === 'confirmed').length
+  const totalGuests     = guests.length
+  const seatedIds       = new Set<string>()
+  for (const t of tables) for (const s of t.seats) if (s.guest_id) seatedIds.add(s.guest_id)
+  const unassignedConfirmed = guests.filter(g => g.rsvp_status === 'confirmed' && !seatedIds.has(g.id)).length
+  const totalSeats      = tables.reduce((acc, t) => acc + t.capacity, 0)
+  const totalOccupied   = tables.reduce((acc, t) => acc + getOccupied(t), 0)
+  const totalFree       = totalSeats - totalOccupied
+  const fullTables      = tables.filter(t => getOccupied(t) >= t.capacity).length
+
   // ── Mesas CRUD ────────────────────────────────────────────────────────────
 
   const openCreate = () => {
-    const next = tables.length > 0 ? Math.max(...tables.map(t => t.number)) + 1 : 1
-    setEditTable(null); setModalNumber(String(next)); setModalName('')
-    setModalCap('8'); setModalShape('round'); setModalError(''); setShowModal(true)
+    setEditTable(null)
+    setModalNumber(String(nextTableNumber()))
+    setModalName(''); setModalCap('8'); setModalShape('round'); setModalError('')
+    setShowModal(true)
   }
 
   const openEditTable = (table: TableRecord) => {
-    setEditTable(table); setModalNumber(String(table.number)); setModalName(table.name || '')
-    setModalCap(String(table.capacity)); setModalShape(table.shape); setModalError(''); setShowModal(true)
+    setEditTable(table)
+    setModalNumber(String(table.number)); setModalName(table.name || '')
+    setModalCap(String(table.capacity)); setModalShape(table.shape); setModalError('')
+    setShowModal(true)
   }
 
   const handleSaveTable = async () => {
-    if (!modalNumber) { setModalError('El número es obligatorio'); return }
+    const num = parseInt(modalNumber)
+    if (!modalNumber || isNaN(num) || num < 1) { setModalError('El número de mesa es obligatorio'); return }
     const cap = parseInt(modalCap)
     if (!cap || cap < 1 || cap > 100) { setModalError('Capacidad entre 1 y 100'); return }
+
+    // Número único — no puede repetirse
+    const duplicate = tables.find(t => t.number === num && t.id !== editTable?.id)
+    if (duplicate) { setModalError(`Ya existe la Mesa ${num}. Elige un número diferente.`); return }
+
     setModalSaving(true); setModalError('')
     if (editTable) {
       const { error } = await supabase.from('tables')
-        .update({ number: parseInt(modalNumber), name: modalName || null, capacity: cap, shape: modalShape })
+        .update({ number: num, name: modalName || null, capacity: cap, shape: modalShape })
         .eq('id', editTable.id)
       if (error) { setModalError(error.message); setModalSaving(false); return }
     } else {
       const { error } = await supabase.from('tables')
-        .insert({ event_id: eventId, number: parseInt(modalNumber), name: modalName || null, capacity: cap, shape: modalShape })
+        .insert({ event_id: eventId, number: num, name: modalName || null, capacity: cap, shape: modalShape })
       if (error) { setModalError(error.message); setModalSaving(false); return }
     }
     await loadData(); setShowModal(false); setModalSaving(false)
@@ -491,6 +544,40 @@ export default function MesasPage() {
     if (!confirm(`¿Eliminar Mesa ${table.number}${table.name ? ' — ' + table.name : ''}?`)) return
     await supabase.from('tables').delete().eq('id', table.id)
     setTables(prev => prev.filter(t => t.id !== table.id))
+  }
+
+  // ── Bulk create ───────────────────────────────────────────────────────────
+
+  const openBulkModal = () => {
+    setBulkCount('5'); setBulkCap('8'); setBulkShape('round'); setBulkError('')
+    setShowBulkModal(true)
+  }
+
+  const previewBulkNumbers = (count: number): number[] => {
+    const used = new Set(tables.map(t => t.number))
+    const nums: number[] = []
+    let n = 1
+    while (nums.length < count) {
+      if (!used.has(n)) nums.push(n)
+      n++
+    }
+    return nums
+  }
+
+  const handleBulkCreate = async () => {
+    const count = parseInt(bulkCount)
+    const cap   = parseInt(bulkCap)
+    if (!count || count < 1 || count > 50) { setBulkError('Entre 1 y 50 mesas'); return }
+    if (!cap || cap < 1 || cap > 100)      { setBulkError('Capacidad entre 1 y 100'); return }
+
+    setBulkSaving(true); setBulkError('')
+    const nums = previewBulkNumbers(count)
+    const toInsert = nums.map(num => ({
+      event_id: eventId as string, number: num, name: null, capacity: cap, shape: bulkShape,
+    }))
+    const { error } = await supabase.from('tables').insert(toInsert)
+    if (error) { setBulkError(error.message); setBulkSaving(false); return }
+    await loadData(); setShowBulkModal(false); setBulkSaving(false)
   }
 
   // ── Asignar ───────────────────────────────────────────────────────────────
@@ -516,8 +603,7 @@ export default function MesasPage() {
     }
     const nextSeat = (table.seats.map(s => s.seat_number).sort((a, b) => b - a)[0] || 0) + 1
     await supabase.from('table_seats').insert({
-      table_id: tableId, event_id: eventId,
-      seat_number: nextSeat, guest_id: guest.id, party_size: needed,
+      table_id: tableId, event_id: eventId, seat_number: nextSeat, guest_id: guest.id, party_size: needed,
     })
     await loadData(); setAssignModal(null); setAssignSearch('')
   }
@@ -537,8 +623,7 @@ export default function MesasPage() {
     await supabase.from('table_seats').delete().eq('id', fromSeatId)
     const nextSeat = (toTable.seats.map(s => s.seat_number).sort((a, b) => b - a)[0] || 0) + 1
     await supabase.from('table_seats').insert({
-      table_id: toTableId, event_id: eventId,
-      seat_number: nextSeat, guest_id: guest.id, party_size: needed,
+      table_id: toTableId, event_id: eventId, seat_number: nextSeat, guest_id: guest.id, party_size: needed,
     })
     await loadData(); setMoveModal(null); setMoveSaving(false)
   }
@@ -557,7 +642,7 @@ export default function MesasPage() {
     })
   }
 
-  // ── Componentes ───────────────────────────────────────────────────────────
+  // ── Sub-componentes ───────────────────────────────────────────────────────
 
   const TagChips = ({ tags }: { tags: string[] }) => (
     <>
@@ -582,44 +667,21 @@ export default function MesasPage() {
     const status = guest ? STATUS_COLORS[guest.rsvp_status] : null
     if (!guest) return null
     return (
-      <div className="rounded-xl border px-3 py-2.5"
-        style={{ background: status!.bg, borderColor: status!.border }}>
+      <div className="rounded-xl border px-3 py-2.5" style={{ background: status!.bg, borderColor: status!.border }}>
         <div className="flex items-start justify-between gap-2">
-          <button
-            className="flex min-w-0 items-center gap-1.5 text-left"
-            onClick={() => openEditGuest(guest)}>
-            <span className="truncate text-sm font-semibold hover:underline" style={{ color: status!.text }}>
-              {guest.name}
-            </span>
-            {guest.party_size > 1 && (
-              <span className="shrink-0 text-sm font-semibold" style={{ color: status!.text }}>
-                +{guest.party_size - 1}
-              </span>
-            )}
+          <button className="flex min-w-0 items-center gap-1.5 text-left" onClick={() => openEditGuest(guest)}>
+            <span className="truncate text-sm font-semibold hover:underline" style={{ color: status!.text }}>{guest.name}</span>
+            {guest.party_size > 1 && <span className="shrink-0 text-sm font-semibold" style={{ color: status!.text }}>+{guest.party_size - 1}</span>}
           </button>
           <div className="flex shrink-0 items-center gap-1.5">
-            <span className="text-xs font-semibold" style={{ color: status!.text }}>
-              {status!.label}
-            </span>
-            <button
-              onClick={() => removeGuest(seat.id, guest.name)}
-              className="rounded p-0.5 transition"
-              style={{ color: status!.text, opacity: 0.4 }}
-              title="Quitar de mesa">
+            <span className="text-xs font-semibold" style={{ color: status!.text }}>{status!.label}</span>
+            <button onClick={() => removeGuest(seat.id, guest.name)} className="rounded p-0.5 transition" style={{ color: status!.text, opacity: 0.4 }} title="Quitar de mesa">
               <X width={12} height={12} />
             </button>
           </div>
         </div>
-        {guest.tags.length > 0 && (
-          <div className="mt-1.5 flex flex-wrap gap-1">
-            <TagChips tags={guest.tags} />
-          </div>
-        )}
-        {guest.notes && !compact && (
-          <p className="mt-1 truncate text-[11px]" style={{ color: status!.text, opacity: 0.7 }}>
-            {guest.notes}
-          </p>
-        )}
+        {guest.tags.length > 0 && <div className="mt-1.5 flex flex-wrap gap-1"><TagChips tags={guest.tags} /></div>}
+        {guest.notes && !compact && <p className="mt-1 truncate text-[11px]" style={{ color: status!.text, opacity: 0.7 }}>{guest.notes}</p>}
         {guest.party_members.length > 0 && (
           <div className="mt-1.5 flex flex-col gap-1 border-t pt-1.5" style={{ borderColor: status!.border }}>
             {guest.party_members.map(m => (
@@ -628,9 +690,7 @@ export default function MesasPage() {
                   <div className="h-3 w-[2px] shrink-0 rounded-full opacity-30" style={{ background: status!.text }} />
                   <span className="text-xs" style={{ color: status!.text }}>{m.name || 'Acompañante'}</span>
                 </div>
-                <span className="shrink-0 text-[11px] font-medium" style={{ color: STATUS_COLORS[m.rsvp_status].text }}>
-                  {STATUS_COLORS[m.rsvp_status].label}
-                </span>
+                <span className="shrink-0 text-[11px] font-medium" style={{ color: STATUS_COLORS[m.rsvp_status].text }}>{STATUS_COLORS[m.rsvp_status].label}</span>
               </div>
             ))}
           </div>
@@ -652,9 +712,6 @@ export default function MesasPage() {
     )
   }
 
-  const totalSeats     = tables.reduce((acc, t) => acc + t.capacity, 0)
-  const totalOccupied  = tables.reduce((acc, t) => acc + getOccupied(t), 0)
-  const totalAvailable = totalSeats - totalOccupied
   const cols = '28px 36px 24px 1.8fr 90px 100px 1fr 80px 60px 56px'
 
   const listFilteredTables = listSearch
@@ -675,24 +732,83 @@ export default function MesasPage() {
       {/* Header */}
       <div style={{ flexShrink: 0, borderBottom: '1px solid #e8e8e8' }} className="px-4 pt-4 pb-0 sm:px-6 sm:pt-5 lg:px-10 lg:pt-6">
         <div className="mb-4">
-          <h1 className="text-lg font-bold text-[#1D1E20] sm:text-xl lg:text-2xl">Mesas</h1>
+          <h1 className="text-lg font-bold text-[#1D1E20] sm:text-xl lg:text-2xl">Tablero de Control de Mesas</h1>
           <p className="mt-0.5 text-xs text-[#888] sm:text-sm">Organiza a tus invitados por mesa</p>
         </div>
 
+        {/* ── Stats rediseñadas ── */}
         <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {[
-            { label: 'Mesas',          value: tables.length,  color: '#1D1E20' },
-            { label: 'Total asientos', value: totalSeats,     color: '#1D1E20' },
-            { label: 'Asignados',      value: totalOccupied,  color: '#2a7a50' },
-            { label: 'Disponibles',    value: totalAvailable, color: '#48C9B0' },
-          ].map(m => (
-            <div key={m.label} className="rounded-xl border border-[#e8e8e8] bg-[#f8f8f8] p-2 text-center">
-              <div className="text-lg font-bold sm:text-xl" style={{ color: m.color }}>{m.value}</div>
-              <div className="text-[10px] text-[#999]">{m.label}</div>
+
+          {/* Confirmados */}
+          <div className="rounded-xl border border-[#e8e8e8] bg-white p-3">
+            <div className="mb-1.5 flex items-center justify-between">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Confirmados</span>
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+                <circle cx="8" cy="8" r="7" stroke="#48C9B0" strokeWidth="1.5" />
+                <path d="M5 8l2 2 4-4" stroke="#48C9B0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
             </div>
-          ))}
+            <div className="text-2xl font-bold text-[#1D1E20] sm:text-3xl">{confirmedGuests}</div>
+            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[#e8e8e8]">
+              <div className="h-full rounded-full bg-[#48C9B0] transition-all"
+                style={{ width: totalGuests > 0 ? `${(confirmedGuests / totalGuests) * 100}%` : '0%' }} />
+            </div>
+            <div className="mt-1 text-[10px] text-[#aaa]">{totalGuests} invitados totales</div>
+          </div>
+
+          {/* Por asignar */}
+          <div className="rounded-xl border border-[#e8e8e8] bg-white p-3">
+            <div className="mb-1.5 flex items-center justify-between">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Por asignar</span>
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+                <circle cx="8" cy="5" r="2.5" stroke={unassignedConfirmed > 0 ? '#cc8800' : '#bbb'} strokeWidth="1.5" />
+                <path d="M3 14c0-2.8 2.2-5 5-5s5 2.2 5 5" stroke={unassignedConfirmed > 0 ? '#cc8800' : '#bbb'} strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </div>
+            <div className="text-2xl font-bold sm:text-3xl" style={{ color: unassignedConfirmed > 0 ? '#cc8800' : '#1D1E20' }}>
+              {unassignedConfirmed}
+            </div>
+            {unassignedConfirmed > 0
+              ? <div className="mt-1 text-[10px] font-medium text-[#cc8800]">Sin mesa asignada</div>
+              : <div className="mt-1 text-[10px] text-[#48C9B0]">Todos asignados ✓</div>
+            }
+          </div>
+
+          {/* Asientos libres */}
+          <div className="rounded-xl border border-[#e8e8e8] bg-white p-3">
+            <div className="mb-1.5 flex items-center justify-between">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Asientos libres</span>
+              {/* Ícono silla simple */}
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
+                <rect x="3" y="9" width="10" height="4" rx="1" stroke="#48C9B0" strokeWidth="1.5" />
+                <path d="M5 9V6a3 3 0 0 1 6 0v3" stroke="#48C9B0" strokeWidth="1.5" strokeLinecap="round" />
+                <line x1="5" y1="13" x2="5" y2="15" stroke="#48C9B0" strokeWidth="1.5" strokeLinecap="round" />
+                <line x1="11" y1="13" x2="11" y2="15" stroke="#48C9B0" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+            </div>
+            <div className="text-2xl font-bold text-[#1D1E20] sm:text-3xl">{String(totalFree).padStart(2, '0')}</div>
+            <div className="mt-1 text-[10px] text-[#aaa]">de {totalSeats} totales</div>
+          </div>
+
+          {/* Mesas listas */}
+          <div className="rounded-xl border border-[#e8e8e8] bg-white p-3">
+            <div className="mb-1.5 flex items-center justify-between">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Mesas listas</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-2xl font-bold text-[#1D1E20] sm:text-3xl">
+                  {fullTables}<span className="text-sm font-normal text-[#aaa]"> / {tables.length}</span>
+                </div>
+                <div className="mt-1 text-[10px] text-[#aaa]">Mesas al 100%</div>
+              </div>
+              <DonutChart value={fullTables} total={tables.length} />
+            </div>
+          </div>
+
         </div>
 
+        {/* Barra de acciones */}
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <div className="flex overflow-hidden rounded-lg border border-[#e0e0e0]">
             <button onClick={() => setViewMode('cards')}
@@ -726,11 +842,16 @@ export default function MesasPage() {
           <div className="ml-auto flex items-center gap-2">
             {tables.length > 0 && (
               <button onClick={handlePrint}
-                className="hidden sm:flex items-center gap-1.5 rounded-lg border border-[#e0e0e0] px-3 py-1.5 text-xs text-[#666] transition hover:border-[#48C9B0] hover:text-[#48C9B0]">
+                className="hidden items-center gap-1.5 rounded-lg border border-[#e0e0e0] px-3 py-1.5 text-xs text-[#666] transition hover:border-[#48C9B0] hover:text-[#48C9B0] sm:flex">
                 <Printer width={13} height={13} />
                 Imprimir lista
               </button>
             )}
+            <button onClick={openBulkModal}
+              className="flex items-center gap-1.5 rounded-lg border border-[#e0e0e0] px-3 py-1.5 text-xs font-medium text-[#666] transition hover:border-[#48C9B0] hover:text-[#48C9B0]">
+              <Plus width={13} height={13} />
+              <span className="hidden sm:inline">Agregar en</span> bulk
+            </button>
             <button onClick={openCreate}
               className="flex items-center gap-1.5 rounded-lg bg-[#48C9B0] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#3ab89f] sm:px-4 sm:text-sm">
               <Plus width={14} height={14} />
@@ -748,9 +869,14 @@ export default function MesasPage() {
             <div className="mb-3 text-3xl">🪑</div>
             <p className="text-sm text-[#888]">Sin mesas aún</p>
             <p className="mt-1 text-xs text-[#bbb]">Crea tu primera mesa para empezar a organizar a tus invitados</p>
-            <button onClick={openCreate} className="mt-4 rounded-lg bg-[#48C9B0] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#3ab89f]">
-              + Nueva mesa
-            </button>
+            <div className="mt-4 flex items-center justify-center gap-2">
+              <button onClick={openBulkModal} className="rounded-lg border border-[#e0e0e0] px-4 py-2.5 text-sm text-[#666] transition hover:border-[#48C9B0] hover:text-[#48C9B0]">
+                Agregar en bulk
+              </button>
+              <button onClick={openCreate} className="rounded-lg bg-[#48C9B0] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#3ab89f]">
+                + Nueva mesa
+              </button>
+            </div>
           </div>
 
         ) : viewMode === 'cards' ? (
@@ -768,8 +894,8 @@ export default function MesasPage() {
                     </div>
                     <div className="min-w-0 flex-1 cursor-pointer" onClick={() => openEditTable(table)}>
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-sm font-bold text-[#1D1E20]">Mesa {table.number}</span>
-                        {table.name && <span className="truncate text-xs text-[#888]">— {table.name}</span>}
+                        <span className="rounded bg-[#f0f0f0] px-1.5 py-0.5 text-xs font-bold text-[#555]">#{table.number}</span>
+                        <span className="text-sm font-bold text-[#1D1E20]">{table.name || `Mesa ${table.number}`}</span>
                         {isFull && <span className="rounded-full border border-[#a0e0c0] bg-[#f0fff6] px-2 py-0.5 text-[10px] font-semibold text-[#2a7a50]">Llena</span>}
                       </div>
                       <div className="mt-0.5 flex items-center gap-2">
@@ -819,8 +945,7 @@ export default function MesasPage() {
           <>
             {/* Desktop lista */}
             <div className="hidden overflow-visible rounded-xl border border-[#e8e8e8] sm:block">
-              <div className="grid items-center border-b border-[#e8e8e8] bg-[#f8f8f8] px-4 py-2"
-                style={{ gridTemplateColumns: cols }}>
+              <div className="grid items-center border-b border-[#e8e8e8] bg-[#f8f8f8] px-4 py-2" style={{ gridTemplateColumns: cols }}>
                 <div /><div /><div />
                 <div className="text-[11px] font-semibold uppercase tracking-wide text-[#aaa]">Invitado</div>
                 <div className="text-[11px] font-semibold uppercase tracking-wide text-[#aaa]">Status</div>
@@ -839,10 +964,9 @@ export default function MesasPage() {
                 const rowBg     = idx % 2 === 0 ? 'bg-white' : 'bg-[#fafafa]'
                 return (
                   <div key={table.id}>
-                    <div className={`grid items-center px-4 py-3 ${rowBg} border-b border-[#f0f0f0]`}
-                      style={{ gridTemplateColumns: cols }}>
+                    <div className={`grid items-center px-4 py-3 ${rowBg} border-b border-[#f0f0f0]`} style={{ gridTemplateColumns: cols }}>
                       <div className="text-sm">{table.shape === 'round' ? '⭕' : '▭'}</div>
-                      <div className="text-sm font-bold text-[#1D1E20]">{table.number}</div>
+                      <div><span className="rounded bg-[#f0f0f0] px-1.5 py-0.5 text-xs font-bold text-[#555]">#{table.number}</span></div>
                       <div />
                       <div className="cursor-pointer" onClick={() => openEditTable(table)}>
                         <span className="text-sm font-semibold text-[#1D1E20] transition hover:text-[#48C9B0]">
@@ -878,22 +1002,14 @@ export default function MesasPage() {
                           const status = STATUS_COLORS[guest.rsvp_status]
                           return (
                             <div key={seat.id}>
-                              <div className={`grid items-center border-b border-[#f5f5f5] px-4 py-2 ${rowBg}`}
-                                style={{ gridTemplateColumns: cols }}>
+                              <div className={`grid items-center border-b border-[#f5f5f5] px-4 py-2 ${rowBg}`} style={{ gridTemplateColumns: cols }}>
                                 <div /><div />
                                 <div className="flex justify-center">
                                   <div className="h-5 w-[2px] rounded-full" style={{ background: status.border }} />
                                 </div>
                                 <div className="flex items-center gap-1.5">
-                                  <button onClick={() => openEditGuest(guest)}
-                                    className="text-xs font-semibold text-[#1D1E20] hover:text-[#48C9B0] hover:underline transition">
-                                    {guest.name}
-                                  </button>
-                                  {guest.party_size > 1 && (
-                                    <span className="rounded-full border border-[#9FE1CB] bg-[#f0fdfb] px-1.5 py-0.5 text-[9px] font-semibold text-[#0F6E56]">
-                                      +{guest.party_size - 1}
-                                    </span>
-                                  )}
+                                  <button onClick={() => openEditGuest(guest)} className="text-xs font-semibold text-[#1D1E20] transition hover:text-[#48C9B0] hover:underline">{guest.name}</button>
+                                  {guest.party_size > 1 && <span className="rounded-full border border-[#9FE1CB] bg-[#f0fdfb] px-1.5 py-0.5 text-[9px] font-semibold text-[#0F6E56]">+{guest.party_size - 1}</span>}
                                 </div>
                                 <div>
                                   <span className="rounded-full border px-2 py-0.5 text-[10px] font-semibold"
@@ -902,38 +1018,25 @@ export default function MesasPage() {
                                   </span>
                                 </div>
                                 <div className="flex flex-wrap gap-1"><TagChips tags={guest.tags} /></div>
-                                <div className="truncate text-[11px] text-[#aaa]" title={guest.notes || ''}>
-                                  {guest.notes || <span className="text-[#ddd]">—</span>}
-                                </div>
+                                <div className="truncate text-[11px] text-[#aaa]" title={guest.notes || ''}>{guest.notes || <span className="text-[#ddd]">—</span>}</div>
                                 <div />
                                 <div className="flex justify-center">
                                   <button onClick={() => toggleCheckin(guest.id, guest.checked_in)}
-                                    className={`flex h-5 w-5 items-center justify-center rounded border-2 transition
-                                      ${guest.checked_in ? 'border-[#48C9B0] bg-[#48C9B0]' : 'border-[#d0d0d0] bg-white hover:border-[#48C9B0]'}`}>
-                                    {guest.checked_in && (
-                                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                                        <path d="M1.5 5l2.5 2.5 4.5-4.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                      </svg>
-                                    )}
+                                    className={`flex h-5 w-5 items-center justify-center rounded border-2 transition ${guest.checked_in ? 'border-[#48C9B0] bg-[#48C9B0]' : 'border-[#d0d0d0] bg-white hover:border-[#48C9B0]'}`}>
+                                    {guest.checked_in && <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M1.5 5l2.5 2.5 4.5-4.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
                                   </button>
                                 </div>
                                 <div className="flex justify-end">
-                                  <button onClick={() => removeGuest(seat.id, guest.name)}
-                                    className="flex h-6 w-6 items-center justify-center rounded text-[#ccc] transition hover:text-[#cc3333]">
+                                  <button onClick={() => removeGuest(seat.id, guest.name)} className="flex h-6 w-6 items-center justify-center rounded text-[#ccc] transition hover:text-[#cc3333]">
                                     <X width={11} height={11} />
                                   </button>
                                 </div>
                               </div>
                               {guest.party_members.map(m => (
-                                <div key={m.id} className={`grid items-center border-b border-[#f5f5f5] px-4 py-1.5 ${rowBg}`}
-                                  style={{ gridTemplateColumns: cols }}>
+                                <div key={m.id} className={`grid items-center border-b border-[#f5f5f5] px-4 py-1.5 ${rowBg}`} style={{ gridTemplateColumns: cols }}>
                                   <div /><div />
-                                  <div className="flex justify-center">
-                                    <div className="h-4 w-[2px] rounded-full opacity-25" style={{ background: status.border }} />
-                                  </div>
-                                  <div className="flex items-center gap-1.5 pl-3">
-                                    <span className="text-[11px] text-[#888]">{m.name || 'Acompañante'}</span>
-                                  </div>
+                                  <div className="flex justify-center"><div className="h-4 w-[2px] rounded-full opacity-25" style={{ background: status.border }} /></div>
+                                  <div className="flex items-center gap-1.5 pl-3"><span className="text-[11px] text-[#888]">{m.name || 'Acompañante'}</span></div>
                                   <div>
                                     <span className="rounded-full border px-2 py-0.5 text-[9px] font-semibold"
                                       style={{ background: STATUS_COLORS[m.rsvp_status].bg, borderColor: STATUS_COLORS[m.rsvp_status].border, color: STATUS_COLORS[m.rsvp_status].text }}>
@@ -943,13 +1046,8 @@ export default function MesasPage() {
                                   <div /><div /><div />
                                   <div className="flex justify-center">
                                     <button onClick={() => toggleMemberCheckin(m.id, guest.id, m.checked_in)}
-                                      className={`flex h-5 w-5 items-center justify-center rounded border-2 transition
-                                        ${m.checked_in ? 'border-[#48C9B0] bg-[#48C9B0]' : 'border-[#d0d0d0] bg-white hover:border-[#48C9B0]'}`}>
-                                      {m.checked_in && (
-                                        <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
-                                          <path d="M1.5 5l2.5 2.5 4.5-4.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-                                        </svg>
-                                      )}
+                                      className={`flex h-5 w-5 items-center justify-center rounded border-2 transition ${m.checked_in ? 'border-[#48C9B0] bg-[#48C9B0]' : 'border-[#d0d0d0] bg-white hover:border-[#48C9B0]'}`}>
+                                      {m.checked_in && <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M1.5 5l2.5 2.5 4.5-4.5" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
                                     </button>
                                   </div>
                                   <div />
@@ -960,8 +1058,7 @@ export default function MesasPage() {
                         })}
                         {!isFull && (
                           <div className={`border-b border-[#f0f0f0] px-4 py-2 ${rowBg}`}>
-                            <button
-                              onClick={() => { setAssignModal({ tableId: table.id, tableCapacity: table.capacity }); setAssignSearch('') }}
+                            <button onClick={() => { setAssignModal({ tableId: table.id, tableCapacity: table.capacity }); setAssignSearch('') }}
                               className="flex items-center gap-1.5 text-xs text-[#48C9B0] transition hover:underline">
                               <Plus width={11} height={11} />
                               Asignar invitado ({available} libre{available !== 1 ? 's' : ''})
@@ -990,8 +1087,8 @@ export default function MesasPage() {
                       </div>
                       <div className="min-w-0 flex-1 cursor-pointer" onClick={() => openEditTable(table)}>
                         <div className="flex items-center gap-2">
+                          <span className="rounded bg-[#f0f0f0] px-1.5 py-0.5 text-xs font-bold text-[#555]">#{table.number}</span>
                           <span className="text-sm font-bold text-[#1D1E20]">{table.name || `Mesa ${table.number}`}</span>
-                          {table.name && <span className="text-xs text-[#aaa]">#{table.number}</span>}
                           {isFull && <span className="rounded-full border border-[#a0e0c0] bg-[#f0fff6] px-1.5 py-0.5 text-[9px] font-semibold text-[#2a7a50]">Llena</span>}
                         </div>
                         <div className="mt-1 flex items-center gap-2">
@@ -1019,8 +1116,7 @@ export default function MesasPage() {
                           {table.seats.map(seat => <GuestCard key={seat.id} seat={seat} compact />)}
                         </div>
                         {!isFull && (
-                          <button
-                            onClick={() => { setAssignModal({ tableId: table.id, tableCapacity: table.capacity }); setAssignSearch('') }}
+                          <button onClick={() => { setAssignModal({ tableId: table.id, tableCapacity: table.capacity }); setAssignSearch('') }}
                             className="mt-2 flex w-full items-center gap-2 rounded-xl border border-dashed border-[#e0e0e0] px-3 py-2 text-left transition hover:border-[#48C9B0] hover:bg-[#f0fdfb]">
                             <Plus width={12} height={12} className="text-[#48C9B0]" />
                             <span className="text-xs text-[#aaa]">Asignar invitado ({available} libres)</span>
@@ -1036,6 +1132,8 @@ export default function MesasPage() {
         )}
       </div>
 
+      {/* ════════════════════ MODALES ════════════════════ */}
+
       {/* MODAL: Editar invitado */}
       {editGuest && (
         <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/40 p-4">
@@ -1045,39 +1143,17 @@ export default function MesasPage() {
               <button onClick={() => setEditGuest(null)} className="text-xl text-[#aaa]">✕</button>
             </div>
             <div className="flex flex-col gap-4">
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-[#555]">Nombre *</label>
-                <input type="text" value={editName} onChange={e => setEditName(e.target.value)} style={inpStyle} />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-[#555]">WhatsApp</label>
-                <input type="tel" value={editPhone} onChange={e => setEditPhone(e.target.value)} placeholder="+52 81 1234 5678" style={inpStyle} />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-[#555]">Email</label>
-                <input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)} placeholder="ana@ejemplo.com" style={inpStyle} />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-medium text-[#555]">Notas</label>
-                <textarea value={editNotes} onChange={e => setEditNotes(e.target.value)} placeholder="Mesa preferida, restricciones..." rows={2} style={{ ...inpStyle, resize: 'vertical' }} />
-              </div>
-              {eventTags.length > 0 && (
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-[#555]">Tags</label>
-                  <TagSelector availableTags={eventTags} selectedTags={editTags} onChange={setEditTags} />
-                </div>
-              )}
-              <div className="border-t border-[#f0f0f0] pt-4">
-                <MembersEditor value={editMembers} onChange={setEditMembers} />
-              </div>
+              <div><label className="mb-1.5 block text-xs font-medium text-[#555]">Nombre *</label><input type="text" value={editName} onChange={e => setEditName(e.target.value)} style={inpStyle} /></div>
+              <div><label className="mb-1.5 block text-xs font-medium text-[#555]">WhatsApp</label><input type="tel" value={editPhone} onChange={e => setEditPhone(e.target.value)} placeholder="+52 81 1234 5678" style={inpStyle} /></div>
+              <div><label className="mb-1.5 block text-xs font-medium text-[#555]">Email</label><input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)} placeholder="ana@ejemplo.com" style={inpStyle} /></div>
+              <div><label className="mb-1.5 block text-xs font-medium text-[#555]">Notas</label><textarea value={editNotes} onChange={e => setEditNotes(e.target.value)} placeholder="Mesa preferida, restricciones..." rows={2} style={{ ...inpStyle, resize: 'vertical' }} /></div>
+              {eventTags.length > 0 && <div><label className="mb-1.5 block text-xs font-medium text-[#555]">Tags</label><TagSelector availableTags={eventTags} selectedTags={editTags} onChange={setEditTags} /></div>}
+              <div className="border-t border-[#f0f0f0] pt-4"><MembersEditor value={editMembers} onChange={setEditMembers} /></div>
             </div>
-            {editError && (
-              <div className="mt-3 rounded-lg border border-[#ffc0c0] bg-[#fff0f0] p-2.5 text-xs text-[#cc3333]">{editError}</div>
-            )}
+            {editError && <div className="mt-3 rounded-lg border border-[#ffc0c0] bg-[#fff0f0] p-2.5 text-xs text-[#cc3333]">{editError}</div>}
             <div className="mt-6 flex gap-2.5">
               <button onClick={() => setEditGuest(null)} className="flex-1 rounded-lg border border-[#e0e0e0] py-3 text-sm text-[#888]">Cancelar</button>
-              <button onClick={handleEditSave} disabled={editSaving}
-                className="flex-[2] rounded-lg bg-[#48C9B0] py-3 text-sm font-semibold text-white disabled:opacity-60">
+              <button onClick={handleEditSave} disabled={editSaving} className="flex-[2] rounded-lg bg-[#48C9B0] py-3 text-sm font-semibold text-white disabled:opacity-60">
                 {editSaving ? 'Guardando...' : 'Guardar cambios'}
               </button>
             </div>
@@ -1089,8 +1165,7 @@ export default function MesasPage() {
       {assignModal && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/40 p-4"
           onClick={() => { setAssignModal(null); setAssignSearch('') }}>
-          <div className="w-full max-w-sm overflow-hidden rounded-2xl border border-[#e8e8e8] bg-white shadow-2xl"
-            onClick={e => e.stopPropagation()}>
+          <div className="w-full max-w-sm overflow-hidden rounded-2xl border border-[#e8e8e8] bg-white shadow-2xl" onClick={e => e.stopPropagation()}>
             {(() => {
               const table     = tables.find(t => t.id === assignModal.tableId)!
               const occupied  = getOccupied(table)
@@ -1100,66 +1175,54 @@ export default function MesasPage() {
                   <div className="border-b border-[#f0f0f0] px-4 py-3">
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm font-bold text-[#1D1E20]">
-                          Asignar a Mesa {table.number}{table.name ? ` — ${table.name}` : ''}
+                        <p className="flex items-center gap-1.5 text-sm font-bold text-[#1D1E20]">
+                          Asignar a
+                          <span className="rounded bg-[#f0f0f0] px-1.5 py-0.5 text-xs font-bold text-[#555]">#{table.number}</span>
+                          {table.name || `Mesa ${table.number}`}
                         </p>
                         <p className="text-[11px] text-[#bbb]">{available} asiento(s) disponible(s)</p>
                       </div>
-                      <button onClick={() => { setAssignModal(null); setAssignSearch('') }} className="text-[#aaa] hover:text-[#1D1E20]">
-                        <X width={16} height={16} />
-                      </button>
+                      <button onClick={() => { setAssignModal(null); setAssignSearch('') }} className="text-[#aaa] hover:text-[#1D1E20]"><X width={16} height={16} /></button>
                     </div>
                     <div className="relative mt-3">
                       <Search width={13} height={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#bbb]" />
-                      <input ref={assignSearchRef} type="text" value={assignSearch}
-                        onChange={e => setAssignSearch(e.target.value)}
+                      <input ref={assignSearchRef} type="text" value={assignSearch} onChange={e => setAssignSearch(e.target.value)}
                         placeholder="Buscar invitado..."
                         className="w-full rounded-lg border border-[#e0e0e0] bg-[#f8f8f8] py-2 pl-8 pr-3 text-xs outline-none focus:border-[#48C9B0]" />
                     </div>
                   </div>
                   <div className="max-h-72 overflow-y-auto">
-                    {assignFilteredGuests.length === 0 ? (
-                      <p className="px-4 py-6 text-center text-xs text-[#bbb]">Sin resultados</p>
-                    ) : (
-                      assignFilteredGuests.map(g => {
-                        const needed      = g.party_size || 1
-                        const existing    = guestSeatMap.get(g.id)
-                        const isHere      = existing?.tableId === assignModal.tableId
-                        const isElsewhere = existing && !isHere
-                        const cabeFit     = needed <= available && !isHere
-                        return (
-                          <button key={g.id}
-                            onClick={() => !isHere && handleSelectGuest(g.id, assignModal.tableId, assignModal.tableCapacity)}
-                            disabled={isHere}
-                            className={`flex w-full items-center gap-3 border-b border-[#f5f5f5] px-4 py-3 text-left transition last:border-0
-                              ${isHere ? 'opacity-30 cursor-not-allowed' : 'hover:bg-[#f0fdfb] cursor-pointer'}`}>
-                            <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-                              <div className="flex items-center gap-1.5">
-                                <span className="truncate text-sm font-semibold text-[#1D1E20]">{g.name}</span>
-                                {needed > 1 && (
-                                  <span className="shrink-0 rounded-full border border-[#9FE1CB] bg-[#f0fdfb] px-1.5 text-[9px] font-semibold text-[#0F6E56]">
-                                    +{needed - 1}
-                                  </span>
-                                )}
-                                {isElsewhere && (
-                                  <span className="shrink-0 rounded-full border border-[#f0d080] bg-[#fffbf0] px-1.5 text-[9px] font-semibold text-[#b8860b]">
-                                    Mesa {existing.tableNumber}
-                                  </span>
-                                )}
+                    {assignFilteredGuests.length === 0
+                      ? <p className="px-4 py-6 text-center text-xs text-[#bbb]">Sin resultados</p>
+                      : assignFilteredGuests.map(g => {
+                          const needed      = g.party_size || 1
+                          const existing    = guestSeatMap.get(g.id)
+                          const isHere      = existing?.tableId === assignModal.tableId
+                          const isElsewhere = existing && !isHere
+                          const cabeFit     = needed <= available && !isHere
+                          return (
+                            <button key={g.id}
+                              onClick={() => !isHere && handleSelectGuest(g.id, assignModal.tableId, assignModal.tableCapacity)}
+                              disabled={isHere}
+                              className={`flex w-full items-center gap-3 border-b border-[#f5f5f5] px-4 py-3 text-left transition last:border-0
+                                ${isHere ? 'cursor-not-allowed opacity-30' : 'cursor-pointer hover:bg-[#f0fdfb]'}`}>
+                              <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="truncate text-sm font-semibold text-[#1D1E20]">{g.name}</span>
+                                  {needed > 1 && <span className="shrink-0 rounded-full border border-[#9FE1CB] bg-[#f0fdfb] px-1.5 text-[9px] font-semibold text-[#0F6E56]">+{needed - 1}</span>}
+                                  {isElsewhere && <span className="shrink-0 rounded-full border border-[#f0d080] bg-[#fffbf0] px-1.5 text-[9px] font-semibold text-[#b8860b]">#{existing.tableNumber}</span>}
+                                </div>
+                                {!cabeFit && !isHere && !isElsewhere && <span className="text-[10px] text-[#cc3333]">Necesita {needed} asientos — solo hay {available}</span>}
+                                {isElsewhere && <span className="text-[10px] text-[#b8860b]">Mover a esta mesa</span>}
                               </div>
-                              {!cabeFit && !isHere && !isElsewhere && (
-                                <span className="text-[10px] text-[#cc3333]">Necesita {needed} asientos — solo hay {available}</span>
-                              )}
-                              {isElsewhere && <span className="text-[10px] text-[#b8860b]">Mover a esta mesa</span>}
-                            </div>
-                            <span className="shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold"
-                              style={{ background: STATUS_COLORS[g.rsvp_status].bg, borderColor: STATUS_COLORS[g.rsvp_status].border, color: STATUS_COLORS[g.rsvp_status].text }}>
-                              {STATUS_COLORS[g.rsvp_status].label.slice(0, 4)}
-                            </span>
-                          </button>
-                        )
-                      })
-                    )}
+                              <span className="shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold"
+                                style={{ background: STATUS_COLORS[g.rsvp_status].bg, borderColor: STATUS_COLORS[g.rsvp_status].border, color: STATUS_COLORS[g.rsvp_status].text }}>
+                                {STATUS_COLORS[g.rsvp_status].label.slice(0, 4)}
+                              </span>
+                            </button>
+                          )
+                        })
+                    }
                   </div>
                 </>
               )
@@ -1181,6 +1244,7 @@ export default function MesasPage() {
                 <div>
                   <label className="mb-1.5 block text-xs font-medium text-[#555]"># Mesa *</label>
                   <input type="number" min="1" value={modalNumber} onChange={e => setModalNumber(e.target.value)} className={inp} placeholder="1" />
+                  <p className="mt-1 text-[10px] text-[#bbb]">Debe ser único</p>
                 </div>
                 <div>
                   <label className="mb-1.5 block text-xs font-medium text-[#555]">Capacidad *</label>
@@ -1205,14 +1269,78 @@ export default function MesasPage() {
                 </div>
               </div>
             </div>
-            {modalError && (
-              <div className="mt-3 rounded-lg border border-[#ffc0c0] bg-[#fff0f0] p-2.5 text-xs text-[#cc3333]">{modalError}</div>
-            )}
+            {modalError && <div className="mt-3 rounded-lg border border-[#ffc0c0] bg-[#fff0f0] p-2.5 text-xs text-[#cc3333]">{modalError}</div>}
             <div className="mt-5 flex gap-2.5">
               <button onClick={() => setShowModal(false)} className="flex-1 rounded-lg border border-[#e0e0e0] py-3 text-sm text-[#888]">Cancelar</button>
-              <button onClick={handleSaveTable} disabled={modalSaving}
-                className="flex-[2] rounded-lg bg-[#48C9B0] py-3 text-sm font-semibold text-white disabled:opacity-60">
+              <button onClick={handleSaveTable} disabled={modalSaving} className="flex-[2] rounded-lg bg-[#48C9B0] py-3 text-sm font-semibold text-white disabled:opacity-60">
                 {modalSaving ? 'Guardando...' : editTable ? 'Guardar cambios' : 'Crear mesa'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: Agregar en bulk */}
+      {showBulkModal && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-sm rounded-2xl border border-[#e8e8e8] bg-white p-6 shadow-xl">
+            <div className="mb-5 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-bold text-[#1D1E20]">Agregar mesas en bulk</h2>
+                <p className="mt-0.5 text-xs text-[#aaa]">
+                  Números asignados automáticamente
+                  {tables.length > 0 ? ` (siguiente disponible: #${nextTableNumber()})` : ' (desde #1)'}
+                </p>
+              </div>
+              <button onClick={() => setShowBulkModal(false)} className="text-xl text-[#aaa]">✕</button>
+            </div>
+            <div className="flex flex-col gap-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-[#555]">Cantidad *</label>
+                  <input type="number" min="1" max="50" value={bulkCount} onChange={e => setBulkCount(e.target.value)} className={inp} placeholder="5" />
+                  <p className="mt-1 text-[10px] text-[#bbb]">Máx. 50 a la vez</p>
+                </div>
+                <div>
+                  <label className="mb-1.5 block text-xs font-medium text-[#555]">Capacidad c/u *</label>
+                  <input type="number" min="1" max="100" value={bulkCap} onChange={e => setBulkCap(e.target.value)} className={inp} placeholder="8" />
+                </div>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-[#555]">Forma</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['round', 'rectangle'] as const).map(shape => (
+                    <button key={shape} type="button" onClick={() => setBulkShape(shape)}
+                      className={`flex items-center justify-center gap-2 rounded-lg border py-3 text-sm font-medium transition
+                        ${bulkShape === shape ? 'border-[#48C9B0] bg-[#f0fdfb] text-[#1a9e88]' : 'border-[#e0e0e0] text-[#888] hover:border-[#48C9B0]'}`}>
+                      <span className="text-lg">{shape === 'round' ? '⭕' : '▭'}</span>
+                      <span>{shape === 'round' ? 'Redonda' : 'Rectangular'}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Preview de números */}
+              {(() => {
+                const count = parseInt(bulkCount)
+                if (!count || count < 1 || count > 50) return null
+                const nums = previewBulkNumbers(count)
+                const preview = nums.length <= 8
+                  ? nums.map(n => `#${n}`).join(', ')
+                  : `#${nums[0]}, #${nums[1]}, #${nums[2]}... hasta #${nums[nums.length - 1]}`
+                return (
+                  <div className="rounded-lg border border-[#e8f8f4] bg-[#f0fdfb] px-3 py-2.5">
+                    <p className="text-[11px] font-semibold text-[#1a9e88]">Se crearán {count} mesas:</p>
+                    <p className="mt-0.5 text-[11px] text-[#48C9B0]">{preview}</p>
+                  </div>
+                )
+              })()}
+            </div>
+            {bulkError && <div className="mt-3 rounded-lg border border-[#ffc0c0] bg-[#fff0f0] p-2.5 text-xs text-[#cc3333]">{bulkError}</div>}
+            <div className="mt-5 flex gap-2.5">
+              <button onClick={() => setShowBulkModal(false)} className="flex-1 rounded-lg border border-[#e0e0e0] py-3 text-sm text-[#888]">Cancelar</button>
+              <button onClick={handleBulkCreate} disabled={bulkSaving} className="flex-[2] rounded-lg bg-[#48C9B0] py-3 text-sm font-semibold text-white disabled:opacity-60">
+                {bulkSaving ? 'Creando...' : `Crear ${bulkCount || 0} mesas`}
               </button>
             </div>
           </div>
@@ -1229,14 +1357,13 @@ export default function MesasPage() {
               <p className="mt-2 text-sm text-[#555]">
                 <span className="font-semibold">{moveModal.guest.name}</span>
                 {moveModal.guest.party_size > 1 && <span className="text-[#888]"> +{moveModal.guest.party_size - 1}</span>}
-                {' '}está en <span className="font-semibold">Mesa {moveModal.fromTableNumber}</span>.
-                {' '}¿Mover a <span className="font-semibold">Mesa {tables.find(t => t.id === moveModal.toTableId)?.number}</span>?
+                {' '}está en <span className="font-semibold">Mesa #{moveModal.fromTableNumber}</span>.
+                {' '}¿Mover a <span className="font-semibold">Mesa #{tables.find(t => t.id === moveModal.toTableId)?.number}</span>?
               </p>
             </div>
             <div className="flex gap-2.5">
               <button onClick={() => setMoveModal(null)} className="flex-1 rounded-lg border border-[#e0e0e0] py-3 text-sm text-[#888]">Cancelar</button>
-              <button onClick={handleConfirmMove} disabled={moveSaving}
-                className="flex-[2] rounded-lg bg-[#48C9B0] py-3 text-sm font-semibold text-white disabled:opacity-60">
+              <button onClick={handleConfirmMove} disabled={moveSaving} className="flex-[2] rounded-lg bg-[#48C9B0] py-3 text-sm font-semibold text-white disabled:opacity-60">
                 {moveSaving ? 'Moviendo...' : 'Sí, mover'}
               </button>
             </div>
@@ -1246,10 +1373,8 @@ export default function MesasPage() {
 
       {/* MODAL: Detalle invitado mobile */}
       {guestDetail && (
-        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center bg-black/40 p-4"
-          onClick={() => setGuestDetail(null)}>
-          <div className="w-full max-w-sm rounded-2xl border border-[#e8e8e8] bg-white p-6 shadow-xl"
-            onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[100] flex items-end justify-center bg-black/40 p-4 sm:items-center" onClick={() => setGuestDetail(null)}>
+          <div className="w-full max-w-sm rounded-2xl border border-[#e8e8e8] bg-white p-6 shadow-xl" onClick={e => e.stopPropagation()}>
             <div className="mb-4 flex items-center justify-between">
               <h2 className="text-base font-bold text-[#1D1E20]">{guestDetail.name}</h2>
               <button onClick={() => setGuestDetail(null)} className="text-xl text-[#aaa]">✕</button>
@@ -1281,9 +1406,7 @@ export default function MesasPage() {
                     {guestDetail.party_members.map(m => (
                       <div key={m.id} className="flex items-center gap-2">
                         <span className="text-xs text-[#555]">{m.name || 'Acompañante'}</span>
-                        <span className="text-[9px]" style={{ color: STATUS_COLORS[m.rsvp_status].text }}>
-                          {STATUS_COLORS[m.rsvp_status].label.slice(0, 4)}.
-                        </span>
+                        <span className="text-[9px]" style={{ color: STATUS_COLORS[m.rsvp_status].text }}>{STATUS_COLORS[m.rsvp_status].label.slice(0, 4)}.</span>
                       </div>
                     ))}
                   </div>
@@ -1296,20 +1419,13 @@ export default function MesasPage() {
 
       {/* MODAL: Canvas próximamente */}
       {showComingSoon && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4"
-          onClick={() => setShowComingSoon(false)}>
-          <div className="w-full max-w-xs rounded-2xl border border-[#e8e8e8] bg-white p-8 text-center shadow-xl"
-            onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4" onClick={() => setShowComingSoon(false)}>
+          <div className="w-full max-w-xs rounded-2xl border border-[#e8e8e8] bg-white p-8 text-center shadow-xl" onClick={e => e.stopPropagation()}>
             <div className="mb-3 text-4xl">🗺️</div>
             <h2 className="text-lg font-bold text-[#1D1E20]">Canvas</h2>
             <p className="mt-2 text-sm text-[#888]">Muy pronto podrás organizar tus mesas en un plano visual interactivo.</p>
-            <div className="mt-4 rounded-lg border border-[#e8f8f4] bg-[#f0fdfb] px-4 py-2.5 text-xs font-semibold text-[#1a9e88]">
-              Próximamente ✨
-            </div>
-            <button onClick={() => setShowComingSoon(false)}
-              className="mt-4 w-full rounded-lg border border-[#e0e0e0] py-2.5 text-sm text-[#888]">
-              Cerrar
-            </button>
+            <div className="mt-4 rounded-lg border border-[#e8f8f4] bg-[#f0fdfb] px-4 py-2.5 text-xs font-semibold text-[#1a9e88]">Próximamente ✨</div>
+            <button onClick={() => setShowComingSoon(false)} className="mt-4 w-full rounded-lg border border-[#e0e0e0] py-2.5 text-sm text-[#888]">Cerrar</button>
           </div>
         </div>
       )}
