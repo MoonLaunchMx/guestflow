@@ -53,11 +53,6 @@ const STATUS_OPTIONS: { status: EventStatus; label: string; dot: string }[] = [
   { status: 'cancelled', label: 'Cancelado', dot: 'bg-red-400' },
 ]
 
-function generateToken(length = 10): string {
-  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'
-  return Array.from({ length }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
-}
-
 function getTagColor(index: number) {
   return TAG_COLORS[index % TAG_COLORS.length]
 }
@@ -198,10 +193,6 @@ export default function ConfiguracionPage() {
   const [templates, setTemplates]         = useState<string[]>(Array(10).fill(''))
   const [templateNames, setTemplateNames] = useState<string[]>([...DEFAULT_NAMES])
   const [visibleTemplates, setVisibleTemplates] = useState(2)
-  const [playlistToken, setPlaylistToken] = useState('')
-  const [categories, setCategories]       = useState<string[]>([])
-  const [newCategory, setNewCategory]     = useState('')
-  const [copied, setCopied]               = useState(false)
 
   // — status dropdown —
   const [showStatusDropdown, setShowStatusDropdown] = useState(false)
@@ -221,7 +212,6 @@ export default function ConfiguracionPage() {
   useEffect(() => { loadEvent() }, [])
 
   const loadEvent = async () => {
-    // Cargar events y event_settings en paralelo
     const [{ data: eventData }, { data: settingsData }] = await Promise.all([
       supabase.from('events').select('*').eq('id', id).single(),
       supabase.from('event_settings').select('*').eq('event_id', id).single(),
@@ -256,9 +246,6 @@ export default function ConfiguracionPage() {
         const loadedNames = [...settingsData.template_names, ...DEFAULT_NAMES].slice(0, 10)
         setTemplateNames(loadedNames.map((n: string, i: number) => n || DEFAULT_NAMES[i]))
       }
-
-      setPlaylistToken(settingsData.playlist_token || '')
-      setCategories(Array.isArray(settingsData.playlist_categories) ? settingsData.playlist_categories : [])
     }
 
     setLoading(false)
@@ -268,7 +255,6 @@ export default function ConfiguracionPage() {
     if (!name) { setError('El nombre es obligatorio'); return }
     setSaving(true); setError(''); setSaved(false)
 
-    // Guardar en events
     const { error: eventErr } = await supabase.from('events').update({
       name,
       event_type: eventType || null,
@@ -282,14 +268,12 @@ export default function ConfiguracionPage() {
 
     if (eventErr) { setError('Error: ' + eventErr.message); setSaving(false); return }
 
-    // Guardar en event_settings — upsert por event_id
+    // Solo guarda templates — NO toca playlist_token ni playlist_categories
     const { error: settingsErr } = await supabase.from('event_settings').upsert({
       ...(settingsId ? { id: settingsId } : {}),
       event_id: id,
       message_templates: templates,
       template_names: templateNames,
-      playlist_token: playlistToken || null,
-      playlist_categories: categories,
       updated_at: new Date().toISOString(),
     }, { onConflict: 'event_id' })
 
@@ -335,31 +319,6 @@ export default function ConfiguracionPage() {
 
   const handleRemoveTag = (tag: string) => {
     setGuestTags(prev => prev.filter(t => t !== tag))
-    scheduleAutoSave()
-  }
-
-  const handleGenerateToken = () => {
-    setPlaylistToken(generateToken())
-    scheduleAutoSave()
-  }
-
-  const handleCopyLink = () => {
-    const url = window.location.origin + '/playlist/' + playlistToken
-    navigator.clipboard.writeText(url)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
-  }
-
-  const handleAddCategory = () => {
-    const trimmed = newCategory.trim()
-    if (!trimmed || categories.includes(trimmed)) return
-    setCategories(prev => [...prev, trimmed])
-    setNewCategory('')
-    scheduleAutoSave()
-  }
-
-  const handleRemoveCategory = (cat: string) => {
-    setCategories(prev => prev.filter(c => c !== cat))
     scheduleAutoSave()
   }
 
@@ -586,10 +545,8 @@ export default function ConfiguracionPage() {
               </div>
             </div>
 
-            {/* COLUMNA DERECHA */}
+            {/* COLUMNA DERECHA — solo plantillas */}
             <div className="flex flex-col gap-4 sm:gap-5">
-
-              {/* Plantillas */}
               <div className="rounded-xl bg-[#fafafa] p-4 sm:p-5">
                 <h2 className="mb-1.5 text-base font-semibold text-[#1D1E20] sm:text-lg">💬 Plantillas de WhatsApp</h2>
                 <p className="mb-4 text-xs text-[#666]">Doble click en el nombre para renombrarlo. Usa los chips para insertar variables.</p>
@@ -613,60 +570,8 @@ export default function ConfiguracionPage() {
                   )}
                 </div>
               </div>
-
-              {/* Playlist */}
-              <div className="rounded-xl bg-[#fafafa] p-4 sm:p-5">
-                <h2 className="mb-1.5 text-base font-semibold text-[#1D1E20] sm:text-lg">🎵 Playlist de invitados</h2>
-                <p className="mb-4 text-xs text-[#666]">Los invitados recomiendan canciones desde un link público sin necesidad de crear cuenta.</p>
-                <div className="mb-4">
-                  <label className="mb-1.5 block text-xs font-medium text-[#555]">Categorías</label>
-                  <p className="mb-2 text-xs text-[#999]">Ej: Vals, Entrada, Para llorar, Techno...</p>
-                  {categories.length > 0 && (
-                    <div className="mb-2 flex flex-wrap gap-1.5">
-                      {categories.map(cat => (
-                        <span key={cat} className="flex items-center gap-1 rounded-full border border-[#d0d0d0] bg-white px-2.5 py-1 text-xs text-[#555]">
-                          {cat}
-                          <button onClick={() => handleRemoveCategory(cat)}
-                            className="ml-0.5 flex h-3.5 w-3.5 items-center justify-center rounded-full text-[#999] hover:bg-red-100 hover:text-red-500">×</button>
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                  <div className="flex gap-2">
-                    <input type="text" value={newCategory} onChange={e => setNewCategory(e.target.value)}
-                      onKeyDown={e => e.key === 'Enter' && handleAddCategory()} placeholder="Nueva categoría..."
-                      className="flex-1 rounded-lg border border-[#d0d0d0] bg-white px-3 py-2 text-sm text-[#1D1E20] outline-none transition focus:border-[#48C9B0]"
-                    />
-                    <button onClick={handleAddCategory} disabled={!newCategory.trim()}
-                      className="shrink-0 rounded-lg bg-[#48C9B0] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#3ab89f] disabled:opacity-40">
-                      Agregar
-                    </button>
-                  </div>
-                </div>
-                <div>
-                  <label className="mb-1.5 block text-xs font-medium text-[#555]">Link público</label>
-                  {playlistToken ? (
-                    <div className="flex gap-2">
-                      <div className="flex-1 overflow-hidden rounded-lg border border-[#d0d0d0] bg-white px-3 py-2.5">
-                        <p className="truncate font-mono text-xs text-[#555]">
-                          {typeof window !== 'undefined' ? window.location.origin : 'https://guestflow-eta.vercel.app'}/playlist/{playlistToken}
-                        </p>
-                      </div>
-                      <button onClick={handleCopyLink}
-                        className={'shrink-0 rounded-lg border px-3 py-2 text-xs font-medium transition ' + (copied ? 'border-[#48C9B0] bg-[#f0fdfb] text-[#1a9e88]' : 'border-[#d0d0d0] bg-white text-[#555] hover:border-[#48C9B0] hover:text-[#1a9e88]')}>
-                        {copied ? '✓ Copiado' : 'Copiar'}
-                      </button>
-                    </div>
-                  ) : (
-                    <button onClick={handleGenerateToken}
-                      className="w-full rounded-lg border border-dashed border-[#48C9B0] bg-[#f0fdfb] py-2.5 text-xs font-medium text-[#1a9e88] transition hover:bg-[#e0faf5]">
-                      + Generar link de playlist
-                    </button>
-                  )}
-                </div>
-              </div>
-
             </div>
+
           </div>
         </div>
       </div>

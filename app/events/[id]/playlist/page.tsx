@@ -16,6 +16,11 @@ interface Song {
   notes: string | null
 }
 
+function generateToken(length = 10): string {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789'
+  return Array.from({ length }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
+}
+
 function detectPlatform(url: string): 'spotify' | 'youtube' | 'apple' | 'unknown' {
   if (url.includes('spotify.com')) return 'spotify'
   if (url.includes('youtube.com') || url.includes('youtu.be') || url.includes('music.youtube.com')) return 'youtube'
@@ -50,8 +55,7 @@ export default function PlaylistPlannerPage() {
   useEffect(() => { loadData() }, [])
 
   const loadData = async () => {
-    const [{ data: eventData }, { data: settingsData }, { data: songsData }] = await Promise.all([
-      supabase.from('events').select('name').eq('id', id).single(),
+    const [{ data: settingsData }, { data: songsData }] = await Promise.all([
       supabase.from('event_settings').select('playlist_categories, playlist_token').eq('event_id', id).single(),
       supabase.from('song_recommendations').select('*').eq('event_id', id).order('position', { ascending: true }),
     ])
@@ -61,6 +65,19 @@ export default function PlaylistPlannerPage() {
     }
     setAllSongs(songsData || [])
     setLoading(false)
+  }
+
+  // Update parcial — solo toca playlist_token y playlist_categories
+  const savePlaylistSettings = async (token: string | null, cats: string[]) => {
+    await supabase.from('event_settings')
+      .update({ playlist_token: token, playlist_categories: cats })
+      .eq('event_id', id)
+  }
+
+  const handleGenerateToken = async () => {
+    const token = generateToken()
+    setPlaylistToken(token)
+    await savePlaylistSettings(token, categories)
   }
 
   const playlistUrl = playlistToken
@@ -78,16 +95,16 @@ export default function PlaylistPlannerPage() {
     const trimmed = newCat.trim()
     if (!trimmed || categories.includes(trimmed)) return
     const updated = [...categories, trimmed]
-    await supabase.from('event_settings').update({ playlist_categories: updated }).eq('event_id', id)
     setCategories(updated)
     setNewCat('')
     setAddingCat(false)
+    await savePlaylistSettings(playlistToken, updated)
   }
 
   const removeCategory = async (cat: string) => {
     const updated = categories.filter(c => c !== cat)
-    await supabase.from('event_settings').update({ playlist_categories: updated }).eq('event_id', id)
     setCategories(updated)
+    await savePlaylistSettings(playlistToken, updated)
   }
 
   const moveUp = async (index: number) => {
@@ -158,7 +175,6 @@ export default function PlaylistPlannerPage() {
         <p className="text-[10px] uppercase tracking-wide text-[#999]">Categorías</p>
         <p className="mt-1 text-2xl font-semibold text-[#1D1E20]">{categories.length}</p>
       </div>
-      {/* 4ta card solo desktop */}
       <div className="hidden rounded-xl border border-[#e8e8e8] bg-white px-4 py-3 sm:block">
         <p className="text-[10px] uppercase tracking-wide text-[#999]">Sin categoría</p>
         <p className="mt-1 text-2xl font-semibold text-[#1D1E20]">
@@ -168,40 +184,13 @@ export default function PlaylistPlannerPage() {
     </div>
   )
 
-  // ── Toolbar ────────────────────────────────────────────────────────────────
-  const Toolbar = () => (
-    <div className="flex flex-wrap items-center gap-2">
-      {/* Búsqueda */}
-      <input
-        type="text" value={search} onChange={e => setSearch(e.target.value)}
-        placeholder="Buscar canción, artista o persona..."
-        className="min-w-[160px] flex-1 rounded-lg border border-[#d0d0d0] bg-white px-3 py-1.5 text-xs text-[#1D1E20] outline-none transition focus:border-[#48C9B0]"
-      />
-      {/* Filtro categoría */}
-      {categories.length > 0 && (
-        <select value={filterCat} onChange={e => setFilterCat(e.target.value)}
-          className="rounded-lg border border-[#d0d0d0] bg-white px-2.5 py-1.5 text-xs text-[#555] outline-none transition focus:border-[#48C9B0]"
-        >
-          <option value="todas">Todas las categorías</option>
-          {categories.map(c => <option key={c} value={c}>{c}</option>)}
-          <option value="">Sin categoría</option>
-        </select>
+  // ── Category chips + link (reutilizado en desktop toolbar y mobile config) ─
+  const CategoryManager = ({ compact = false }: { compact?: boolean }) => (
+    <div className={compact ? 'flex items-center gap-1.5 flex-wrap' : 'flex flex-col gap-3'}>
+      {!compact && (
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-[#999]">Categorías</p>
       )}
-      {/* Filtro plataforma */}
-      <select value={filterPlat} onChange={e => setFilterPlat(e.target.value)}
-        className="rounded-lg border border-[#d0d0d0] bg-white px-2.5 py-1.5 text-xs text-[#555] outline-none transition focus:border-[#48C9B0]"
-      >
-        <option value="todas">Todas las plataformas</option>
-        <option value="spotify">Spotify</option>
-        <option value="youtube">YouTube</option>
-        <option value="apple">Apple Music</option>
-      </select>
-
-      {/* Separador — solo desktop */}
-      <div className="hidden h-5 w-px bg-[#e8e8e8] sm:block" />
-
-      {/* Categorías chips — solo desktop */}
-      <div className="hidden items-center gap-1.5 sm:flex flex-wrap">
+      <div className="flex flex-wrap items-center gap-1.5">
         {categories.map(cat => (
           <span key={cat} className="flex items-center gap-1 rounded-full bg-[#E1F5EE] px-2.5 py-1 text-xs font-medium text-[#0F6E56]">
             {cat}
@@ -230,22 +219,63 @@ export default function PlaylistPlannerPage() {
           </button>
         )}
       </div>
+    </div>
+  )
 
-      {/* Link copiar — solo desktop */}
-      {playlistUrl && (
-        <div className="hidden items-center gap-2 sm:flex">
-          <div className="hidden h-5 w-px bg-[#e8e8e8] sm:block" />
-          <span className="max-w-[160px] truncate rounded-lg border border-dashed border-[#48C9B0] bg-[#f0fdfb] px-2.5 py-1.5 text-xs text-[#0F6E56]">
+  const LinkPanel = ({ fullWidth = false }: { fullWidth?: boolean }) => (
+    <div className={fullWidth ? 'flex flex-col gap-2' : 'flex items-center gap-2'}>
+      {!playlistToken ? (
+        <button
+          onClick={handleGenerateToken}
+          className="rounded-lg border border-dashed border-[#48C9B0] bg-[#f0fdfb] px-3 py-1.5 text-xs font-medium text-[#1a9e88] transition hover:bg-[#e0faf5]"
+        >
+          + Generar link
+        </button>
+      ) : (
+        <>
+          <span className="max-w-[200px] truncate rounded-lg border border-dashed border-[#48C9B0] bg-[#f0fdfb] px-2.5 py-1.5 text-xs text-[#0F6E56]">
             {playlistUrl}
           </span>
           <button
             onClick={copyLink}
-            className="rounded-lg bg-[#48C9B0] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#3ab89f]"
+            className="shrink-0 rounded-lg bg-[#48C9B0] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#3ab89f]"
           >
             {copied ? '¡Copiado!' : 'Copiar link'}
           </button>
-        </div>
+        </>
       )}
+    </div>
+  )
+
+  // ── Toolbar ────────────────────────────────────────────────────────────────
+  const Toolbar = () => (
+    <div className="flex flex-wrap items-center gap-2">
+      <input
+        type="text" value={search} onChange={e => setSearch(e.target.value)}
+        placeholder="Buscar canción, artista o persona..."
+        className="min-w-[160px] flex-1 rounded-lg border border-[#d0d0d0] bg-white px-3 py-1.5 text-xs text-[#1D1E20] outline-none transition focus:border-[#48C9B0]"
+      />
+      {categories.length > 0 && (
+        <select value={filterCat} onChange={e => setFilterCat(e.target.value)}
+          className="rounded-lg border border-[#d0d0d0] bg-white px-2.5 py-1.5 text-xs text-[#555] outline-none transition focus:border-[#48C9B0]"
+        >
+          <option value="todas">Todas las categorías</option>
+          {categories.map(c => <option key={c} value={c}>{c}</option>)}
+          <option value="">Sin categoría</option>
+        </select>
+      )}
+      <select value={filterPlat} onChange={e => setFilterPlat(e.target.value)}
+        className="rounded-lg border border-[#d0d0d0] bg-white px-2.5 py-1.5 text-xs text-[#555] outline-none transition focus:border-[#48C9B0]"
+      >
+        <option value="todas">Todas las plataformas</option>
+        <option value="spotify">Spotify</option>
+        <option value="youtube">YouTube</option>
+        <option value="apple">Apple Music</option>
+      </select>
+      <div className="hidden h-5 w-px bg-[#e8e8e8] sm:block" />
+      <div className="hidden sm:flex"><CategoryManager compact /></div>
+      <div className="hidden h-5 w-px bg-[#e8e8e8] sm:block" />
+      <div className="hidden sm:flex"><LinkPanel /></div>
     </div>
   )
 
@@ -374,59 +404,14 @@ export default function PlaylistPlannerPage() {
     </>
   )
 
-  // ── Config panel (solo mobile tab) ────────────────────────────────────────
+  // ── Config panel mobile ────────────────────────────────────────────────────
   const MobileConfigPanel = () => (
     <div className="flex flex-col gap-5">
       <div>
         <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-[#999]">Link para invitados</p>
-        {playlistUrl ? (
-          <>
-            <div className="rounded-lg border border-dashed border-[#48C9B0] bg-[#f0fdfb] px-3 py-2 text-xs text-[#0F6E56] truncate">
-              {playlistUrl}
-            </div>
-            <button
-              onClick={copyLink}
-              className="mt-2 w-full rounded-lg bg-[#48C9B0] py-2 text-xs font-semibold text-white transition hover:bg-[#3ab89f]"
-            >
-              {copied ? '¡Copiado!' : 'Copiar link'}
-            </button>
-          </>
-        ) : (
-          <p className="text-xs text-[#bbb]">Genera un token en Configuración para obtener el link.</p>
-        )}
+        <LinkPanel fullWidth />
       </div>
-      <div>
-        <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-[#999]">Categorías</p>
-        <div className="flex flex-wrap gap-1.5">
-          {categories.map(cat => (
-            <span key={cat} className="flex items-center gap-1 rounded-full bg-[#E1F5EE] px-2.5 py-1 text-xs font-medium text-[#0F6E56]">
-              {cat}
-              <button onClick={() => removeCategory(cat)} className="ml-0.5 text-[#48C9B0] hover:text-[#0F6E56]">×</button>
-            </span>
-          ))}
-          {addingCat ? (
-            <div className="flex items-center gap-1">
-              <input
-                autoFocus
-                value={newCat}
-                onChange={e => setNewCat(e.target.value)}
-                onKeyDown={e => { if (e.key === 'Enter') addCategory(); if (e.key === 'Escape') setAddingCat(false) }}
-                placeholder="Nueva categoría..."
-                className="w-32 rounded-lg border border-[#48C9B0] px-2 py-1 text-xs outline-none"
-              />
-              <button onClick={addCategory} className="rounded-lg bg-[#48C9B0] px-2 py-1 text-xs text-white">✓</button>
-              <button onClick={() => setAddingCat(false)} className="rounded-lg border border-[#e0e0e0] px-2 py-1 text-xs text-[#aaa]">✕</button>
-            </div>
-          ) : (
-            <button
-              onClick={() => setAddingCat(true)}
-              className="rounded-full border border-dashed border-[#ccc] px-2.5 py-1 text-xs text-[#aaa] transition hover:border-[#48C9B0] hover:text-[#48C9B0]"
-            >
-              + Agregar categoría
-            </button>
-          )}
-        </div>
-      </div>
+      <CategoryManager />
     </div>
   )
 
@@ -435,8 +420,6 @@ export default function PlaylistPlannerPage() {
 
       {/* ── MOBILE ──────────────────────────────────────────────────────────── */}
       <div className="flex h-full flex-col sm:hidden">
-
-        {/* NIVEL 1: KPIs — siempre visibles, encima de los tabs */}
         <div className="shrink-0 border-b border-[#e8e8e8] bg-white px-4 py-3">
           <h1 className="mb-3 text-base font-semibold text-[#1D1E20]">Playlist</h1>
           <div className="grid grid-cols-3 gap-2">
@@ -454,8 +437,6 @@ export default function PlaylistPlannerPage() {
             </div>
           </div>
         </div>
-
-        {/* NIVEL 2: Tabs */}
         <div className="flex shrink-0 border-b border-[#e8e8e8] bg-white">
           <button
             onClick={() => setMobileTab('playlist')}
@@ -470,8 +451,6 @@ export default function PlaylistPlannerPage() {
             Config
           </button>
         </div>
-
-        {/* NIVEL 3: Contenido del tab */}
         <div className="flex-1 overflow-y-auto p-4">
           {mobileTab === 'playlist' ? <DataList /> : <MobileConfigPanel />}
         </div>
@@ -479,8 +458,6 @@ export default function PlaylistPlannerPage() {
 
       {/* ── DESKTOP ─────────────────────────────────────────────────────────── */}
       <div className="hidden h-full flex-col sm:flex overflow-hidden">
-
-        {/* NIVEL 1: KPI Cards — full width */}
         <div className="shrink-0 border-b border-[#e8e8e8] bg-white px-6 py-4">
           <div className="mb-3 flex items-center justify-between">
             <h1 className="text-lg font-semibold text-[#1D1E20]">Playlist</h1>
@@ -488,18 +465,14 @@ export default function PlaylistPlannerPage() {
           </div>
           <KpiCards />
         </div>
-
-        {/* NIVEL 2: Toolbar — full width */}
         <div className="shrink-0 border-b border-[#e8e8e8] bg-white px-6 py-3">
           <Toolbar />
         </div>
-
-        {/* NIVEL 3: Data list — scrollable */}
         <div className="flex-1 overflow-y-auto px-6 py-4">
           <DataList />
         </div>
-
       </div>
+
     </div>
   )
 }

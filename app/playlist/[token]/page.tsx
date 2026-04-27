@@ -7,7 +7,6 @@ import { supabase } from '@/lib/supabase'
 interface Event {
   id: string
   name: string
-  playlist_categories: string[]
 }
 
 interface Song {
@@ -72,6 +71,7 @@ export default function PlaylistPublicPage() {
   const { token } = useParams()
 
   const [event, setEvent]             = useState<Event | null>(null)
+  const [categories, setCategories]   = useState<string[]>([])
   const [songs, setSongs]             = useState<Song[]>([])
   const [loading, setLoading]         = useState(true)
   const [notFound, setNotFound]       = useState(false)
@@ -89,18 +89,31 @@ export default function PlaylistPublicPage() {
   useEffect(() => { loadData() }, [])
 
   const loadData = async () => {
-    const { data: eventData } = await supabase
-      .from('events')
-      .select('id, name, playlist_categories')
-      .eq('playlist_token', token)
-      .single()
+// AHORA — busca token en event_settings (donde sí vive)
+const { data: settingsData } = await supabase
+  .from('event_settings')
+  .select('event_id, playlist_categories')
+  .eq('playlist_token', token)  // ← correcto
+  .single()
+
+// luego con el event_id trae el evento
+const { data: eventData } = await supabase
+  .from('events')
+  .select('id, name')
+  .eq('id', settingsData.event_id)
+  .single()
+
     if (!eventData) { setNotFound(true); setLoading(false); return }
+
     setEvent(eventData)
+    setCategories(Array.isArray(settingsData.playlist_categories) ? settingsData.playlist_categories : [])
+
     const { data: songsData } = await supabase
       .from('song_recommendations')
       .select('*')
       .eq('event_id', eventData.id)
       .order('created_at', { ascending: true })
+
     setSongs(songsData || [])
     setLoading(false)
   }
@@ -166,8 +179,6 @@ export default function PlaylistPublicPage() {
       <p className="mt-1 text-sm text-[#999]">Este link no existe o fue desactivado.</p>
     </div>
   )
-
-  const categories = event?.playlist_categories || []
 
   return (
     <div className="flex min-h-screen flex-col bg-white">
