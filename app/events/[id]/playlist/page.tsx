@@ -35,6 +35,105 @@ const PLATFORM_CONFIG = {
   unknown: { label: 'Link',        color: 'border-[#d0d0d0] text-[#888]   hover:bg-[#fafafa]'  },
 }
 
+// ── Fuera del componente principal ─────────────────────────────────────────
+function SongCard({
+  song,
+  isFirst,
+  isLast,
+  isEditingNote,
+  onMoveUp,
+  onMoveDown,
+  onOpenNote,
+  onCloseNote,
+  onSaveNote,
+}: {
+  song: Song
+  isFirst: boolean
+  isLast: boolean
+  isEditingNote: boolean
+  onMoveUp: () => Promise<void>
+  onMoveDown: () => Promise<void>
+  onOpenNote: () => void
+  onCloseNote: () => void
+  onSaveNote: (note: string) => Promise<void>
+}) {
+  const [localNote, setLocalNote] = useState(song.notes || '')
+  const platform = song.spotify_url ? detectPlatform(song.spotify_url) : 'unknown'
+  const platformConfig = PLATFORM_CONFIG[platform]
+
+  useEffect(() => {
+    if (isEditingNote) setLocalNote(song.notes || '')
+  }, [isEditingNote])
+
+  return (
+    <div className="rounded-xl border border-[#e8e8e8] bg-white">
+      <div className="flex items-center gap-2 px-3 py-3">
+        <div className="flex shrink-0 flex-col gap-0.5">
+          <button onClick={onMoveUp} className={`flex h-5 w-5 items-center justify-center rounded text-[#ccc] transition hover:bg-[#f0f0f0] hover:text-[#888] ${isFirst ? 'invisible' : ''}`}>
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><polygon points="5,2 9,8 1,8"/></svg>
+          </button>
+          <button onClick={onMoveDown} className={`flex h-5 w-5 items-center justify-center rounded text-[#ccc] transition hover:bg-[#f0f0f0] hover:text-[#888] ${isLast ? 'invisible' : ''}`}>
+            <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><polygon points="5,8 9,2 1,2"/></svg>
+          </button>
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-[#1D1E20]">{song.song_title}</p>
+          <p className="truncate text-xs text-[#888]">
+            {song.artist}
+            <span className="mx-1.5 text-[#ddd]">·</span>
+            <span className="text-[#48C9B0]">{song.guest_name}</span>
+            {song.category && (
+              <>
+                <span className="mx-1.5 text-[#ddd]">·</span>
+                <span className="text-[#bbb]">{song.category}</span>
+              </>
+            )}
+          </p>
+        </div>
+        <button
+          onClick={() => isEditingNote ? onCloseNote() : onOpenNote()}
+          className={`shrink-0 rounded-full border px-2.5 py-1 text-xs transition ${song.notes || isEditingNote ? 'border-[#48C9B0] bg-[#f0fdfb] text-[#1a9e88]' : 'border-[#e0e0e0] text-[#bbb] hover:border-[#48C9B0] hover:text-[#1a9e88]'}`}
+        >
+          {song.notes ? 'Nota' : '+ Nota'}
+        </button>
+        {song.spotify_url && (
+          <button
+            onClick={() => window.open(song.spotify_url!, '_blank')}
+            className={`shrink-0 rounded-full border px-2.5 py-1 text-xs transition ${platformConfig.color}`}
+          >
+            {platformConfig.label}
+          </button>
+        )}
+      </div>
+      {isEditingNote && (
+        <div className="border-t border-[#f0f0f0] px-3 pb-3 pt-2">
+          <textarea
+            value={localNote}
+            onChange={e => setLocalNote(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSaveNote(localNote) } }}
+            placeholder="Ej: perfecta para abrir el vals..."
+            rows={2}
+            autoFocus
+            className="w-full resize-none rounded-lg border border-[#d0d0d0] bg-[#fafafa] px-3 py-2 text-xs text-[#1D1E20] outline-none transition focus:border-[#48C9B0]"
+          />
+          <div className="mt-1.5 flex items-center justify-between">
+            <p className="text-[10px] text-[#bbb]">Enter para guardar · Shift+Enter nueva línea</p>
+            <div className="flex gap-1.5">
+              <button onClick={onCloseNote} className="rounded-lg border border-[#e0e0e0] px-2.5 py-1 text-xs text-[#aaa] hover:bg-[#f5f5f5]">Cancelar</button>
+              <button onClick={() => onSaveNote(localNote)} className="rounded-lg bg-[#48C9B0] px-2.5 py-1 text-xs font-semibold text-white hover:bg-[#3ab89f]">Guardar</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {song.notes && !isEditingNote && (
+        <div onClick={onOpenNote} className="cursor-pointer border-t border-[#f0f0f0] px-3 pb-2.5 pt-2">
+          <p className="text-xs text-[#888]">{song.notes}</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function PlaylistPlannerPage() {
   const { id } = useParams()
   const [allSongs, setAllSongs]           = useState<Song[]>([])
@@ -46,7 +145,6 @@ export default function PlaylistPlannerPage() {
   const [filterPlat, setFilterPlat]       = useState('todas')
   const [search, setSearch]               = useState('')
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
-  const [noteValue, setNoteValue]         = useState('')
   const [newCat, setNewCat]               = useState('')
   const [addingCat, setAddingCat]         = useState(false)
   const [copied, setCopied]               = useState(false)
@@ -67,7 +165,6 @@ export default function PlaylistPlannerPage() {
     setLoading(false)
   }
 
-  // Update parcial — solo toca playlist_token y playlist_categories
   const savePlaylistSettings = async (token: string | null, cats: string[]) => {
     await supabase.from('event_settings')
       .update({ playlist_token: token, playlist_categories: cats })
@@ -135,14 +232,15 @@ export default function PlaylistPlannerPage() {
 
   const openNote = (song: Song) => {
     setEditingNoteId(song.id)
-    setNoteValue(song.notes || '')
   }
 
-  const saveNote = async (songId: string) => {
-    await supabase.from('song_recommendations').update({ notes: noteValue || null }).eq('id', songId)
-    setAllSongs(prev => prev.map(s => s.id === songId ? { ...s, notes: noteValue || null } : s))
-    setEditingNoteId(null)
-  }
+  const closeNote = () => setEditingNoteId(null)
+
+const saveNote = async (songId: string, note: string) => {
+  await supabase.from('song_recommendations').update({ notes: note || null }).eq('id', songId)
+  setAllSongs(prev => prev.map(s => s.id === songId ? { ...s, notes: note || null } : s))
+  setEditingNoteId(null)
+}
 
   const totalSongs   = allSongs.length
   const uniqueGuests = new Set(allSongs.map(s => s.guest_name)).size
@@ -159,7 +257,28 @@ export default function PlaylistPlannerPage() {
 
   if (loading) return <div className="p-8 text-sm text-[#666]">Cargando playlist...</div>
 
-  // ── KPI Cards ──────────────────────────────────────────────────────────────
+  const SongRows = ({ songs }: { songs: Song[] }) => (
+    <div className="flex flex-col gap-2">
+      {songs.map(song => {
+        const globalIndex = allSongs.findIndex(s => s.id === song.id)
+        return (
+          <SongCard
+            key={song.id}
+            song={song}
+            isFirst={globalIndex === 0}
+            isLast={globalIndex === allSongs.length - 1}
+            isEditingNote={editingNoteId === song.id}
+            onMoveUp={() => moveUp(globalIndex)}
+            onMoveDown={() => moveDown(globalIndex)}
+            onOpenNote={() => openNote(song)}
+            onCloseNote={closeNote}
+            onSaveNote={(note) => saveNote(song.id, note)}
+          />
+        )
+      })}
+    </div>
+  )
+
   const KpiCards = () => (
     <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
       <div className="rounded-xl border border-[#e8e8e8] bg-white px-4 py-3">
@@ -177,14 +296,11 @@ export default function PlaylistPlannerPage() {
       </div>
       <div className="hidden rounded-xl border border-[#e8e8e8] bg-white px-4 py-3 sm:block">
         <p className="text-[10px] uppercase tracking-wide text-[#999]">Sin categoría</p>
-        <p className="mt-1 text-2xl font-semibold text-[#1D1E20]">
-          {allSongs.filter(s => !s.category).length}
-        </p>
+        <p className="mt-1 text-2xl font-semibold text-[#1D1E20]">{allSongs.filter(s => !s.category).length}</p>
       </div>
     </div>
   )
 
-  // ── Category chips + link (reutilizado en desktop toolbar y mobile config) ─
   const CategoryManager = ({ compact = false }: { compact?: boolean }) => (
     <div className={compact ? 'flex items-center gap-1.5 flex-wrap' : 'flex flex-col gap-3'}>
       {!compact && (
@@ -247,7 +363,6 @@ export default function PlaylistPlannerPage() {
     </div>
   )
 
-  // ── Toolbar ────────────────────────────────────────────────────────────────
   const Toolbar = () => (
     <div className="flex flex-wrap items-center gap-2">
       <input
@@ -279,89 +394,6 @@ export default function PlaylistPlannerPage() {
     </div>
   )
 
-  // ── Song rows ──────────────────────────────────────────────────────────────
-  const SongRows = ({ songs }: { songs: Song[] }) => (
-    <div className="flex flex-col gap-2">
-      {songs.map(song => {
-        const globalIndex = allSongs.findIndex(s => s.id === song.id)
-        const platform = song.spotify_url ? detectPlatform(song.spotify_url) : 'unknown'
-        const platformConfig = PLATFORM_CONFIG[platform]
-        const isFirst = globalIndex === 0
-        const isLast  = globalIndex === allSongs.length - 1
-        const isEditingNote = editingNoteId === song.id
-
-        return (
-          <div key={song.id} className="rounded-xl border border-[#e8e8e8] bg-white">
-            <div className="flex items-center gap-2 px-3 py-3">
-              <div className="flex shrink-0 flex-col gap-0.5">
-                <button onClick={() => moveUp(globalIndex)} className={`flex h-5 w-5 items-center justify-center rounded text-[#ccc] transition hover:bg-[#f0f0f0] hover:text-[#888] ${isFirst ? 'invisible' : ''}`}>
-                  <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><polygon points="5,2 9,8 1,8"/></svg>
-                </button>
-                <button onClick={() => moveDown(globalIndex)} className={`flex h-5 w-5 items-center justify-center rounded text-[#ccc] transition hover:bg-[#f0f0f0] hover:text-[#888] ${isLast ? 'invisible' : ''}`}>
-                  <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><polygon points="5,8 9,2 1,2"/></svg>
-                </button>
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium text-[#1D1E20]">{song.song_title}</p>
-                <p className="truncate text-xs text-[#888]">
-                  {song.artist}
-                  <span className="mx-1.5 text-[#ddd]">·</span>
-                  <span className="text-[#48C9B0]">{song.guest_name}</span>
-                  {song.category && (
-                    <>
-                      <span className="mx-1.5 text-[#ddd]">·</span>
-                      <span className="text-[#bbb]">{song.category}</span>
-                    </>
-                  )}
-                </p>
-              </div>
-              <button
-                onClick={() => isEditingNote ? setEditingNoteId(null) : openNote(song)}
-                className={`shrink-0 rounded-full border px-2.5 py-1 text-xs transition ${song.notes || isEditingNote ? 'border-[#48C9B0] bg-[#f0fdfb] text-[#1a9e88]' : 'border-[#e0e0e0] text-[#bbb] hover:border-[#48C9B0] hover:text-[#1a9e88]'}`}
-              >
-                {song.notes ? 'Nota' : '+ Nota'}
-              </button>
-              {song.spotify_url && (
-                <button
-                  onClick={() => window.open(song.spotify_url!, '_blank')}
-                  className={`shrink-0 rounded-full border px-2.5 py-1 text-xs transition ${platformConfig.color}`}
-                >
-                  {platformConfig.label}
-                </button>
-              )}
-            </div>
-            {isEditingNote && (
-              <div className="border-t border-[#f0f0f0] px-3 pb-3 pt-2">
-                <textarea
-                  value={noteValue}
-                  onChange={e => setNoteValue(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveNote(song.id) } }}
-                  placeholder="Ej: perfecta para abrir el vals..."
-                  rows={2}
-                  autoFocus
-                  className="w-full resize-none rounded-lg border border-[#d0d0d0] bg-[#fafafa] px-3 py-2 text-xs text-[#1D1E20] outline-none transition focus:border-[#48C9B0]"
-                />
-                <div className="mt-1.5 flex items-center justify-between">
-                  <p className="text-[10px] text-[#bbb]">Enter para guardar · Shift+Enter nueva línea</p>
-                  <div className="flex gap-1.5">
-                    <button onClick={() => setEditingNoteId(null)} className="rounded-lg border border-[#e0e0e0] px-2.5 py-1 text-xs text-[#aaa] hover:bg-[#f5f5f5]">Cancelar</button>
-                    <button onClick={() => saveNote(song.id)} className="rounded-lg bg-[#48C9B0] px-2.5 py-1 text-xs font-semibold text-white hover:bg-[#3ab89f]">Guardar</button>
-                  </div>
-                </div>
-              </div>
-            )}
-            {song.notes && !isEditingNote && (
-              <div onClick={() => openNote(song)} className="cursor-pointer border-t border-[#f0f0f0] px-3 pb-2.5 pt-2">
-                <p className="text-xs text-[#888]">{song.notes}</p>
-              </div>
-            )}
-          </div>
-        )
-      })}
-    </div>
-  )
-
-  // ── Data list ──────────────────────────────────────────────────────────────
   const DataList = () => (
     <>
       {totalSongs === 0 ? (
@@ -404,7 +436,6 @@ export default function PlaylistPlannerPage() {
     </>
   )
 
-  // ── Config panel mobile ────────────────────────────────────────────────────
   const MobileConfigPanel = () => (
     <div className="flex flex-col gap-5">
       <div>

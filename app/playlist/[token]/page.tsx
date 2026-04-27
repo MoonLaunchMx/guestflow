@@ -149,7 +149,13 @@ export default function PlaylistPublicPage() {
       spotify_url: musicUrl.trim(),
     })
 
-    if (error) { setSubmitError('Error al guardar. Intenta de nuevo.'); setSubmitting(false); return }
+    // TEMPORAL: muestra el error real para diagnosticar
+    if (error) {
+      console.error('Supabase error:', JSON.stringify(error))
+      setSubmitError('Error: ' + error.message)
+      setSubmitting(false)
+      return
+    }
 
     setSongs(prev => [...prev, {
       id: crypto.randomUUID(),
@@ -183,7 +189,6 @@ export default function PlaylistPublicPage() {
   return (
     <div className="flex min-h-screen flex-col bg-white">
 
-      {/* Formulario sticky */}
       <div className="sticky top-0 z-10 border-b border-[#e8e8e8] bg-white px-4 pt-5 pb-4 sm:px-6">
         <div className="mx-auto max-w-lg">
           <div className="mb-3 flex items-center justify-between">
@@ -282,7 +287,6 @@ export default function PlaylistPublicPage() {
         </div>
       </div>
 
-      {/* Lista */}
       <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6">
         <div className="mx-auto max-w-lg">
           {songs.length > 0 && (
