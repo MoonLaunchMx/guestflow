@@ -89,19 +89,19 @@ export default function PlaylistPublicPage() {
   useEffect(() => { loadData() }, [])
 
   const loadData = async () => {
-// AHORA — busca token en event_settings (donde sí vive)
-const { data: settingsData } = await supabase
-  .from('event_settings')
-  .select('event_id, playlist_categories')
-  .eq('playlist_token', token)  // ← correcto
-  .single()
+    const { data: settingsData } = await supabase
+      .from('event_settings')
+      .select('event_id, playlist_categories')
+      .eq('playlist_token', token)
+      .single()
 
-// luego con el event_id trae el evento
-const { data: eventData } = await supabase
-  .from('events')
-  .select('id, name')
-  .eq('id', settingsData.event_id)
-  .single()
+    if (!settingsData) { setNotFound(true); setLoading(false); return }
+
+    const { data: eventData } = await supabase
+      .from('events')
+      .select('id, name')
+      .eq('id', settingsData.event_id)
+      .single()
 
     if (!eventData) { setNotFound(true); setLoading(false); return }
 
