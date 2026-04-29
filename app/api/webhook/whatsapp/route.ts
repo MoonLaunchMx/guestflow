@@ -1,7 +1,8 @@
-// app/api/webhook/whatsapp/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { interpretRSVPMessage } from '@/lib/ai-rsvp'
+
+const TWIML_EMPTY = '<Response/>'
 
 export async function POST(request: NextRequest) {
   const supabase = createClient(
@@ -10,17 +11,18 @@ export async function POST(request: NextRequest) {
   )
 
   try {
-    const body = await request.json()
-    console.log('[Webhook] Body recibido:', JSON.stringify(body))
+    const form = await request.formData()
+    const text = (form.get('Body') as string | null)?.trim() ?? ''
+    const from = (form.get('From') as string | null) ?? ''
 
-    const incomingMessage = normalize360dialogPayload(body)
-    console.log('[Webhook] Mensaje normalizado:', incomingMessage)
+    // Twilio sends "whatsapp:+521234567890" — strip the prefix
+    const phone = from.replace(/^whatsapp:/i, '')
 
-    if (!incomingMessage) {
-      return NextResponse.json({ ok: true, skipped: 'no text message' })
+    console.log('[Webhook] Twilio message — from:', phone, 'text:', text)
+
+    if (!text || !phone) {
+      return twimlResponse()
     }
-
-    const { phone, text } = incomingMessage
 
     const { data: guests, error: guestError } = await supabase
       .from('guests')
@@ -29,11 +31,10 @@ export async function POST(request: NextRequest) {
       .limit(1)
 
     console.log('[Webhook] Guests encontrados:', JSON.stringify(guests))
-    console.log('[Webhook] Guest error:', JSON.stringify(guestError))
 
     if (guestError || !guests || guests.length === 0) {
       console.log(`[Webhook] Número no registrado: ${phone}`)
-      return NextResponse.json({ ok: true, skipped: 'guest not found' })
+      return twimlResponse()
     }
 
     const guest = guests[0]
@@ -70,37 +71,64 @@ export async function POST(request: NextRequest) {
 
         console.log(`[RSVP] ${guestName}: ${guest.rsvp_status} → ${newStatus}`)
       }
+
+      const replyText = buildReplyMessage(interpretation.intent, guestName, eventName)
+      if (replyText) await sendWhatsAppReply(from, replyText)
     }
 
-    return NextResponse.json({
-      ok: true,
-      guest: guestName,
-      message: text,
-      interpretation,
-    })
+    return twimlResponse()
   } catch (error) {
     console.error('[Webhook Error]', error)
-    return NextResponse.json({ ok: false, error: String(error) }, { status: 500 })
+    // Still return TwiML — Twilio expects it even on errors
+    return twimlResponse()
   }
 }
 
-function normalize360dialogPayload(body: Record<string, unknown>): { phone: string; text: string } | null {
-  if (body.messages && Array.isArray(body.messages)) {
-    const msg = body.messages[0]
-    if (msg?.type === 'text' && msg?.text?.body) {
-      return {
-        phone: String(msg.from),
-        text: String(msg.text.body),
-      }
-    }
-  }
+function twimlResponse() {
+  return new NextResponse(TWIML_EMPTY, {
+    status: 200,
+    headers: { 'Content-Type': 'text/xml' },
+  })
+}
 
-  if (body.phone && body.text) {
-    return {
-      phone: String(body.phone),
-      text: String(body.text),
-    }
+function buildReplyMessage(intent: string, guestName: string, eventName: string): string | null {
+  switch (intent) {
+    case 'confirmed':
+      return `¡Gracias, ${guestName}! Tu asistencia a *${eventName}* ha sido confirmada. ¡Te esperamos! 🎉`
+    case 'declined':
+      return `Entendido, ${guestName}. Hemos registrado que no podrás asistir a *${eventName}*. ¡Quizás en otra ocasión!`
+    case 'respondio':
+      return `¡Gracias por escribirnos, ${guestName}! Hemos recibido tu mensaje. 😊`
+    case 'accion_necesaria':
+      return `Hola ${guestName}, gracias por escribirnos. Hemos recibido tu mensaje y un organizador lo atenderá pronto.`
+    default:
+      return null
   }
+}
 
-  return null
+async function sendWhatsAppReply(to: string, body: string): Promise<void> {
+  const accountSid = process.env.TWILIO_ACCOUNT_SID!
+  const authToken = process.env.TWILIO_AUTH_TOKEN!
+  const from = process.env.TWILIO_WHATSAPP_FROM! // e.g. "whatsapp:+14155238886"
+
+  const url = `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`
+  const credentials = Buffer.from(`${accountSid}:${authToken}`).toString('base64')
+
+  const params = new URLSearchParams({ To: to, From: from, Body: body })
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: {
+      Authorization: `Basic ${credentials}`,
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body: params.toString(),
+  })
+
+  if (!res.ok) {
+    const err = await res.text()
+    console.error('[Twilio] Error al enviar mensaje:', err)
+  } else {
+    console.log('[Twilio] Mensaje enviado a', to)
+  }
 }

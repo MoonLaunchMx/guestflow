@@ -6,9 +6,12 @@ import { supabase } from '@/lib/supabase'
 import { PartyMember, Guest, Event, EventSettings, EventStatus, RsvpStatus } from '@/lib/types'
 
 const STATUS_LABEL: Record<string, { label: string; color: string; bg: string; border: string }> = {
-  pending:   { label: 'Pendiente',  color: '#b8860b', bg: '#fffbf0', border: '#f0d080' },
-  confirmed: { label: 'Confirmado', color: '#2a7a50', bg: '#f0fff6', border: '#a0e0c0' },
-  declined:  { label: 'Declinó',    color: '#cc3333', bg: '#fff0f0', border: '#ffc0c0' },
+  mensaje_enviado:  { label: 'Mensaje enviado',  color: '#1a56a0', bg: '#f0f5ff', border: '#b3c8ee' },
+  pending:          { label: 'Pendiente',         color: '#b8860b', bg: '#fffbf0', border: '#f0d080' },
+  respondio:        { label: 'Respondió',         color: '#c06000', bg: '#fff8f0', border: '#f0c090' },
+  accion_necesaria: { label: 'Acción necesaria',  color: '#cc3333', bg: '#fff0f0', border: '#ffc0c0' },
+  confirmed:        { label: 'Confirmado',        color: '#2a7a50', bg: '#f0fff6', border: '#a0e0c0' },
+  declined:         { label: 'Declinado',         color: '#cc3333', bg: '#fff0f0', border: '#ffc0c0' },
 }
 
 const GROUP_COLORS = [
@@ -55,7 +58,7 @@ type EditMember = {
   id?: string
   name: string
   phone: string
-  rsvp_status: 'pending' | 'confirmed' | 'declined'
+  rsvp_status: RsvpStatus
 }
 
 type GuestTableInfo = {
@@ -112,9 +115,12 @@ function MembersEditor({ value, onChange }: { value: EditMember[]; onChange: (v:
               <input type="text" value={m.name} onChange={e => update(i, 'name', e.target.value)} placeholder="Nombre (opcional)" style={{ ...inp, fontSize: '13px', padding: '8px 12px' }} />
               <input type="tel" value={m.phone} onChange={e => update(i, 'phone', e.target.value)} placeholder="WhatsApp (opcional)" style={{ ...inp, fontSize: '13px', padding: '8px 12px' }} />
               <select value={m.rsvp_status} onChange={e => update(i, 'rsvp_status', e.target.value)} style={{ ...inp, fontSize: '13px', padding: '8px 12px', cursor: 'pointer' }}>
+                <option value="mensaje_enviado">Mensaje enviado</option>
                 <option value="pending">Pendiente</option>
+                <option value="respondio">Respondió</option>
+                <option value="accion_necesaria">Acción necesaria</option>
                 <option value="confirmed">Confirmado</option>
-                <option value="declined">Declinó</option>
+                <option value="declined">Declinado</option>
               </select>
               <button type="button" onClick={() => remove(i)} className="mt-1 w-full rounded-lg border border-[#ffe0e0] bg-[#fff5f5] py-1.5 text-xs font-semibold text-[#cc3333] transition hover:bg-[#ffe8e8]">Eliminar acompañante</button>
             </div>
@@ -700,9 +706,12 @@ export default function EventPage() {
                           <select value={guest.rsvp_status} onChange={e => updateStatus(guest.id, e.target.value as RsvpStatus)}
                             className="rounded-lg border px-2 py-1.5 text-xs font-semibold outline-none"
                             style={{ background: STATUS_LABEL[guest.rsvp_status].bg, borderColor: STATUS_LABEL[guest.rsvp_status].border, color: STATUS_LABEL[guest.rsvp_status].color, cursor: 'pointer' }}>
+                            <option value="mensaje_enviado">Mensaje enviado</option>
                             <option value="pending">Pendiente</option>
+                            <option value="respondio">Respondió</option>
+                            <option value="accion_necesaria">Acción necesaria</option>
                             <option value="confirmed">Confirmado</option>
-                            <option value="declined">Declinó</option>
+                            <option value="declined">Declinado</option>
                           </select>
                         </div>
                         <button onClick={() => deleteGuest(guest.id)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#ffe0e0] bg-[#fff5f5]">
@@ -721,9 +730,12 @@ export default function EventPage() {
                             <select value={m.rsvp_status} onChange={e => updatePartyMemberStatus(m.id, guest.id, e.target.value as RsvpStatus)}
                               className="rounded-lg border px-2 py-1.5 text-xs font-semibold outline-none"
                               style={{ background: STATUS_LABEL[m.rsvp_status].bg, borderColor: STATUS_LABEL[m.rsvp_status].border, color: STATUS_LABEL[m.rsvp_status].color, cursor: 'pointer' }}>
+                              <option value="mensaje_enviado">Mensaje enviado</option>
                               <option value="pending">Pendiente</option>
+                              <option value="respondio">Respondió</option>
+                              <option value="accion_necesaria">Acción necesaria</option>
                               <option value="confirmed">Confirmado</option>
-                              <option value="declined">Declinó</option>
+                              <option value="declined">Declinado</option>
                             </select>
                             <button onClick={() => deletePartyMember(m.id, guest.id)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#ffe0e0] bg-[#fff5f5]">
                               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#cc3333" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{TRASH_ICON}</svg>
@@ -812,9 +824,12 @@ export default function EventPage() {
                       <select value={guest.rsvp_status} onChange={e => updateStatus(guest.id, e.target.value as RsvpStatus)}
                         className="w-[120px] cursor-pointer rounded-md border px-2 py-1 text-xs font-semibold outline-none"
                         style={{ background: STATUS_LABEL[guest.rsvp_status].bg, borderColor: STATUS_LABEL[guest.rsvp_status].border, color: STATUS_LABEL[guest.rsvp_status].color }}>
+                        <option value="mensaje_enviado">Mensaje enviado</option>
                         <option value="pending">Pendiente</option>
+                        <option value="respondio">Respondió</option>
+                        <option value="accion_necesaria">Acción necesaria</option>
                         <option value="confirmed">Confirmado</option>
-                        <option value="declined">Declinó</option>
+                        <option value="declined">Declinado</option>
                       </select>
                       <button onClick={() => deleteGuest(guest.id)} className="flex items-center justify-center p-1">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#cc3333" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{TRASH_ICON}</svg>
@@ -838,9 +853,12 @@ export default function EventPage() {
                           <select value={m.rsvp_status} onChange={e => updatePartyMemberStatus(m.id, guest.id, e.target.value as RsvpStatus)}
                             className="w-[120px] cursor-pointer rounded-md border px-2 py-1 text-xs font-semibold outline-none"
                             style={{ background: STATUS_LABEL[m.rsvp_status].bg, borderColor: STATUS_LABEL[m.rsvp_status].border, color: STATUS_LABEL[m.rsvp_status].color }}>
+                            <option value="mensaje_enviado">Mensaje enviado</option>
                             <option value="pending">Pendiente</option>
+                            <option value="respondio">Respondió</option>
+                            <option value="accion_necesaria">Acción necesaria</option>
                             <option value="confirmed">Confirmado</option>
-                            <option value="declined">Declinó</option>
+                            <option value="declined">Declinado</option>
                           </select>
                           <button onClick={() => deletePartyMember(m.id, guest.id)} className="flex items-center justify-center p-1 opacity-40 transition-opacity hover:opacity-100">
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#cc3333" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{TRASH_ICON}</svg>

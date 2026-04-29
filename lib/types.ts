@@ -1,6 +1,6 @@
 // ─── RSVP ────────────────────────────────────────────────────────────────────
 
-export type RsvpStatus = 'pending' | 'confirmed' | 'declined'
+export type RsvpStatus = 'pending' | 'confirmed' | 'declined' | 'mensaje_enviado' | 'respondio' | 'accion_necesaria'
 
 // ─── EVENT ───────────────────────────────────────────────────────────────────
 
