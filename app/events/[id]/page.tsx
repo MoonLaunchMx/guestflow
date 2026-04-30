@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom'
 import { useParams } from 'next/navigation'
 import { motion, useMotionValue, useTransform, animate } from 'framer-motion'
 import type { PanInfo } from 'framer-motion'
-import { Trash2, Send, Clock, MessageSquare, AlertCircle, CheckCircle, XCircle } from 'lucide-react'
+import { Trash2, Send, Clock, MessageSquare, AlertCircle, CheckCircle, XCircle, Download, Upload, Columns3, Search, UserPlus } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { PartyMember, Guest, Event, EventSettings, EventStatus, RsvpStatus } from '@/lib/types'
 
@@ -19,6 +19,28 @@ const STATUS_LABEL: Record<string, { label: string; color: string; bg: string; b
 }
 
 const STATUS_ORDER: RsvpStatus[] = ['pending', 'mensaje_enviado', 'respondio', 'accion_necesaria', 'confirmed', 'declined']
+
+type ColumnKey = 'tags' | 'mesa' | 'lado' | 'notas' | 'telefono' | 'estatus'
+
+const ALL_COLUMNS: { key: ColumnKey; label: string }[] = [
+  { key: 'tags',     label: 'Tags' },
+  { key: 'mesa',     label: 'Mesa' },
+  { key: 'lado',     label: 'Lado' },
+  { key: 'notas',    label: 'Notas' },
+  { key: 'telefono', label: 'Teléfono' },
+  { key: 'estatus',  label: 'Estatus' },
+]
+
+const STORAGE_KEY = 'anfiora_guest_columns'
+
+function loadSavedColumns(): Set<ColumnKey> {
+  if (typeof window === 'undefined') return new Set(ALL_COLUMNS.map(c => c.key))
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY)
+    if (raw) return new Set(JSON.parse(raw) as ColumnKey[])
+  } catch {}
+  return new Set(ALL_COLUMNS.map(c => c.key))
+}
 
 function StatusDot({ value, onChange }: { value: RsvpStatus; onChange: (s: RsvpStatus) => void }) {
   const [open, setOpen] = useState(false)
@@ -34,14 +56,9 @@ function StatusDot({ value, onChange }: { value: RsvpStatus; onChange: (s: RsvpS
         {STATUS_ORDER.map(key => {
           const opt = STATUS_LABEL[key]
           return (
-            <button
-              key={key}
-              onClick={() => { onChange(key); setOpen(false) }}
-              className={'flex w-full items-center gap-3 px-5 py-3.5 transition active:bg-[#f8f8f8] ' + (value === key ? 'opacity-100' : 'opacity-70')}
-            >
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border" style={{ background: opt.bg, borderColor: opt.border, color: opt.color }}>
-                {opt.icon}
-              </span>
+            <button key={key} onClick={() => { onChange(key); setOpen(false) }}
+              className={'flex w-full items-center gap-3 px-5 py-3.5 transition active:bg-[#f8f8f8] ' + (value === key ? 'opacity-100' : 'opacity-70')}>
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border" style={{ background: opt.bg, borderColor: opt.border, color: opt.color }}>{opt.icon}</span>
               <span className="text-sm font-medium" style={{ color: opt.color }}>{opt.label}</span>
               {value === key && <span className="ml-auto text-xs text-[#48C9B0]">✓</span>}
             </button>
@@ -54,12 +71,9 @@ function StatusDot({ value, onChange }: { value: RsvpStatus; onChange: (s: RsvpS
 
   return (
     <>
-      <button
-        onClick={e => { e.stopPropagation(); setOpen(true) }}
+      <button onClick={e => { e.stopPropagation(); setOpen(true) }}
         className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition active:scale-95"
-        style={{ background: s.bg, borderColor: s.border, color: s.color }}
-        title={s.label}
-      >
+        style={{ background: s.bg, borderColor: s.border, color: s.color }} title={s.label}>
         {s.icon}
       </button>
       {sheet}
@@ -67,10 +81,7 @@ function StatusDot({ value, onChange }: { value: RsvpStatus; onChange: (s: RsvpS
   )
 }
 
-const GROUP_COLORS = [
-  '#48C9B0', '#7F77DD', '#F0997B', '#378ADD',
-  '#EF9F27', '#D4537E', '#639922', '#D85A30',
-]
+const GROUP_COLORS = ['#48C9B0', '#7F77DD', '#F0997B', '#378ADD', '#EF9F27', '#D4537E', '#639922', '#D85A30']
 
 const SIDE_OPTIONS = [
   { value: 'familia_novia',  label: 'Familia novia' },
@@ -94,9 +105,7 @@ const TAG_COLORS = [
   { bg: '#fff5f0', border: '#f09595', text: '#A32D2D' },
 ]
 
-function getTagColor(tagIndex: number) {
-  return TAG_COLORS[tagIndex % TAG_COLORS.length]
-}
+function getTagColor(tagIndex: number) { return TAG_COLORS[tagIndex % TAG_COLORS.length] }
 
 const inp: React.CSSProperties = {
   width: '100%', padding: '10px 14px',
@@ -118,27 +127,12 @@ const TRASH_ICON = (
   </>
 )
 
-type EditMember = {
-  id?: string
-  name: string
-  phone: string
-  rsvp_status: RsvpStatus
-}
+type EditMember = { id?: string; name: string; phone: string; rsvp_status: RsvpStatus }
+type GuestTableInfo = { tableNumber: number; tableName: string | null }
 
-type GuestTableInfo = {
-  tableNumber: number
-  tableName: string | null
-}
+function normalizePhone(phone: string): string { return phone.replace(/\D/g, '') }
 
-function normalizePhone(phone: string): string {
-  return phone.replace(/\D/g, '')
-}
-
-function TagSelector({ availableTags, selectedTags, onChange }: {
-  availableTags: string[]
-  selectedTags: string[]
-  onChange: (tags: string[]) => void
-}) {
+function TagSelector({ availableTags, selectedTags, onChange }: { availableTags: string[]; selectedTags: string[]; onChange: (tags: string[]) => void }) {
   if (availableTags.length === 0) return <p className="text-xs text-[#bbb]">Sin tags — agrégalos desde Configuración.</p>
   const toggle = (tag: string) => onChange(selectedTags.includes(tag) ? selectedTags.filter(t => t !== tag) : [...selectedTags, tag])
   return (
@@ -164,11 +158,7 @@ function AllergySelector({ value, onChange }: { value: string[]; onChange: (v: s
   const [otherText, setOtherText] = useState('')
   const otherAllergies = value.filter(a => !ALLERGY_OPTIONS.includes(a))
   const toggle = (a: string) => onChange(value.includes(a) ? value.filter(x => x !== a) : [...value, a])
-  const addOther = () => {
-    const t = otherText.trim()
-    if (t && !value.includes(t)) onChange([...value, t])
-    setOtherText('')
-  }
+  const addOther = () => { const t = otherText.trim(); if (t && !value.includes(t)) onChange([...value, t]); setOtherText('') }
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap gap-1.5">
@@ -192,8 +182,7 @@ function AllergySelector({ value, onChange }: { value: string[]; onChange: (v: s
       )}
       <div className="flex gap-2">
         <input type="text" value={otherText} onChange={e => setOtherText(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && addOther()}
-          placeholder="Otra alergia..."
+          onKeyDown={e => e.key === 'Enter' && addOther()} placeholder="Otra alergia..."
           className="flex-1 rounded-lg border border-[#e0e0e0] bg-[#f8f8f8] px-3 py-1.5 text-xs text-[#1D1E20] outline-none transition focus:border-[#48C9B0]" />
         <button type="button" onClick={addOther} disabled={!otherText.trim()}
           className="rounded-lg bg-[#48C9B0] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40">+</button>
@@ -206,8 +195,7 @@ function MembersEditor({ value, onChange }: { value: EditMember[]; onChange: (v:
   const MAX = 15
   const add = () => { if (value.length < MAX) onChange([...value, { name: '', phone: '', rsvp_status: 'pending' }]) }
   const remove = (i: number) => onChange(value.filter((_, idx) => idx !== i))
-  const update = (i: number, field: keyof EditMember, val: string) =>
-    onChange(value.map((m, idx) => idx === i ? { ...m, [field]: val } : m))
+  const update = (i: number, field: keyof EditMember, val: string) => onChange(value.map((m, idx) => idx === i ? { ...m, [field]: val } : m))
   return (
     <div>
       <div className="mb-2 flex items-center justify-between">
@@ -241,69 +229,35 @@ function MembersEditor({ value, onChange }: { value: EditMember[]; onChange: (v:
 
 type CsvDuplicateResult = {
   hasDuplicates: boolean
-  rows: Array<{
-    event_id: string
-    name: string
-    phone: string | null
-    email: string | null
-    party_size: number
-    rsvp_status: string
-    tags: string[]
-    notes: string | null
-  }>
+  rows: Array<{ event_id: string; name: string; phone: string | null; email: string | null; party_size: number; rsvp_status: string; tags: string[]; notes: string | null }>
   duplicates: Array<{ row: number; name: string; phone: string; conflictWith: string }>
 }
 
-function SwipeableGuestCard({
-  guest, groupColor, isSelected, guestTags, availableTags,
-  onSelect, onEdit, onDelete, onWaLongPressStart, onWaLongPressEnd, onWaTouchMove, onStatusChange,
-}: {
-  guest: Guest
-  groupColor: string | null
-  isSelected: boolean
-  guestTags: string[]
-  availableTags: string[]
-  onSelect: () => void
-  onEdit: () => void
-  onDelete: () => void
-  onWaLongPressStart: (g: Guest) => void
-  onWaLongPressEnd: (g: Guest) => void
-  onWaTouchMove: () => void
-  onStatusChange: (s: RsvpStatus) => void
+function SwipeableGuestCard({ guest, groupColor, isSelected, guestTags, availableTags, onSelect, onEdit, onDelete, onWaLongPressStart, onWaLongPressEnd, onWaTouchMove, onStatusChange }: {
+  guest: Guest; groupColor: string | null; isSelected: boolean; guestTags: string[]; availableTags: string[]
+  onSelect: () => void; onEdit: () => void; onDelete: () => void
+  onWaLongPressStart: (g: Guest) => void; onWaLongPressEnd: (g: Guest) => void; onWaTouchMove: () => void; onStatusChange: (s: RsvpStatus) => void
 }) {
   const x = useMotionValue(0)
   const bgOpacity = useTransform(x, [-80, -20, 0], [1, 0.5, 0])
-
   return (
     <div className={'relative overflow-hidden ' + (groupColor ? 'rounded-t-xl' : 'rounded-xl')}>
       <motion.div className="absolute inset-0 flex items-center justify-end bg-red-500 pr-5" style={{ opacity: bgOpacity }}>
         <Trash2 size={20} className="text-white" />
       </motion.div>
-      <motion.div
-        style={{ x }}
-        drag="x"
-        dragConstraints={{ left: -80, right: 0 }}
-        dragElastic={{ left: 0.1, right: 0 }}
+      <motion.div style={{ x }} drag="x" dragConstraints={{ left: -80, right: 0 }} dragElastic={{ left: 0.1, right: 0 }}
         onDragEnd={(_: unknown, info: PanInfo) => {
-          if (info.offset.x < -60) {
-            onDelete()
-          } else {
-            animate(x, 0, { type: 'spring', stiffness: 500, damping: 35 })
-          }
+          if (info.offset.x < -60) onDelete()
+          else animate(x, 0, { type: 'spring', stiffness: 500, damping: 35 })
         }}
-        className={'relative z-10 rounded-xl border bg-white px-3 py-3 ' + (isSelected ? 'border-[#48C9B0] bg-[#f0fdfb]' : 'border-[#e8e8e8]') + (groupColor ? ' rounded-b-none border-b-0' : '')}
-      >
+        className={'relative z-10 rounded-xl border bg-white px-3 py-3 ' + (isSelected ? 'border-[#48C9B0] bg-[#f0fdfb]' : 'border-[#e8e8e8]') + (groupColor ? ' rounded-b-none border-b-0' : '')}>
         <div className="flex items-center gap-2">
           <input type="checkbox" checked={isSelected} onChange={onSelect} className="h-4 w-4 shrink-0 accent-[#48C9B0]" />
           {groupColor && <div className="h-8 w-[3px] shrink-0 rounded-full" style={{ background: groupColor }} />}
           <div className="shrink-0">
             {guest.phone ? (
-              <button
-                onTouchStart={e => { e.stopPropagation(); onWaLongPressStart(guest) }}
-                onTouchEnd={e => { e.stopPropagation(); onWaLongPressEnd(guest) }}
-                onTouchMove={e => { e.stopPropagation(); onWaTouchMove() }}
-                className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#c0f0dc] bg-[#f0fff8]"
-              >
+              <button onTouchStart={e => { e.stopPropagation(); onWaLongPressStart(guest) }} onTouchEnd={e => { e.stopPropagation(); onWaLongPressEnd(guest) }} onTouchMove={e => { e.stopPropagation(); onWaTouchMove() }}
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#c0f0dc] bg-[#f0fff8]">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="#25D366">{WA_ICON}</svg>
               </button>
             ) : (
@@ -342,15 +296,17 @@ export default function EventPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [filter, setFilter] = useState<'all' | RsvpStatus>('all')
-
   const [guestTableMap, setGuestTableMap] = useState<Map<string, GuestTableInfo>>(new Map())
+
+  const [visibleCols, setVisibleCols] = useState<Set<ColumnKey>>(() => loadSavedColumns())
+  const [showColMenu, setShowColMenu] = useState(false)
+  const colMenuRef = useRef<HTMLDivElement>(null)
 
   const [showModal, setShowModal] = useState(false)
   const [showCsvModal, setShowCsvModal] = useState(false)
   const [csvError, setCsvError] = useState('')
   const [csvSuccess, setCsvSuccess] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
-
   const [csvPreview, setCsvPreview] = useState<CsvDuplicateResult | null>(null)
   const [csvImporting, setCsvImporting] = useState(false)
 
@@ -368,7 +324,9 @@ export default function EventPage() {
 
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [showBulkMenu, setShowBulkMenu] = useState(false)
+  const [showMobileBulkSheet, setShowMobileBulkSheet] = useState(false)
   const bulkMenuRef = useRef<HTMLDivElement>(null)
+  const lastCheckedIdx = useRef<number | null>(null)
 
   const [showBulkCompanionModal, setShowBulkCompanionModal] = useState(false)
   const [bulkCompanionCount, setBulkCompanionCount] = useState(1)
@@ -376,7 +334,6 @@ export default function EventPage() {
 
   const [showWaMenu, setShowWaMenu] = useState<string | null>(null)
   const waMenuRef = useRef<HTMLDivElement>(null)
-
   const [showWaSheet, setShowWaSheet] = useState<Guest | null>(null)
   const waLongPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -398,15 +355,11 @@ export default function EventPage() {
 
   useEffect(() => {
     let result = guests
-    if (filter !== 'all') result = result.filter(g =>
-      g.rsvp_status === filter ||
-      g.party_members.some(m => m.rsvp_status === filter)
-    )
+    if (filter !== 'all') result = result.filter(g => g.rsvp_status === filter || g.party_members.some(m => m.rsvp_status === filter))
     if (search) result = result.filter(g => g.name.toLowerCase().includes(search.toLowerCase()))
     if (sortField) {
       result = [...result].sort((a, b) => {
-        let aVal: any = ''
-        let bVal: any = ''
+        let aVal: any = '', bVal: any = ''
         switch (sortField) {
           case 'name':   aVal = a.name.toLowerCase();         bVal = b.name.toLowerCase();         break
           case 'phone':  aVal = a.phone?.toLowerCase() || ''; bVal = b.phone?.toLowerCase() || ''; break
@@ -425,20 +378,25 @@ export default function EventPage() {
     const handleClick = (e: MouseEvent) => {
       if (bulkMenuRef.current && !bulkMenuRef.current.contains(e.target as Node)) setShowBulkMenu(false)
       if (waMenuRef.current && !waMenuRef.current.contains(e.target as Node)) setShowWaMenu(null)
+      if (colMenuRef.current && !colMenuRef.current.contains(e.target as Node)) setShowColMenu(false)
     }
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
   }, [])
 
-  const handleWaLongPressStart = (guest: Guest) => {
-    waLongPressTimer.current = setTimeout(() => { waLongPressTimer.current = null; setShowWaSheet(guest) }, 400)
+  const toggleCol = (key: ColumnKey) => {
+    setVisibleCols(prev => {
+      const next = new Set(prev)
+      if (key === 'estatus' && next.has(key)) return prev
+      next.has(key) ? next.delete(key) : next.add(key)
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(Array.from(next))) } catch {}
+      return next
+    })
   }
-  const handleWaLongPressEnd = (guest: Guest) => {
-    if (waLongPressTimer.current) { clearTimeout(waLongPressTimer.current); waLongPressTimer.current = null; window.open('https://wa.me/' + guest.phone!.replace(/\D/g, ''), '_blank') }
-  }
-  const handleWaTouchMove = () => {
-    if (waLongPressTimer.current) { clearTimeout(waLongPressTimer.current); waLongPressTimer.current = null }
-  }
+
+  const handleWaLongPressStart = (guest: Guest) => { waLongPressTimer.current = setTimeout(() => { waLongPressTimer.current = null; setShowWaSheet(guest) }, 400) }
+  const handleWaLongPressEnd = (guest: Guest) => { if (waLongPressTimer.current) { clearTimeout(waLongPressTimer.current); waLongPressTimer.current = null; window.open('https://wa.me/' + guest.phone!.replace(/\D/g, ''), '_blank') } }
+  const handleWaTouchMove = () => { if (waLongPressTimer.current) { clearTimeout(waLongPressTimer.current); waLongPressTimer.current = null } }
 
   const loadEvent = async () => {
     const { data } = await supabase.from('events').select('*').eq('id', id).single()
@@ -451,10 +409,8 @@ export default function EventPage() {
     const { data: guestsData } = await supabase.from('guests').select('*').eq('event_id', id).order('name')
     if (!guestsData) { setLoading(false); return }
     const { data: membersData } = await supabase.from('party_members').select('*').eq('event_id', id).order('created_at')
-
     const { data: seatsData } = await supabase.from('table_seats').select('guest_id, table_id').eq('event_id', id)
     const { data: tablesData } = await supabase.from('tables').select('id, number, name').eq('event_id', id)
-
     const tableById = new Map((tablesData || []).map(t => [t.id, t]))
     const map = new Map<string, GuestTableInfo>()
     for (const seat of (seatsData || [])) {
@@ -463,7 +419,6 @@ export default function EventPage() {
       if (table) map.set(seat.guest_id, { tableNumber: table.number, tableName: table.name })
     }
     setGuestTableMap(map)
-
     setGuests(guestsData.map(g => ({ ...g, tags: g.tags || [], party_members: (membersData || []).filter(m => m.guest_id === g.id) })))
     setLoading(false)
   }
@@ -497,8 +452,7 @@ export default function EventPage() {
     setEditGuest(guest); setEditName(guest.name); setEditPhone(guest.phone || '')
     setEditEmail(guest.email || ''); setEditNotes(guest.notes || '')
     setEditTags(guest.tags || []); setEditError('')
-    setEditSide(guest.side || '')
-    setEditAllergies(guest.allergies || [])
+    setEditSide(guest.side || ''); setEditAllergies(guest.allergies || [])
     setEditMembers(guest.party_members.map(m => ({ id: m.id, name: m.name, phone: m.phone || '', rsvp_status: m.rsvp_status })))
   }
 
@@ -535,16 +489,33 @@ export default function EventPage() {
     await loadGuests(); setEditGuest(null); setEditSaving(false)
   }
 
-  const toggleSelect = (guestId: string) => {
-    setSelected(prev => { const n = new Set(prev); n.has(guestId) ? n.delete(guestId) : n.add(guestId); return n })
+  const toggleSelect = (guestId: string, idx: number, shiftKey: boolean) => {
+    if (shiftKey && lastCheckedIdx.current !== null) {
+      const start = Math.min(lastCheckedIdx.current, idx)
+      const end   = Math.max(lastCheckedIdx.current, idx)
+      const rangeIds = filtered.slice(start, end + 1).map(g => g.id)
+      setSelected(prev => {
+        const next = new Set(prev)
+        const adding = !prev.has(guestId)
+        rangeIds.forEach(rid => adding ? next.add(rid) : next.delete(rid))
+        return next
+      })
+    } else {
+      setSelected(prev => { const next = new Set(prev); next.has(guestId) ? next.delete(guestId) : next.add(guestId); return next })
+    }
+    lastCheckedIdx.current = idx
   }
-  const toggleSelectAll = () => { setSelected(selected.size === filtered.length ? new Set() : new Set(filtered.map(g => g.id))) }
+
+  const toggleSelectAll = () => {
+    setSelected(selected.size === filtered.length ? new Set() : new Set(filtered.map(g => g.id)))
+    lastCheckedIdx.current = null
+  }
 
   const bulkUpdateStatus = async (status: RsvpStatus) => {
     const ids = Array.from(selected)
     await supabase.from('guests').update({ rsvp_status: status }).in('id', ids)
     setGuests(prev => prev.map(g => selected.has(g.id) ? { ...g, rsvp_status: status } : g))
-    setSelected(new Set()); setShowBulkMenu(false)
+    setSelected(new Set()); setShowBulkMenu(false); setShowMobileBulkSheet(false)
   }
 
   const bulkDelete = async () => {
@@ -554,7 +525,7 @@ export default function EventPage() {
     await supabase.rpc('increment_guests_by', { event_id_input: id, amount: -ids.length })
     setGuests(prev => prev.filter(g => !selected.has(g.id)))
     setEvent(prev => prev ? { ...prev, total_guests: Math.max(0, prev.total_guests - ids.length) } : prev)
-    setSelected(new Set()); setShowBulkMenu(false)
+    setSelected(new Set()); setShowBulkMenu(false); setShowMobileBulkSheet(false)
   }
 
   const bulkAddCompanions = async () => {
@@ -562,45 +533,33 @@ export default function EventPage() {
     setBulkCompanionSaving(true)
     const ids = Array.from(selected)
     const rows: { guest_id: string; event_id: string; name: string; phone: null; rsvp_status: string }[] = []
-
     for (const guestId of ids) {
-      const guest = guests.find(g => g.id === guestId)
-      if (!guest) continue
+      const guest = guests.find(g => g.id === guestId); if (!guest) continue
       const canAdd = Math.max(0, 15 - guest.party_members.length)
       const toAdd = Math.min(bulkCompanionCount, canAdd)
-      for (let i = 0; i < toAdd; i++) {
-        rows.push({ guest_id: guestId, event_id: id as string, name: '', phone: null, rsvp_status: 'pending' })
-      }
+      for (let i = 0; i < toAdd; i++) rows.push({ guest_id: guestId, event_id: id as string, name: '', phone: null, rsvp_status: 'pending' })
     }
-
     if (rows.length === 0) { setBulkCompanionSaving(false); setShowBulkCompanionModal(false); return }
-
     await supabase.from('party_members').insert(rows)
-
     for (const guestId of ids) {
-      const guest = guests.find(g => g.id === guestId)
-      if (!guest) continue
+      const guest = guests.find(g => g.id === guestId); if (!guest) continue
       const canAdd = Math.max(0, 15 - guest.party_members.length)
       const toAdd = Math.min(bulkCompanionCount, canAdd)
       if (toAdd > 0) await supabase.from('guests').update({ party_size: guest.party_size + toAdd }).eq('id', guestId)
     }
-
     await loadGuests()
     setBulkCompanionSaving(false); setShowBulkCompanionModal(false)
-    setBulkCompanionCount(1); setSelected(new Set()); setShowBulkMenu(false)
+    setBulkCompanionCount(1); setSelected(new Set()); setShowBulkMenu(false); setShowMobileBulkSheet(false)
   }
 
   const buildWaText = (guest: Guest, templateIndex = 0) => {
     const playlistUrl = eventSettings?.playlist_token ? window.location.origin + '/playlist/' + eventSettings.playlist_token : ''
     const templates = eventSettings?.message_templates as string[] | null
     const text = (templates?.[templateIndex] || 'Hola {nombre}, te escribimos de parte de {evento}.')
-      .replace('{nombre}', guest.name)
-      .replace('{evento}', event?.name || '')
+      .replace('{nombre}', guest.name).replace('{evento}', event?.name || '')
       .replace('{fecha}', event?.event_date ? new Date(event.event_date).toLocaleDateString('es-MX') : '')
-      .replace('{hora}', event?.event_time || '')
-      .replace('{venue}', event?.venue || '')
-      .replace('{direccion}', event?.address || '')
-      .replace('{playlist}', playlistUrl)
+      .replace('{hora}', event?.event_time || '').replace('{venue}', event?.venue || '')
+      .replace('{direccion}', event?.address || '').replace('{playlist}', playlistUrl)
     return encodeURIComponent(text)
   }
 
@@ -608,7 +567,7 @@ export default function EventPage() {
     const list = guests.filter(g => selected.has(g.id) && g.phone)
     if (!list.length) { alert('Ningún invitado seleccionado tiene WhatsApp'); return }
     list.forEach((g, i) => setTimeout(() => window.open('https://wa.me/' + g.phone!.replace(/\D/g, '') + '?text=' + buildWaText(g), '_blank'), i * 500))
-    setShowBulkMenu(false)
+    setShowBulkMenu(false); setShowMobileBulkSheet(false)
   }
 
   const resetForm = () => { setName(''); setPhone(''); setEmail(''); setNotes(''); setNewTags([]); setNewMembers([]); setNewSide(''); setNewAllergies([]); setFormError('') }
@@ -655,24 +614,14 @@ export default function EventPage() {
         const rawTags = tagsIdx >= 0 ? cols[tagsIdx] || '' : ''
         const parsedTags = rawTags ? rawTags.split(/[,|]/).map((t: string) => t.trim()).filter((t: string) => eventTags.includes(t)) : []
         const plusOnes = plusIdx >= 0 ? parseInt(cols[plusIdx] || '0', 10) || 0 : 0
-        return {
-          event_id: id as string,
-          name: cols[nameIdx] || '',
-          phone: phoneIdx >= 0 ? cols[phoneIdx] || null : null,
-          email: emailIdx >= 0 ? cols[emailIdx] || null : null,
-          party_size: 1 + plusOnes,
-          rsvp_status: rsvpStatus,
-          tags: parsedTags,
-          notes: notesIdx >= 0 ? cols[notesIdx] || null : null,
-        }
+        return { event_id: id as string, name: cols[nameIdx] || '', phone: phoneIdx >= 0 ? cols[phoneIdx] || null : null, email: emailIdx >= 0 ? cols[emailIdx] || null : null, party_size: 1 + plusOnes, rsvp_status: rsvpStatus, tags: parsedTags, notes: notesIdx >= 0 ? cols[notesIdx] || null : null }
       }).filter(r => r.name)
       if (!rows.length) { setCsvError('No se encontraron invitados válidos'); return }
       const duplicates: CsvDuplicateResult['duplicates'] = []
       const seenInFile = new Map<string, string>()
       rows.forEach((row, idx) => {
         if (!row.phone) return
-        const norm = normalizePhone(row.phone)
-        if (!norm) return
+        const norm = normalizePhone(row.phone); if (!norm) return
         const existingGuest = guests.find(g => g.phone && normalizePhone(g.phone) === norm)
         if (existingGuest) { duplicates.push({ row: idx + 2, name: row.name, phone: row.phone, conflictWith: existingGuest.name + ' (ya registrado)' }); return }
         if (seenInFile.has(norm)) { duplicates.push({ row: idx + 2, name: row.name, phone: row.phone, conflictWith: seenInFile.get(norm)! + ' (misma importación)' }); return }
@@ -685,7 +634,7 @@ export default function EventPage() {
     readerUtf8.onload = (evt) => {
       const text = evt.target?.result as string
       if (!text) { setCsvError('No se pudo leer el archivo'); return }
-      if (text.includes('�') || text.includes('\uFFFD')) {
+      if (text.includes('?') || text.includes('\uFFFD')) {
         const readerLatin = new FileReader()
         readerLatin.onload = (evt2) => { const text2 = evt2.target?.result as string; if (text2) parseCSV(text2) }
         readerLatin.readAsText(file, 'windows-1252')
@@ -736,15 +685,7 @@ export default function EventPage() {
       `"Patricio Juarez","+52 55 9876 5432","","Sin restricciones alimentarias","","pending"`,
       `"Andres Garza","","andres@ejemplo.com","Llegara tarde","","pending"`,
     ]
-    const instructions = [
-      '', '# INSTRUCCIONES:',
-      '# nombre      -> obligatorio',
-      '# telefono    -> formato +52 XX XXXX XXXX (opcional)',
-      '# email       -> correo electronico (opcional)',
-      '# notas       -> texto libre (opcional)',
-      `# tags        -> separados por coma: ${eventTags.length ? eventTags.join(', ') : '(configura tags en Configuracion)'}`,
-      '# rsvp_status -> confirmed | pending | declined  (vacio = pending)',
-    ]
+    const instructions = ['', '# INSTRUCCIONES:', '# nombre -> obligatorio', '# telefono -> formato +52 XX XXXX XXXX (opcional)', '# email -> correo electronico (opcional)', '# notas -> texto libre (opcional)', `# tags -> separados por coma: ${eventTags.length ? eventTags.join(', ') : '(configura tags en Configuracion)'}`, '# rsvp_status -> confirmed | pending | declined  (vacio = pending)']
     const csv = [headers, ...examples, ...instructions].join('\n')
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
@@ -752,20 +693,12 @@ export default function EventPage() {
     URL.revokeObjectURL(url)
   }
 
-  const getTableLabel = (guestId: string): string => {
-    const t = guestTableMap.get(guestId)
-    if (!t) return ''
-    return `Mesa ${t.tableNumber}`
-  }
+  const getTableLabel = (guestId: string): string => { const t = guestTableMap.get(guestId); if (!t) return ''; return `Mesa ${t.tableNumber}` }
 
   const totalPersonas = guests.reduce((acc, g) => acc + 1 + g.party_members.length, 0)
 
-  // Si el invitado principal declina, toda su familia se cuenta como declinada
   const countByStatus = (s: RsvpStatus) => guests.reduce((acc, g) => {
-    if (g.rsvp_status === 'declined') {
-      // Toda la familia cuenta como declinada, no como ningún otro estado
-      return acc + (s === 'declined' ? 1 + g.party_members.length : 0)
-    }
+    if (g.rsvp_status === 'declined') return acc + (s === 'declined' ? 1 + g.party_members.length : 0)
     let n = g.rsvp_status === s ? 1 : 0
     n += g.party_members.filter(m => m.rsvp_status === s).length
     return acc + n
@@ -786,39 +719,67 @@ export default function EventPage() {
   const templateNames = eventSettings?.template_names as string[] | null
   const availableTags = event?.guest_tags || []
 
-  const maxCanAdd = selected.size === 0 ? 15 : Math.max(0, 15 - Math.max(
-    ...Array.from(selected).map(gid => guests.find(g => g.id === gid)?.party_members.length ?? 0)
-  ))
+  const maxCanAdd = selected.size === 0 ? 15 : Math.max(0, 15 - Math.max(...Array.from(selected).map(gid => guests.find(g => g.id === gid)?.party_members.length ?? 0)))
+
+  const gridCols = ['40px', '2fr', ...(visibleCols.has('tags') ? ['1.2fr'] : []), ...(visibleCols.has('mesa') ? ['90px'] : []), ...(visibleCols.has('lado') ? ['100px'] : []), ...(visibleCols.has('notas') ? ['1fr'] : []), ...(visibleCols.has('telefono') ? ['1.5fr'] : []), ...(visibleCols.has('estatus') ? ['140px'] : []), '40px'].join(' ')
+
+  // Contenido compartido entre desktop dropdown y mobile bottom sheet
+  const BulkMenuContent = ({ onClose }: { onClose: () => void }) => (
+    <>
+      <p className="mb-1 px-3 pt-0.5 text-[10px] font-semibold uppercase tracking-wider text-[#aaa]">Estatus</p>
+      <button onClick={bulkWhatsApp} className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-xs transition hover:bg-[#f8f8f8] sm:py-2">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-[#c0f0dc] bg-[#f0fff8]">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="#25D366">{WA_ICON}</svg>
+        </span>
+        <span className="font-medium text-[#25D366]">Enviar WhatsApp</span>
+      </button>
+      <div className="my-1 mx-3 h-px bg-[#f0f0f0]" />
+      <p className="mb-1 px-3 text-[10px] font-semibold uppercase tracking-wider text-[#aaa]">Marcar como</p>
+      {STATUS_ORDER.map(key => {
+        const s = STATUS_LABEL[key]
+        return (
+          <button key={key} onClick={() => bulkUpdateStatus(key)} className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-xs transition hover:bg-[#f8f8f8] sm:py-2">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border" style={{ background: s.bg, borderColor: s.border, color: s.color }}>{s.icon}</span>
+            <span className="font-medium" style={{ color: s.color }}>{s.label}</span>
+          </button>
+        )
+      })}
+      <div className="my-1 mx-3 h-px bg-[#f0f0f0]" />
+      <button onClick={() => { onClose(); setBulkCompanionCount(1); setShowBulkCompanionModal(true) }} className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-xs transition hover:bg-[#f8f8f8] sm:py-2">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-[#e8e8e8] bg-[#f8f8f8] text-[#555]"><UserPlus size={11} /></span>
+        <span className="font-medium text-[#555]">Agregar acompañante</span>
+      </button>
+      <div className="my-1 mx-3 h-px bg-[#f0f0f0]" />
+      <button onClick={bulkDelete} className="flex w-full items-center gap-2.5 px-3 py-2.5 text-left text-xs transition hover:bg-[#fff0f0] sm:py-2">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-[#ffc0c0] bg-[#fff0f0] text-[#cc3333]"><Trash2 size={11} /></span>
+        <span className="font-medium text-[#cc3333]">Eliminar seleccionados</span>
+      </button>
+    </>
+  )
 
   return (
-    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'visible', background: '#ffffff', color: '#1D1E20' }}>
+    // ── KEY FIX: overflow: hidden en el contenedor raíz para que sticky funcione ──
+    <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#ffffff', color: '#1D1E20', overflow: 'hidden' }}>
 
       {/* ══ TOOLBAR ══ */}
       <div className="shrink-0 border-b border-[#e8e8e8] px-4 pt-4 pb-0 sm:px-6 sm:pt-5 lg:px-10 lg:pt-6">
-
-        {/* Título */}
         <div className="mb-4">
           <h1 className="text-lg font-bold text-[#1D1E20] sm:text-xl">Invitados</h1>
           <p className="mt-0.5 text-xs text-[#888] sm:text-sm">Gestiona a todos tus invitados desde un solo lugar.</p>
         </div>
 
-        {/* Métricas estilo mesas */}
+        {/* Métricas */}
         <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-
-          {/* Confirmados */}
           <div className="rounded-xl border border-[#e8e8e8] bg-white p-3">
             <div className="mb-1.5 flex items-center justify-between">
               <span className="text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Confirmados</span>
               <CheckCircle size={14} className="text-[#48C9B0]" />
             </div>
-            <div className="text-xl font-bold text-[#1D1E20]">{confirmed}</div>
+            <div className="text-xl font-bold text-[#1D1E20]">{confirmed}<span className="ml-1.5 text-sm font-normal text-[#aaa]">/ {totalPersonas}</span></div>
             <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[#e8e8e8]">
               <div className="h-full rounded-full bg-[#48C9B0] transition-all" style={{ width: totalPersonas > 0 ? `${(confirmed / totalPersonas) * 100}%` : '0%' }} />
             </div>
-            <div className="mt-1 text-[10px] text-[#aaa]">de {totalPersonas} totales</div>
           </div>
-
-          {/* Pendientes */}
           <div className="rounded-xl border border-[#e8e8e8] bg-white p-3">
             <div className="mb-1.5 flex items-center justify-between">
               <span className="text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Pendientes</span>
@@ -828,23 +789,15 @@ export default function EventPage() {
             <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[#e8e8e8]">
               <div className="h-full rounded-full bg-[#f0d080] transition-all" style={{ width: totalPersonas > 0 ? `${((pending + mensajeEnviado) / totalPersonas) * 100}%` : '0%' }} />
             </div>
-            <div className="mt-1 text-[10px] text-[#aaa]">sin confirmar aún</div>
           </div>
-
-          {/* Requieren atención */}
           <div className="rounded-xl border border-[#e8e8e8] bg-white p-3">
             <div className="mb-1.5 flex items-center justify-between">
               <span className="text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Atención</span>
               <AlertCircle size={14} className={conAtencion > 0 ? 'text-[#cc3333]' : 'text-[#bbb]'} />
             </div>
             <div className="text-xl font-bold" style={{ color: conAtencion > 0 ? '#cc3333' : '#1D1E20' }}>{conAtencion}</div>
-            {conAtencion > 0
-              ? <div className="mt-1 text-[10px] font-medium text-[#cc3333]">Respondieron o acción requerida</div>
-              : <div className="mt-1 text-[10px] text-[#48C9B0]">Sin pendientes urgentes ✓</div>
-            }
+            {conAtencion > 0 ? <div className="mt-1 text-[10px] font-medium text-[#cc3333]">Respondieron o acción requerida</div> : <div className="mt-1 text-[10px] text-[#48C9B0]">Sin pendientes urgentes ✓</div>}
           </div>
-
-          {/* Declinados */}
           <div className="rounded-xl border border-[#e8e8e8] bg-white p-3">
             <div className="mb-1.5 flex items-center justify-between">
               <span className="text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Declinados</span>
@@ -854,24 +807,19 @@ export default function EventPage() {
             <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[#e8e8e8]">
               <div className="h-full rounded-full bg-[#ffc0c0] transition-all" style={{ width: totalPersonas > 0 ? `${(declined / totalPersonas) * 100}%` : '0%' }} />
             </div>
-            <div className="mt-1 text-[10px] text-[#aaa]">no van a asistir</div>
           </div>
-
         </div>
 
-        {/* Toolbar — 1 sola fila en todos los breakpoints */}
+        {/* Toolbar row */}
         <div className="mb-3 flex items-center gap-2">
+          <div className="relative min-w-0 flex-1 sm:w-72 sm:flex-none lg:w-80">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#aaa] pointer-events-none" />
+            <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar..."
+              className="w-full rounded-lg border border-[#e0e0e0] bg-[#f8f8f8] pl-8 pr-3 py-2 text-sm text-[#1D1E20] outline-none" />
+          </div>
 
-          {/* Búsqueda — crece en desktop, fijo en mobile */}
-          <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Buscar..."
-            className="min-w-0 flex-1 rounded-lg border border-[#e0e0e0] bg-[#f8f8f8] px-3 py-2 text-sm text-[#1D1E20] outline-none sm:max-w-48" />
-
-          {/* Filtro dropdown */}
-          <select
-            value={filter}
-            onChange={e => setFilter(e.target.value as typeof filter)}
-            className="min-w-0 flex-1 cursor-pointer rounded-lg border-none bg-[#1D1E20] px-3 py-2 text-sm font-semibold text-white outline-none sm:max-w-48"
-          >
+          <select value={filter} onChange={e => setFilter(e.target.value as typeof filter)}
+            className="min-w-0 flex-1 cursor-pointer rounded-lg border-none bg-[#1D1E20] px-3 py-2 text-sm font-semibold text-white outline-none sm:flex-none sm:w-48">
             <option value="all">Todos ({totalPersonas})</option>
             <option value="confirmed">Confirmados ({confirmed})</option>
             <option value="pending">Pendientes ({pending})</option>
@@ -881,51 +829,80 @@ export default function EventPage() {
             <option value="declined">Declinados ({declined})</option>
           </select>
 
-          {/* Acciones desktop/tablet — ocultas en mobile excepto + Agregar */}
+          <div className="hidden sm:block sm:flex-1" />
+
+          {/* Mobile: botón seleccionados → abre bottom sheet */}
+          {someSelected && (
+            <button onClick={() => setShowMobileBulkSheet(true)}
+              className="whitespace-nowrap rounded-lg bg-[#1D1E20] px-3 py-2 text-xs font-semibold text-white sm:hidden">
+              {selected.size} sel. ▾
+            </button>
+          )}
+
+          {/* Desktop: dropdown seleccionados */}
           {someSelected && (
             <div className="relative hidden sm:block" ref={bulkMenuRef}>
               <button onClick={() => setShowBulkMenu(!showBulkMenu)}
                 className="whitespace-nowrap rounded-lg bg-[#1D1E20] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#2d2e30]">
-                {selected.size} Seleccionados ▾
+                {selected.size} seleccionados ▾
               </button>
               {showBulkMenu && (
-                <div className="absolute right-0 top-full z-50 mt-1 min-w-[200px] rounded-xl border border-[#e8e8e8] bg-white p-1 shadow-lg">
-                  <button onClick={bulkWhatsApp} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-[#25D366] hover:bg-[#f0fdfb]">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="#25D366">{WA_ICON}</svg>Enviar WhatsApp
-                  </button>
-                  <div className="my-1 h-px bg-[#f0f0f0]" />
-                  <button onClick={() => bulkUpdateStatus('confirmed')} className="w-full rounded-lg px-3 py-2 text-left text-xs text-[#2a7a50] hover:bg-[#f0fff6]">✓ Marcar confirmados</button>
-                  <button onClick={() => bulkUpdateStatus('declined')}  className="w-full rounded-lg px-3 py-2 text-left text-xs text-[#cc3333] hover:bg-[#fff0f0]">✕ Marcar declinados</button>
-                  <button onClick={() => bulkUpdateStatus('pending')}   className="w-full rounded-lg px-3 py-2 text-left text-xs text-[#b8860b] hover:bg-[#fffbf0]">◷ Marcar pendientes</button>
-                  <div className="my-1 h-px bg-[#f0f0f0]" />
-                  <button onClick={() => { setShowBulkMenu(false); setBulkCompanionCount(1); setShowBulkCompanionModal(true) }}
-                    className="w-full rounded-lg px-3 py-2 text-left text-xs text-[#555] hover:bg-[#f8f8f8]">
-                    👥 Agregar acompañante
-                  </button>
-                  <div className="my-1 h-px bg-[#f0f0f0]" />
-                  <button onClick={bulkDelete} className="w-full rounded-lg px-3 py-2 text-left text-xs text-[#cc3333] hover:bg-[#fff0f0]">🗑 Eliminar seleccionados</button>
+                <div className="absolute right-0 top-full z-50 mt-1 min-w-[230px] rounded-xl border border-[#e8e8e8] bg-white py-1.5 shadow-xl">
+                  <BulkMenuContent onClose={() => setShowBulkMenu(false)} />
                 </div>
               )}
             </div>
           )}
-          <button onClick={exportCSV}
-            className="hidden whitespace-nowrap rounded-lg border border-[#e0e0e0] px-3 py-2 text-xs text-[#666] transition hover:border-[#48C9B0] hover:text-[#48C9B0] sm:block">
-            ⬇️ Exportar
+
+          <div className="relative hidden sm:block" ref={colMenuRef}>
+            <button onClick={() => setShowColMenu(v => !v)}
+              className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-[#e0e0e0] px-3 py-2 text-xs text-[#666] transition hover:border-[#48C9B0] hover:text-[#48C9B0]">
+              <Columns3 size={13} />Columnas
+            </button>
+            {showColMenu && (
+              <div className="absolute right-0 top-full z-50 mt-1 min-w-[170px] rounded-xl border border-[#e8e8e8] bg-white p-2 shadow-lg">
+                <p className="mb-1.5 px-2 text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Mostrar columnas</p>
+                {ALL_COLUMNS.map(col => (
+                  <label key={col.key} className="flex cursor-pointer items-center gap-2.5 rounded-lg px-2 py-1.5 transition hover:bg-[#f8f8f8]">
+                    <input type="checkbox" checked={visibleCols.has(col.key)} onChange={() => toggleCol(col.key)} disabled={col.key === 'estatus'} className="accent-[#48C9B0]" />
+                    <span className="text-xs text-[#1D1E20]">{col.label}</span>
+                    {col.key === 'estatus' && <span className="ml-auto text-[10px] text-[#ccc]">siempre</span>}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <button onClick={exportCSV} className="hidden items-center gap-1.5 whitespace-nowrap rounded-lg border border-[#e0e0e0] px-3 py-2 text-xs text-[#666] transition hover:border-[#48C9B0] hover:text-[#48C9B0] sm:flex">
+            <Download size={13} />Exportar
           </button>
-          <button onClick={() => { setCsvError(''); setCsvSuccess(''); setCsvPreview(null); setShowCsvModal(true) }}
-            className="hidden whitespace-nowrap rounded-lg border border-[#e0e0e0] px-3 py-2 text-xs text-[#666] transition hover:border-[#48C9B0] hover:text-[#48C9B0] sm:block">
-            📂 Importar
+          <button onClick={() => { setCsvError(''); setCsvSuccess(''); setCsvPreview(null); setShowCsvModal(true) }} className="hidden items-center gap-1.5 whitespace-nowrap rounded-lg border border-[#e0e0e0] px-3 py-2 text-xs text-[#666] transition hover:border-[#48C9B0] hover:text-[#48C9B0] sm:flex">
+            <Upload size={13} />Importar
           </button>
           <button onClick={() => { resetForm(); setShowModal(true) }}
             className="shrink-0 whitespace-nowrap rounded-lg bg-[#48C9B0] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#3ab89f] sm:px-4 sm:text-sm">
             + Agregar
           </button>
+        </div>
+      </div>
 
+      {/* ══ HEADER COLUMNAS DESKTOP — fuera del scroll, siempre visible ══ */}
+      <div className="hidden shrink-0 border-b border-[#e8e8e8] bg-[#f8f8f8] px-6 py-2 sm:px-6 lg:px-10 sm:block">
+        <div className="items-center" style={{ display: 'grid', gridTemplateColumns: gridCols }}>
+          <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} className="cursor-pointer accent-[#48C9B0]" />
+          <button onClick={() => handleHeaderClick('name')} className="cursor-pointer text-left text-[11px] font-semibold uppercase tracking-wide text-[#aaa] transition hover:text-[#1D1E20]">Nombre{getSortIndicator('name')}</button>
+          {visibleCols.has('tags')     && <div className="text-[11px] font-semibold uppercase tracking-wide text-[#aaa]">Tags</div>}
+          {visibleCols.has('mesa')     && <div className="text-[11px] font-semibold uppercase tracking-wide text-[#aaa]">Mesa</div>}
+          {visibleCols.has('lado')     && <div className="text-[11px] font-semibold uppercase tracking-wide text-[#aaa]">Lado</div>}
+          {visibleCols.has('notas')    && <button onClick={() => handleHeaderClick('notes')} className="cursor-pointer text-left text-[11px] font-semibold uppercase tracking-wide text-[#aaa] transition hover:text-[#1D1E20]">Notas{getSortIndicator('notes')}</button>}
+          {visibleCols.has('telefono') && <button onClick={() => handleHeaderClick('phone')} className="cursor-pointer text-left text-[11px] font-semibold uppercase tracking-wide text-[#aaa] transition hover:text-[#1D1E20]">Teléfono{getSortIndicator('phone')}</button>}
+          {visibleCols.has('estatus')  && <button onClick={() => handleHeaderClick('status')} className="cursor-pointer text-left text-[11px] font-semibold uppercase tracking-wide text-[#aaa] transition hover:text-[#1D1E20]">Estatus{getSortIndicator('status')}</button>}
+          <div />
         </div>
       </div>
 
       {/* ══ LISTA ══ */}
-      <div style={{ flex: 1, overflowY: 'auto' }} className="px-4 pb-6 pt-3 sm:px-6 lg:px-10">
+      <div className="flex-1 overflow-y-auto px-4 pb-6 pt-3 sm:px-6 lg:px-10">
         {loading ? (
           <p className="pt-5 text-sm text-[#999]">Cargando...</p>
         ) : filtered.length === 0 ? (
@@ -945,18 +922,12 @@ export default function EventPage() {
                 return (
                   <div key={guest.id}>
                     <SwipeableGuestCard
-                      guest={guest}
-                      groupColor={groupColor}
-                      isSelected={isSelected}
-                      guestTags={guestTags}
-                      availableTags={availableTags}
-                      onSelect={() => toggleSelect(guest.id)}
-                      onEdit={() => openEdit(guest)}
-                      onDelete={() => deleteGuest(guest.id)}
-                      onWaLongPressStart={handleWaLongPressStart}
-                      onWaLongPressEnd={handleWaLongPressEnd}
-                      onWaTouchMove={handleWaTouchMove}
-                      onStatusChange={(s) => updateStatus(guest.id, s)}
+                      guest={guest} groupColor={groupColor} isSelected={isSelected}
+                      guestTags={guestTags} availableTags={availableTags}
+                      onSelect={() => toggleSelect(guest.id, gIdx, false)}
+                      onEdit={() => openEdit(guest)} onDelete={() => deleteGuest(guest.id)}
+                      onWaLongPressStart={handleWaLongPressStart} onWaLongPressEnd={handleWaLongPressEnd}
+                      onWaTouchMove={handleWaTouchMove} onStatusChange={(s) => updateStatus(guest.id, s)}
                     />
                     {groupColor && guest.party_members.map((m, mi) => {
                       const isLast = mi === guest.party_members.length - 1
@@ -977,19 +948,7 @@ export default function EventPage() {
             </div>
 
             {/* Desktop */}
-            <div className="hidden rounded-xl border border-[#e8e8e8] sm:block">
-              <div className="grid grid-cols-[40px_2fr_1.2fr_90px_100px_1fr_1.5fr_140px_40px] items-center border-b border-[#e8e8e8] bg-[#f8f8f8] px-4 py-2">
-                <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} className="cursor-pointer accent-[#48C9B0]" />
-                <button onClick={() => handleHeaderClick('name')}   className="cursor-pointer text-left text-[11px] font-semibold uppercase tracking-wide text-[#aaa] transition hover:text-[#1D1E20]">Nombre{getSortIndicator('name')}</button>
-                <div className="text-[11px] font-semibold uppercase tracking-wide text-[#aaa]">Tags</div>
-                <div className="text-[11px] font-semibold uppercase tracking-wide text-[#aaa]">Mesa</div>
-                <div className="text-[11px] font-semibold uppercase tracking-wide text-[#aaa]">Lado</div>
-                <button onClick={() => handleHeaderClick('notes')}  className="cursor-pointer text-left text-[11px] font-semibold uppercase tracking-wide text-[#aaa] transition hover:text-[#1D1E20]">Notas{getSortIndicator('notes')}</button>
-                <button onClick={() => handleHeaderClick('phone')}  className="cursor-pointer text-left text-[11px] font-semibold uppercase tracking-wide text-[#aaa] transition hover:text-[#1D1E20]">Teléfono{getSortIndicator('phone')}</button>
-                <button onClick={() => handleHeaderClick('status')} className="cursor-pointer text-left text-[11px] font-semibold uppercase tracking-wide text-[#aaa] transition hover:text-[#1D1E20]">Estatus{getSortIndicator('status')}</button>
-                <div />
-              </div>
-
+            <div className="hidden rounded-b-xl border border-[#e8e8e8] sm:block">
               {filtered.map((guest, gIdx) => {
                 const groupColor = guest.party_members.length > 0 ? GROUP_COLORS[gIdx % GROUP_COLORS.length] : null
                 const isLastGuest = gIdx === filtered.length - 1
@@ -998,103 +957,107 @@ export default function EventPage() {
                 const tableLabel = getTableLabel(guest.id)
                 return (
                   <div key={guest.id}>
-                    {/* Fila invitado principal */}
-                    <div className={'grid grid-cols-[40px_2fr_1.2fr_90px_100px_1fr_1.5fr_140px_40px] items-center px-4 py-2.5 transition ' + (selected.has(guest.id) ? 'bg-[#f0fdfb]' : gIdx % 2 === 0 ? 'bg-white hover:bg-[#f5f5f5]' : 'bg-[#fafafa] hover:bg-[#f5f5f5]') + (!hasMembers && !isLastGuest ? ' border-b border-[#f0f0f0]' : '') + (hasMembers ? ' border-b border-[#f0f0f0]' : '')}>
-                      <input type="checkbox" checked={selected.has(guest.id)} onChange={() => toggleSelect(guest.id)} style={{ cursor: 'pointer', accentColor: '#48C9B0' }} />
+                    <div
+                      className={'items-center px-4 py-2.5 transition ' + (selected.has(guest.id) ? 'bg-[#f0fdfb]' : gIdx % 2 === 0 ? 'bg-white hover:bg-[#f5f5f5]' : 'bg-[#fafafa] hover:bg-[#f5f5f5]') + (hasMembers || !isLastGuest ? ' border-b border-[#f0f0f0]' : '')}
+                      style={{ display: 'grid', gridTemplateColumns: gridCols }}
+                    >
+                      <input type="checkbox" checked={selected.has(guest.id)}
+                        onChange={e => toggleSelect(guest.id, gIdx, e.nativeEvent instanceof MouseEvent ? (e.nativeEvent as MouseEvent).shiftKey : false)}
+                        onClick={e => e.stopPropagation()} style={{ cursor: 'pointer', accentColor: '#48C9B0' }} />
                       <div onClick={() => openEdit(guest)} className="flex cursor-pointer items-center gap-1.5">
                         {groupColor && <div className="mr-1 h-5 w-[3px] shrink-0 rounded-full" style={{ background: groupColor }} />}
                         <span className="text-sm font-semibold text-[#1D1E20]">{guest.name}</span>
                         {hasMembers && <span className="text-xs font-semibold" style={{ color: groupColor || '#aaa' }}>+{guest.party_members.length}</span>}
                       </div>
-                      <div onClick={() => openEdit(guest)} className="flex flex-wrap gap-1 cursor-pointer">
-                        {guestTags.length > 0 ? guestTags.map(tag => {
-                          const tagIdx = availableTags.indexOf(tag)
-                          const col = getTagColor(tagIdx >= 0 ? tagIdx : 0)
-                          return <span key={tag} className="rounded-full border px-2 py-0.5 text-[10px] font-medium" style={{ background: col.bg, borderColor: col.border, color: col.text }}>{tag}</span>
-                        }) : <span className="text-[#ddd] text-xs">—</span>}
-                      </div>
-                      <div>
-                        {tableLabel
-                          ? <span className="rounded-full border border-[#c8ede7] bg-[#f0fdfb] px-2 py-0.5 text-[10px] font-semibold text-[#1a9e88]">{tableLabel}</span>
-                          : <span className="text-[#ddd] text-xs">—</span>
-                        }
-                      </div>
-                      <div>
-                        {guest.side
-                          ? <span className="rounded-full border border-[#e0e0e0] bg-[#f8f8f8] px-2 py-0.5 text-[10px] font-medium text-[#555]">
-                              {SIDE_OPTIONS.find(o => o.value === guest.side)?.label ?? guest.side}
-                            </span>
-                          : <span className="text-[#ddd] text-xs">—</span>
-                        }
-                      </div>
-                      <div onClick={() => openEdit(guest)} className="cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap text-xs text-[#aaa] hover:text-[#1D1E20]" title={guest.notes || ''}>
-                        {guest.notes || <span className="text-[#ddd]">—</span>}
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                        {guest.phone ? (
-                          <>
-                            <span onClick={() => openEdit(guest)} className="cursor-pointer text-xs text-[#888] hover:text-[#1D1E20]">{guest.phone}</span>
-                            <div className="relative">
-                              <button onClick={() => setShowWaMenu(showWaMenu === guest.id ? null : guest.id)} className="flex items-center p-0.5">
-                                <svg width="15" height="15" viewBox="0 0 24 24" fill="#25D366">{WA_ICON}</svg>
-                              </button>
-                              {showWaMenu === guest.id && (
-                                <div ref={waMenuRef} className="absolute left-0 top-full z-50 mt-1 min-w-[220px] rounded-xl border border-[#e8e8e8] bg-white p-1 shadow-lg">
-                                  {activeTemplates.length === 0 ? (
-                                    <p className="px-3 py-2.5 text-xs text-[#aaa]">No hay plantillas — ve a Configuración</p>
-                                  ) : activeTemplates.map((template: string, ti: number) => (
-                                    <button key={ti} onClick={() => { window.open('https://wa.me/' + guest.phone!.replace(/\D/g, '') + '?text=' + buildWaText(guest, ti), '_blank'); setShowWaMenu(null) }}
-                                      className="w-full rounded-lg px-3 py-2 text-left text-xs leading-snug text-[#1D1E20] hover:bg-[#f0fdfb]">
-                                      <span className="mb-0.5 block text-[10px] font-semibold text-[#48C9B0]">{templateNames?.[ti] || 'Plantilla ' + (ti + 1)}</span>
-                                      {template.length > 60 ? template.substring(0, 60) + '...' : template}
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          </>
-                        ) : <span className="text-xs text-[#ddd]">—</span>}
-                      </div>
-                      <select value={guest.rsvp_status} onChange={e => updateStatus(guest.id, e.target.value as RsvpStatus)}
-                        className="w-[120px] cursor-pointer rounded-md border px-2 py-1 text-xs font-semibold outline-none"
-                        style={{ background: STATUS_LABEL[guest.rsvp_status].bg, borderColor: STATUS_LABEL[guest.rsvp_status].border, color: STATUS_LABEL[guest.rsvp_status].color }}>
-                        <option value="mensaje_enviado">Mensaje enviado</option>
-                        <option value="pending">Pendiente</option>
-                        <option value="respondio">Respondió</option>
-                        <option value="accion_necesaria">Acción necesaria</option>
-                        <option value="confirmed">Confirmado</option>
-                        <option value="declined">Declinado</option>
-                      </select>
+                      {visibleCols.has('tags') && (
+                        <div onClick={() => openEdit(guest)} className="flex flex-wrap gap-1 cursor-pointer">
+                          {guestTags.length > 0 ? guestTags.map(tag => { const tagIdx = availableTags.indexOf(tag); const col = getTagColor(tagIdx >= 0 ? tagIdx : 0); return <span key={tag} className="rounded-full border px-2 py-0.5 text-[10px] font-medium" style={{ background: col.bg, borderColor: col.border, color: col.text }}>{tag}</span> }) : <span className="text-[#ddd] text-xs">—</span>}
+                        </div>
+                      )}
+                      {visibleCols.has('mesa') && (
+                        <div>{tableLabel ? <span className="rounded-full border border-[#c8ede7] bg-[#f0fdfb] px-2 py-0.5 text-[10px] font-semibold text-[#1a9e88]">{tableLabel}</span> : <span className="text-[#ddd] text-xs">—</span>}</div>
+                      )}
+                      {visibleCols.has('lado') && (
+                        <div>{guest.side ? <span className="rounded-full border border-[#e0e0e0] bg-[#f8f8f8] px-2 py-0.5 text-[10px] font-medium text-[#555]">{SIDE_OPTIONS.find(o => o.value === guest.side)?.label ?? guest.side}</span> : <span className="text-[#ddd] text-xs">—</span>}</div>
+                      )}
+                      {visibleCols.has('notas') && (
+                        <div onClick={() => openEdit(guest)} className="cursor-pointer overflow-hidden text-ellipsis whitespace-nowrap text-xs text-[#aaa] hover:text-[#1D1E20]" title={guest.notes || ''}>
+                          {guest.notes || <span className="text-[#ddd]">—</span>}
+                        </div>
+                      )}
+                      {visibleCols.has('telefono') && (
+                        <div className="flex items-center gap-1.5">
+                          {guest.phone ? (
+                            <>
+                              <span onClick={() => openEdit(guest)} className="cursor-pointer text-xs text-[#888] hover:text-[#1D1E20]">{guest.phone}</span>
+                              <div className="relative">
+                                <button onClick={() => setShowWaMenu(showWaMenu === guest.id ? null : guest.id)} className="flex items-center p-0.5">
+                                  <svg width="15" height="15" viewBox="0 0 24 24" fill="#25D366">{WA_ICON}</svg>
+                                </button>
+                                {showWaMenu === guest.id && (
+                                  <div ref={waMenuRef} className="absolute left-0 top-full z-50 mt-1 min-w-[220px] rounded-xl border border-[#e8e8e8] bg-white p-1 shadow-lg">
+                                    {activeTemplates.length === 0 ? (
+                                      <p className="px-3 py-2.5 text-xs text-[#aaa]">No hay plantillas — ve a Configuración</p>
+                                    ) : activeTemplates.map((template: string, ti: number) => (
+                                      <button key={ti} onClick={() => { window.open('https://wa.me/' + guest.phone!.replace(/\D/g, '') + '?text=' + buildWaText(guest, ti), '_blank'); setShowWaMenu(null) }}
+                                        className="w-full rounded-lg px-3 py-2 text-left text-xs leading-snug text-[#1D1E20] hover:bg-[#f0fdfb]">
+                                        <span className="mb-0.5 block text-[10px] font-semibold text-[#48C9B0]">{templateNames?.[ti] || 'Plantilla ' + (ti + 1)}</span>
+                                        {template.length > 60 ? template.substring(0, 60) + '...' : template}
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </>
+                          ) : <span className="text-xs text-[#ddd]">—</span>}
+                        </div>
+                      )}
+                      {visibleCols.has('estatus') && (
+                        <select value={guest.rsvp_status} onChange={e => updateStatus(guest.id, e.target.value as RsvpStatus)}
+                          className="w-[120px] cursor-pointer rounded-md border px-2 py-1 text-xs font-semibold outline-none"
+                          style={{ background: STATUS_LABEL[guest.rsvp_status].bg, borderColor: STATUS_LABEL[guest.rsvp_status].border, color: STATUS_LABEL[guest.rsvp_status].color }}>
+                          <option value="mensaje_enviado">Mensaje enviado</option>
+                          <option value="pending">Pendiente</option>
+                          <option value="respondio">Respondió</option>
+                          <option value="accion_necesaria">Acción necesaria</option>
+                          <option value="confirmed">Confirmado</option>
+                          <option value="declined">Declinado</option>
+                        </select>
+                      )}
                       <button onClick={() => deleteGuest(guest.id)} className="flex items-center justify-center p-1">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#cc3333" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{TRASH_ICON}</svg>
                       </button>
                     </div>
 
-                    {/* Filas acompañantes — py-2.5 para igualar altura con invitado principal */}
                     {groupColor && guest.party_members.map((m, mi) => {
                       const isLastMember = mi === guest.party_members.length - 1
                       return (
-                        <div key={m.id} className={'grid grid-cols-[40px_2fr_1.2fr_90px_100px_1fr_1.5fr_140px_40px] items-center px-4 py-2.5 bg-[#fafafa] ' + (isLastMember && !isLastGuest ? 'border-b-2 border-[#f0f0f0]' : 'border-b border-[#f8f8f8]')}>
+                        <div key={m.id}
+                          className={'items-center px-4 py-2.5 bg-[#fafafa] ' + (isLastMember && !isLastGuest ? 'border-b-2 border-[#f0f0f0]' : 'border-b border-[#f8f8f8]')}
+                          style={{ display: 'grid', gridTemplateColumns: gridCols }}>
                           <div />
                           <div className="flex items-center gap-2 pl-4">
                             <div className="h-4 w-[2px] shrink-0 rounded-full opacity-40" style={{ background: groupColor }} />
                             <div className="flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-bold" style={{ background: groupColor + '22', color: groupColor }}>+{mi + 1}</div>
                             <span className="text-xs text-[#888]">{m.name || 'Acompañante'}</span>
                           </div>
-                          <div /><div />
-                          <div />{/* Lado — vacío */}
-                          <div />{/* Notas — vacío */}
-                          <div className="text-xs text-[#aaa]">{m.phone || ''}</div>
-                          <select value={m.rsvp_status} onChange={e => updatePartyMemberStatus(m.id, guest.id, e.target.value as RsvpStatus)}
-                            className="w-[120px] cursor-pointer rounded-md border px-2 py-1 text-xs font-semibold outline-none"
-                            style={{ background: STATUS_LABEL[m.rsvp_status].bg, borderColor: STATUS_LABEL[m.rsvp_status].border, color: STATUS_LABEL[m.rsvp_status].color }}>
-                            <option value="mensaje_enviado">Mensaje enviado</option>
-                            <option value="pending">Pendiente</option>
-                            <option value="respondio">Respondió</option>
-                            <option value="accion_necesaria">Acción necesaria</option>
-                            <option value="confirmed">Confirmado</option>
-                            <option value="declined">Declinado</option>
-                          </select>
+                          {visibleCols.has('tags')     && <div />}
+                          {visibleCols.has('mesa')     && <div />}
+                          {visibleCols.has('lado')     && <div />}
+                          {visibleCols.has('notas')    && <div />}
+                          {visibleCols.has('telefono') && <div className="text-xs text-[#aaa]">{m.phone || ''}</div>}
+                          {visibleCols.has('estatus')  && (
+                            <select value={m.rsvp_status} onChange={e => updatePartyMemberStatus(m.id, guest.id, e.target.value as RsvpStatus)}
+                              className="w-[120px] cursor-pointer rounded-md border px-2 py-1 text-xs font-semibold outline-none"
+                              style={{ background: STATUS_LABEL[m.rsvp_status].bg, borderColor: STATUS_LABEL[m.rsvp_status].border, color: STATUS_LABEL[m.rsvp_status].color }}>
+                              <option value="mensaje_enviado">Mensaje enviado</option>
+                              <option value="pending">Pendiente</option>
+                              <option value="respondio">Respondió</option>
+                              <option value="accion_necesaria">Acción necesaria</option>
+                              <option value="confirmed">Confirmado</option>
+                              <option value="declined">Declinado</option>
+                            </select>
+                          )}
                           <button onClick={() => deletePartyMember(m.id, guest.id)} className="flex items-center justify-center p-1 opacity-40 transition-opacity hover:opacity-100">
                             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#cc3333" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{TRASH_ICON}</svg>
                           </button>
@@ -1122,13 +1085,10 @@ export default function EventPage() {
               <div><label className="mb-1.5 block text-xs font-medium text-[#555]">WhatsApp</label><input type="tel" value={editPhone} onChange={e => setEditPhone(e.target.value)} placeholder="+52 81 1234 5678" style={inp} /></div>
               <div><label className="mb-1.5 block text-xs font-medium text-[#555]">Email</label><input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)} placeholder="ana@ejemplo.com" style={inp} /></div>
               <div><label className="mb-1.5 block text-xs font-medium text-[#555]">Notas</label><textarea value={editNotes} onChange={e => setEditNotes(e.target.value)} placeholder="Mesa preferida, restricciones..." rows={2} style={{ ...inp, resize: 'vertical' }} /></div>
-              {availableTags.length > 0 && (
-                <div><label className="mb-1.5 block text-xs font-medium text-[#555]">Tags</label><TagSelector availableTags={availableTags} selectedTags={editTags} onChange={setEditTags} /></div>
-              )}
+              {availableTags.length > 0 && <div><label className="mb-1.5 block text-xs font-medium text-[#555]">Tags</label><TagSelector availableTags={availableTags} selectedTags={editTags} onChange={setEditTags} /></div>}
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-[#555]">Lado <span className="font-normal text-[#ccc]">(opcional)</span></label>
-                <select value={editSide} onChange={e => setEditSide(e.target.value)}
-                  className="w-full rounded-lg border border-[#e0e0e0] bg-[#f8f8f8] px-3.5 py-2.5 text-sm text-[#1D1E20] outline-none transition focus:border-[#48C9B0]">
+                <select value={editSide} onChange={e => setEditSide(e.target.value)} className="w-full rounded-lg border border-[#e0e0e0] bg-[#f8f8f8] px-3.5 py-2.5 text-sm text-[#1D1E20] outline-none transition focus:border-[#48C9B0]">
                   <option value="">— Sin asignar —</option>
                   {SIDE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
@@ -1144,10 +1104,8 @@ export default function EventPage() {
               <button onClick={() => setEditGuest(null)} className="flex-1 rounded-lg border border-[#e0e0e0] py-3 text-sm text-[#888]">Cancelar</button>
               <button onClick={handleEditSave} disabled={editSaving} className="flex-[2] rounded-lg bg-[#48C9B0] py-3 text-sm font-semibold text-white disabled:opacity-60">{editSaving ? 'Guardando...' : 'Guardar cambios'}</button>
             </div>
-            <button
-              onClick={() => { const gid = editGuest!.id; setEditGuest(null); setTimeout(() => deleteGuest(gid), 0) }}
-              className="mt-2 w-full rounded-lg border border-[#ffe0e0] bg-[#fff5f5] py-3 text-sm font-semibold text-[#cc3333] transition hover:bg-[#ffe8e8] sm:hidden"
-            >
+            <button onClick={() => { const gid = editGuest!.id; setEditGuest(null); setTimeout(() => deleteGuest(gid), 0) }}
+              className="mt-2 w-full rounded-lg border border-[#ffe0e0] bg-[#fff5f5] py-3 text-sm font-semibold text-[#cc3333] transition hover:bg-[#ffe8e8] sm:hidden">
               Eliminar invitado
             </button>
           </div>
@@ -1167,13 +1125,10 @@ export default function EventPage() {
               <div><label className="mb-1.5 block text-xs font-medium text-[#555]">WhatsApp <span className="font-normal text-[#ccc]">(opcional)</span></label><input type="tel" value={phone} onChange={e => setPhone(e.target.value)} placeholder="+52 81 1234 5678" style={inp} /></div>
               <div><label className="mb-1.5 block text-xs font-medium text-[#555]">Email <span className="font-normal text-[#ccc]">(opcional)</span></label><input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="ana@ejemplo.com" style={inp} /></div>
               <div><label className="mb-1.5 block text-xs font-medium text-[#555]">Notas <span className="font-normal text-[#ccc]">(opcional)</span></label><textarea value={notes} onChange={e => setNotes(e.target.value)} placeholder="Mesa preferida, restricciones..." rows={2} style={{ ...inp, resize: 'vertical' }} /></div>
-              {availableTags.length > 0 && (
-                <div><label className="mb-1.5 block text-xs font-medium text-[#555]">Tags <span className="font-normal text-[#ccc]">(opcional)</span></label><TagSelector availableTags={availableTags} selectedTags={newTags} onChange={setNewTags} /></div>
-              )}
+              {availableTags.length > 0 && <div><label className="mb-1.5 block text-xs font-medium text-[#555]">Tags <span className="font-normal text-[#ccc]">(opcional)</span></label><TagSelector availableTags={availableTags} selectedTags={newTags} onChange={setNewTags} /></div>}
               <div>
                 <label className="mb-1.5 block text-xs font-medium text-[#555]">Lado <span className="font-normal text-[#ccc]">(opcional)</span></label>
-                <select value={newSide} onChange={e => setNewSide(e.target.value)}
-                  className="w-full rounded-lg border border-[#e0e0e0] bg-[#f8f8f8] px-3.5 py-2.5 text-sm text-[#1D1E20] outline-none transition focus:border-[#48C9B0]">
+                <select value={newSide} onChange={e => setNewSide(e.target.value)} className="w-full rounded-lg border border-[#e0e0e0] bg-[#f8f8f8] px-3.5 py-2.5 text-sm text-[#1D1E20] outline-none transition focus:border-[#48C9B0]">
                   <option value="">— Sin asignar —</option>
                   {SIDE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                 </select>
@@ -1288,16 +1243,10 @@ export default function EventPage() {
               Se agregará <span className="font-semibold text-[#1D1E20]">{bulkCompanionCount} acompañante{bulkCompanionCount > 1 ? 's' : ''}</span> a cada uno de los <span className="font-semibold text-[#1D1E20]">{selected.size} invitados</span> seleccionados.
             </p>
             {maxCanAdd === 0 ? (
-              <p className="mb-4 rounded-lg border border-[#ffc0c0] bg-[#fff0f0] p-2.5 text-xs text-[#cc3333]">
-                Todos los invitados seleccionados ya tienen 15 acompañantes (el máximo).
-              </p>
+              <p className="mb-4 rounded-lg border border-[#ffc0c0] bg-[#fff0f0] p-2.5 text-xs text-[#cc3333]">Todos los invitados seleccionados ya tienen 15 acompañantes (el máximo).</p>
             ) : (
               <>
-                {bulkCompanionCount > maxCanAdd && (
-                  <p className="mb-3 rounded-lg border border-[#f0d080] bg-[#fffbf0] p-2.5 text-xs text-[#b8860b]">
-                    Algunos invitados ya tienen acompañantes — solo se agregarán los que quepan (máx. {maxCanAdd}).
-                  </p>
-                )}
+                {bulkCompanionCount > maxCanAdd && <p className="mb-3 rounded-lg border border-[#f0d080] bg-[#fffbf0] p-2.5 text-xs text-[#b8860b]">Algunos invitados ya tienen acompañantes — solo se agregarán los que quepan (máx. {maxCanAdd}).</p>}
                 <div className="mb-5 flex items-center justify-center gap-4">
                   <button onClick={() => setBulkCompanionCount(c => Math.max(1, c - 1))} className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#e0e0e0] text-lg font-bold text-[#555] transition hover:border-[#48C9B0] hover:text-[#48C9B0]">−</button>
                   <span className="w-8 text-center text-2xl font-bold text-[#1D1E20]">{bulkCompanionCount}</span>
@@ -1307,9 +1256,7 @@ export default function EventPage() {
             )}
             <div className="flex gap-2.5">
               <button onClick={() => setShowBulkCompanionModal(false)} className="flex-1 rounded-lg border border-[#e0e0e0] py-2.5 text-sm text-[#888]">Cancelar</button>
-              <button onClick={bulkAddCompanions} disabled={bulkCompanionSaving || maxCanAdd === 0} className="flex-[2] rounded-lg bg-[#48C9B0] py-2.5 text-sm font-semibold text-white disabled:opacity-60">
-                {bulkCompanionSaving ? 'Guardando...' : 'Confirmar'}
-              </button>
+              <button onClick={bulkAddCompanions} disabled={bulkCompanionSaving || maxCanAdd === 0} className="flex-[2] rounded-lg bg-[#48C9B0] py-2.5 text-sm font-semibold text-white disabled:opacity-60">{bulkCompanionSaving ? 'Guardando...' : 'Confirmar'}</button>
             </div>
           </div>
         </div>
@@ -1339,6 +1286,24 @@ export default function EventPage() {
               </div>
             )}
             <button onClick={() => setShowWaSheet(null)} className="mx-5 mt-3 w-[calc(100%-40px)] rounded-xl border border-[#e0e0e0] py-3 text-sm font-medium text-[#666]">Cancelar</button>
+          </div>
+        </div>
+      )}
+
+      {/* BOTTOM SHEET: Bulk acciones mobile */}
+      {showMobileBulkSheet && (
+        <div className="fixed inset-0 z-[200] flex items-end sm:hidden" onClick={() => setShowMobileBulkSheet(false)}>
+          <div className="w-full rounded-t-2xl border-t border-[#e8e8e8] bg-white pb-8 pt-3 shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-[#e0e0e0]" />
+            <div className="mb-2 px-3">
+              <p className="text-xs font-semibold text-[#1D1E20]">{selected.size} invitados seleccionados</p>
+            </div>
+            <div className="max-h-[60vh] overflow-y-auto">
+              <BulkMenuContent onClose={() => setShowMobileBulkSheet(false)} />
+            </div>
+            <div className="px-3 pt-2">
+              <button onClick={() => setShowMobileBulkSheet(false)} className="w-full rounded-xl border border-[#e0e0e0] py-3 text-sm font-medium text-[#666]">Cancelar</button>
+            </div>
           </div>
         </div>
       )}
