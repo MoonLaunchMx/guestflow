@@ -6,10 +6,13 @@ import { supabase } from '@/lib/supabase'
 import { Guest } from '@/lib/types'
 import { Plus, Trash2, Users, ChevronDown, ChevronUp, X, LayoutGrid, List, Map as MapIcon, Printer, Search } from 'lucide-react'
 
-const STATUS_COLORS = {
-  confirmed: { bg: '#f0fff6', border: '#a0e0c0', text: '#2a7a50', label: 'Confirmado' },
-  pending:   { bg: '#fffbf0', border: '#f0d080', text: '#b8860b', label: 'Pendiente'  },
-  declined:  { bg: '#fff0f0', border: '#ffc0c0', text: '#cc3333', label: 'Declinó'    },
+const STATUS_COLORS: Record<string, { bg: string; border: string; text: string; label: string }> = {
+  confirmed:        { bg: '#f0fff6', border: '#a0e0c0', text: '#2a7a50', label: 'Confirmado'      },
+  pending:          { bg: '#fffbf0', border: '#f0d080', text: '#b8860b', label: 'Pendiente'        },
+  declined:         { bg: '#fff0f0', border: '#ffc0c0', text: '#cc3333', label: 'Declinado'        },
+  mensaje_enviado:  { bg: '#f0f5ff', border: '#b3c8ee', text: '#1a56a0', label: 'Msg. enviado'     },
+  respondio:        { bg: '#fff8f0', border: '#f0c090', text: '#c06000', label: 'Respondió'        },
+  accion_necesaria: { bg: '#fff0f0', border: '#ffc0c0', text: '#cc3333', label: 'Acción necesaria' },
 }
 
 const TAG_COLORS = [
@@ -434,7 +437,7 @@ export default function MesasPage() {
     <tbody>${rows.join('')}</tbody>
   </table>
   <div class="footer">
-    <span class="footer-brand">GuestFlow</span>
+    <span class="footer-brand">Anfiora</span>
     <span>Lista de asistencia · Impreso el ${printDate}</span>
   </div>
 </body>
