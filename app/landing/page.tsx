@@ -59,7 +59,7 @@ const translations = {
     compare: {
       title: '¿Por qué no seguir con Excel?',
       sub: 'Porque tu tiempo vale más que copiar y pegar teléfonos.',
-      col1: 'Excel', col2: 'GuestFlow', hard: 'difícil',
+      col1: 'Excel', col2: 'Anfiora', hard: 'difícil',
       rows: [
         'Confirmaciones por WhatsApp', 'Estado RSVP en tiempo real',
         'Álbum colaborativo con QR', 'Playlist de invitados',
@@ -71,9 +71,9 @@ const translations = {
       sub: 'Sin tarjeta de crédito. Listo en menos de 2 minutos.',
       btn: 'Crear mi primer evento gratis',
     },
-    footer: { copy: '© 2025 GuestFlow · Hecho en México 🇲🇽', links: ['Privacidad', 'Términos', 'Contacto'] },
+    footer: { copy: '© 2025 Anfiora · Hecho en México 🇲🇽', links: ['Privacidad', 'Términos', 'Contacto'] },
     mockup: {
-      tab: 'app.guestflow.mx · Boda García & López',
+      tab: 'app.anfiora.mx · Boda García & López',
       event: 'Boda García & López',
       nav: ['Invitados', 'Álbum', 'Playlist', 'Config'],
       listTitle: 'Lista de invitados', add: '+ Añadir',
@@ -140,7 +140,7 @@ const translations = {
     compare: {
       title: 'Why stop using Excel?',
       sub: 'Because your time is worth more than copying and pasting phone numbers.',
-      col1: 'Excel', col2: 'GuestFlow', hard: 'hard',
+      col1: 'Excel', col2: 'Anfiora', hard: 'hard',
       rows: [
         'WhatsApp confirmations', 'Real-time RSVP tracking',
         'Collaborative album with QR', 'Guest playlist',
@@ -152,9 +152,9 @@ const translations = {
       sub: 'No credit card required. Ready in under 2 minutes.',
       btn: 'Create my first event free',
     },
-    footer: { copy: '© 2025 GuestFlow · Made in Mexico 🇲🇽', links: ['Privacy', 'Terms', 'Contact'] },
+    footer: { copy: '© 2025 Anfiora · Made in Mexico 🇲🇽', links: ['Privacy', 'Terms', 'Contact'] },
     mockup: {
-      tab: 'app.guestflow.mx · García & López Wedding',
+      tab: 'app.anfiora.mx · García & López Wedding',
       event: 'García & López Wedding',
       nav: ['Guests', 'Album', 'Playlist', 'Settings'],
       listTitle: 'Guest list', add: '+ Add',
@@ -240,10 +240,10 @@ export default function LandingPage() {
 
   return (
     <>
-      <nav style={{ position: 'sticky', top: 0, zIndex: 50, background: '#ffffff', borderBottom: '1px solid #f0ede8' }}>
+      <nav className="sticky top-0 z-50 border-b border-[#f0ede8] bg-white">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3.5">
-          <a href="/landing" className="text-xl font-bold tracking-tight text-[#1D1E20]" style={{ fontFamily: 'Georgia, serif' }}>
-            Guest<span className="text-[#48C9B0]">Flow</span>
+          <a href="/landing" className="shrink-0">
+            <img src="/images/logo.svg" alt="Anfiora" className="h-8 lg:h-10" />
           </a>
           <div className="hidden items-center gap-3 md:flex">
             <a href="#features" className="text-sm text-[#888] transition hover:text-[#1D1E20]">{t.nav.features}</a>
@@ -338,7 +338,7 @@ export default function LandingPage() {
                   <span className="h-3 w-3 rounded-full bg-[#6bcb77]" />
                   <span className="ml-3 text-xs text-[#aaa]">{t.mockup.tab}</span>
                 </div>
-                <div className="flex" style={{ minHeight: 300 }}>
+                <div className="flex min-h-[300px]">
                   <div className="w-36 shrink-0 border-r border-[#f0ede8] bg-[#f8f5f0] p-3">
                     <p className="mb-3 truncate text-[10px] font-medium text-[#999]">{t.mockup.event}</p>
                     {t.mockup.nav.map((label, i) => (
@@ -532,17 +532,17 @@ export default function LandingPage() {
         </section>
 
         {/* ── FOOTER ── */}
-        <footer style={{ background: '#1D1E20', borderTop: '1px solid rgba(255,255,255,0.1)', padding: '1rem 1.25rem' }}>
-          <div style={{ maxWidth: '72rem', margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem' }}>
-            <p style={{ fontFamily: 'Georgia, serif', fontSize: '12px', fontWeight: 700, color: 'rgba(255,255,255,0.8)', whiteSpace: 'nowrap', flexShrink: 0 }}>
-              Guest<span style={{ color: '#48C9B0' }}>Flow</span>
+        <footer className="border-t border-white/10 bg-[#1D1E20] px-5 py-4">
+          <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
+            <p className="shrink-0 whitespace-nowrap text-xs font-bold text-white/80" style={{ fontFamily: 'Georgia, serif' }}>
+              Anfi<span className="text-[#48C9B0]">ora</span>
             </p>
-            <div style={{ display: 'flex', gap: '1.25rem', flexShrink: 0 }}>
+            <div className="flex shrink-0 gap-5">
               {t.footer.links.map(link => (
-                <a key={link} href="#" style={{ fontSize: '10px', color: 'rgba(255,255,255,0.3)', textDecoration: 'none', whiteSpace: 'nowrap' }}>{link}</a>
+                <a key={link} href="#" className="whitespace-nowrap text-[10px] text-white/30 no-underline">{link}</a>
               ))}
             </div>
-            <p style={{ fontSize: '10px', color: 'rgba(255,255,255,0.2)', whiteSpace: 'nowrap', flexShrink: 0 }}>{t.footer.copy}</p>
+            <p className="shrink-0 whitespace-nowrap text-[10px] text-white/20">{t.footer.copy}</p>
           </div>
         </footer>
 

@@ -376,13 +376,13 @@ export default function Dashboard() {
           <div className="w-full max-w-md rounded-2xl bg-white p-7 shadow-2xl">
             <div className="mb-5 flex items-center gap-3">
               <span style={{ fontFamily: 'Georgia, serif' }} className="text-xl font-bold text-[#1D1E20]">
-                Guest<span className="text-[#48C9B0]">Flow</span>
+                Anfi<span className="text-[#48C9B0]">ora</span>
               </span>
               <span className="rounded-full border border-[#48C9B0]/40 bg-[#f0fdfb] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#48C9B0]">Beta</span>
             </div>
-            <h2 className="mb-2 text-lg font-bold text-[#1D1E20]">¡Bienvenido a GuestFlow!</h2>
+            <h2 className="mb-2 text-lg font-bold text-[#1D1E20]">¡Bienvenido a Anfiora!</h2>
             <p className="mb-4 text-sm leading-relaxed text-[#666]">
-              Gracias por ser parte de esta versión beta. GuestFlow te ayuda a gestionar listas de invitados y automatizar comunicación por WhatsApp para tus eventos.
+              Gracias por ser parte de esta versión beta. Anfiora te ayuda a gestionar listas de invitados y automatizar comunicación por WhatsApp para tus eventos.
             </p>
             <div className="mb-5 flex flex-col gap-2 rounded-xl bg-[#f8f8f8] p-4">
               {[
@@ -417,10 +417,10 @@ export default function Dashboard() {
         <div className="mx-auto flex h-14 max-w-4xl items-center justify-between px-4 sm:h-16 sm:px-6 lg:px-8">
           <button
             onClick={() => window.location.href = '/dashboard'}
-            className="text-lg font-bold sm:text-xl"
-            style={{ fontFamily: 'Georgia, serif' }}
+            className="shrink-0"
           >
-            Guest<span className="text-[#48C9B0]">Flow</span>
+            <img src="/images/isotipo.svg" alt="Anfiora" className="h-11 w-11 sm:hidden" />
+            <img src="/images/logo.svg" alt="Anfiora" className="hidden h-11 sm:block lg:h-14" />
           </button>
 
           <div className="flex items-center gap-3 sm:gap-4">

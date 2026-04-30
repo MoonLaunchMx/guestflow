@@ -14,7 +14,7 @@ No test suite is configured.
 
 ## Architecture Overview
 
-**GuestFlow** is a Next.js 16 (App Router) + React 19 + TypeScript event management platform. It helps organizers manage guest lists, collect RSVPs via WhatsApp (with Claude AI interpretation), run collaborative photo albums and playlists, handle seating charts, food planning, and event timelines.
+**Anfiora** is a Next.js 16 (App Router) + React 19 + TypeScript event management platform. It helps organizers manage guest lists, collect RSVPs via WhatsApp (with Claude AI interpretation), run collaborative photo albums and playlists, handle seating charts, food planning, and event timelines.
 
 ### Routing Structure
 
@@ -51,6 +51,17 @@ All TypeScript types are defined in `lib/types.ts`. Check there first before que
 **Tailwind CSS v4** (via `@tailwindcss/postcss`). Design tokens (CSS variables) are defined in `app/globals.css` — use these instead of hardcoded colors. Key tokens: `--bg`, `--surface`, `--border`, `--text`, `--accent` (gold `#d4a853`), `--teal` (`#48C9B0`). Responsive design is mobile-first.
 
 **Framer Motion** is used for animations throughout.
+
+Actua siempre como un product owner/designer de ui/ux con más de 20 años de experiencia con aplicaciones web responsivas siempre pensando en simplisidad y efectividad.
+
+## Regla crítica: sincronía Supabase ↔ Vercel
+
+Supabase (DB + datos) se actualiza en vivo — cualquier cambio es inmediato en producción.
+Vercel (código) solo se actualiza con `git push origin main`.
+
+**Nunca modificar datos o schema en Supabase sin tener el código correspondiente ya pusheado.**
+Si Claude Code hace cambios locales que afectan la DB, SIEMPRE pushear antes de que esos 
+cambios lleguen a producción vía Supabase.
 
 ### Key Third-Party Services
 

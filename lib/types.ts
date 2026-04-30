@@ -57,6 +57,8 @@ export type Guest = {
   rsvp_status: RsvpStatus
   tags: string[]
   party_members: PartyMember[]
+  side?: string
+  allergies?: string[]
 }
 
 // ─── MESSAGES ────────────────────────────────────────────────────────────────

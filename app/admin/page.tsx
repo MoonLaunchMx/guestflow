@@ -195,7 +195,7 @@ export default function AdminPage() {
               <span className="text-xs font-bold text-white">GF</span>
             </div>
             <div>
-              <h1 className="text-base font-bold text-[#1D1E20]">GuestFlow Admin</h1>
+              <h1 className="text-base font-bold text-[#1D1E20]">Anfiora Admin</h1>
               <p className="text-xs text-[#888]">Panel interno — solo para ti</p>
             </div>
           </div>

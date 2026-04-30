@@ -311,7 +311,7 @@ export default function PlaylistPublicPage() {
               </div>
             </>
           )}
-          <p className="mt-8 text-center text-xs text-[#e0e0e0]">GuestFlow</p>
+          <p className="mt-8 text-center text-xs text-[#e0e0e0]">Anfiora</p>
         </div>
       </div>
 

@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, usePathname, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { Users, Images, Music2, Settings, LayoutGrid, PanelLeftClose, PanelLeftOpen, CalendarDays } from 'lucide-react'
+import { Users, Images, Music2, Settings, LayoutGrid, PanelLeftClose, PanelLeftOpen, CalendarDays, House } from 'lucide-react'
 import { Event } from '@/lib/types'
 
 const EVENT_TYPE_LABELS: Record<string, string> = {
@@ -180,10 +180,9 @@ export default function EventLayout({ children }: { children: React.ReactNode })
         {/* Logo */}
         <button
           onClick={() => router.push('/dashboard')}
-          className="shrink-0 text-lg font-bold sm:text-xl"
-          style={{ fontFamily: 'Georgia, serif' }}
+          className="shrink-0"
         >
-          Guest<span className="text-[#48C9B0]">Flow</span>
+          <img src="/images/logo.svg" alt="Anfiora" className="h-10 sm:h-11 lg:h-14" />
         </button>
 
         {/* Info del evento — centro */}
@@ -325,6 +324,14 @@ export default function EventLayout({ children }: { children: React.ReactNode })
           msOverflowStyle: 'none',
         }}
       >
+        <button
+          onClick={() => router.push('/dashboard')}
+          className="flex shrink-0 flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium text-[#bbb] transition"
+          style={{ width: '20vw', scrollSnapAlign: 'center' }}
+        >
+          <House width={18} height={18} strokeWidth={1.5} />
+          <span>Inicio</span>
+        </button>
         {NAV_ITEMS.map(item => (
           <button
             key={item.path}

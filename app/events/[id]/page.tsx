@@ -1,22 +1,86 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useParams } from 'next/navigation'
+import { motion, useMotionValue, useTransform, animate } from 'framer-motion'
+import type { PanInfo } from 'framer-motion'
+import { Trash2, Send, Clock, MessageSquare, AlertCircle, CheckCircle, XCircle } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { PartyMember, Guest, Event, EventSettings, EventStatus, RsvpStatus } from '@/lib/types'
 
-const STATUS_LABEL: Record<string, { label: string; color: string; bg: string; border: string }> = {
-  mensaje_enviado:  { label: 'Mensaje enviado',  color: '#1a56a0', bg: '#f0f5ff', border: '#b3c8ee' },
-  pending:          { label: 'Pendiente',         color: '#b8860b', bg: '#fffbf0', border: '#f0d080' },
-  respondio:        { label: 'Respondió',         color: '#c06000', bg: '#fff8f0', border: '#f0c090' },
-  accion_necesaria: { label: 'Acción necesaria',  color: '#cc3333', bg: '#fff0f0', border: '#ffc0c0' },
-  confirmed:        { label: 'Confirmado',        color: '#2a7a50', bg: '#f0fff6', border: '#a0e0c0' },
-  declined:         { label: 'Declinado',         color: '#cc3333', bg: '#fff0f0', border: '#ffc0c0' },
+const STATUS_LABEL: Record<string, { label: string; color: string; bg: string; border: string; icon: React.ReactNode }> = {
+  mensaje_enviado:  { label: 'Mensaje enviado',  color: '#1a56a0', bg: '#f0f5ff', border: '#b3c8ee', icon: <Send       size={13} /> },
+  pending:          { label: 'Pendiente',         color: '#b8860b', bg: '#fffbf0', border: '#f0d080', icon: <Clock      size={13} /> },
+  respondio:        { label: 'Respondió',         color: '#c06000', bg: '#fff8f0', border: '#f0c090', icon: <MessageSquare size={13} /> },
+  accion_necesaria: { label: 'Acción necesaria',  color: '#cc3333', bg: '#fff0f0', border: '#ffc0c0', icon: <AlertCircle size={13} /> },
+  confirmed:        { label: 'Confirmado',        color: '#2a7a50', bg: '#f0fff6', border: '#a0e0c0', icon: <CheckCircle size={13} /> },
+  declined:         { label: 'Declinado',         color: '#cc3333', bg: '#fff0f0', border: '#ffc0c0', icon: <XCircle    size={13} /> },
+}
+
+const STATUS_ORDER: RsvpStatus[] = ['pending', 'mensaje_enviado', 'respondio', 'accion_necesaria', 'confirmed', 'declined']
+
+function StatusDot({ value, onChange }: { value: RsvpStatus; onChange: (s: RsvpStatus) => void }) {
+  const [open, setOpen] = useState(false)
+  const [mounted, setMounted] = useState(false)
+  useEffect(() => { setMounted(true) }, [])
+  const s = STATUS_LABEL[value]
+
+  const sheet = open && mounted ? createPortal(
+    <div className="fixed inset-0 z-[500] flex items-end" onClick={() => setOpen(false)}>
+      <div className="w-full rounded-t-2xl border-t border-[#e8e8e8] bg-white pb-8 pt-3 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-[#e0e0e0]" />
+        <p className="mb-2 px-5 text-xs font-semibold uppercase tracking-wider text-[#aaa]">Cambiar estatus</p>
+        {STATUS_ORDER.map(key => {
+          const opt = STATUS_LABEL[key]
+          return (
+            <button
+              key={key}
+              onClick={() => { onChange(key); setOpen(false) }}
+              className={'flex w-full items-center gap-3 px-5 py-3.5 transition active:bg-[#f8f8f8] ' + (value === key ? 'opacity-100' : 'opacity-70')}
+            >
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border" style={{ background: opt.bg, borderColor: opt.border, color: opt.color }}>
+                {opt.icon}
+              </span>
+              <span className="text-sm font-medium" style={{ color: opt.color }}>{opt.label}</span>
+              {value === key && <span className="ml-auto text-xs text-[#48C9B0]">✓</span>}
+            </button>
+          )
+        })}
+      </div>
+    </div>,
+    document.body
+  ) : null
+
+  return (
+    <>
+      <button
+        onClick={e => { e.stopPropagation(); setOpen(true) }}
+        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border transition active:scale-95"
+        style={{ background: s.bg, borderColor: s.border, color: s.color }}
+        title={s.label}
+      >
+        {s.icon}
+      </button>
+      {sheet}
+    </>
+  )
 }
 
 const GROUP_COLORS = [
   '#48C9B0', '#7F77DD', '#F0997B', '#378ADD',
   '#EF9F27', '#D4537E', '#639922', '#D85A30',
+]
+
+const SIDE_OPTIONS = [
+  { value: 'familia_novia',  label: 'Familia novia' },
+  { value: 'familia_novio',  label: 'Familia novio' },
+  { value: 'amigos_novia',   label: 'Amigos novia' },
+  { value: 'amigos_novio',   label: 'Amigos novio' },
+  { value: 'papas_novia',    label: 'Papás novia' },
+  { value: 'papas_novio',    label: 'Papás novio' },
+  { value: 'ambos_lados',    label: 'Ambos lados' },
+  { value: 'sin_clasificar', label: 'Sin clasificar' },
 ]
 
 const TAG_COLORS = [
@@ -94,6 +158,50 @@ function TagSelector({ availableTags, selectedTags, onChange }: {
   )
 }
 
+const ALLERGY_OPTIONS = ['Gluten', 'Lácteos', 'Mariscos', 'Nueces', 'Huevo', 'Soya', 'Cerdo']
+
+function AllergySelector({ value, onChange }: { value: string[]; onChange: (v: string[]) => void }) {
+  const [otherText, setOtherText] = useState('')
+  const otherAllergies = value.filter(a => !ALLERGY_OPTIONS.includes(a))
+  const toggle = (a: string) => onChange(value.includes(a) ? value.filter(x => x !== a) : [...value, a])
+  const addOther = () => {
+    const t = otherText.trim()
+    if (t && !value.includes(t)) onChange([...value, t])
+    setOtherText('')
+  }
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap gap-1.5">
+        {ALLERGY_OPTIONS.map(a => (
+          <button key={a} type="button" onClick={() => toggle(a)}
+            className={'rounded-full border px-2.5 py-1 text-xs font-medium transition ' +
+              (value.includes(a) ? 'border-[#cc3333] bg-[#fff0f0] text-[#cc3333]' : 'border-[#e0e0e0] bg-[#f8f8f8] text-[#aaa] hover:border-[#cc3333] hover:text-[#cc3333]')}>
+            {a}
+          </button>
+        ))}
+      </div>
+      {otherAllergies.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {otherAllergies.map(a => (
+            <span key={a} className="flex items-center gap-1 rounded-full border border-[#e0e0e0] bg-[#f8f8f8] px-2.5 py-1 text-xs text-[#555]">
+              {a}
+              <button type="button" onClick={() => onChange(value.filter(x => x !== a))} className="opacity-60 transition hover:opacity-100">×</button>
+            </span>
+          ))}
+        </div>
+      )}
+      <div className="flex gap-2">
+        <input type="text" value={otherText} onChange={e => setOtherText(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && addOther()}
+          placeholder="Otra alergia..."
+          className="flex-1 rounded-lg border border-[#e0e0e0] bg-[#f8f8f8] px-3 py-1.5 text-xs text-[#1D1E20] outline-none transition focus:border-[#48C9B0]" />
+        <button type="button" onClick={addOther} disabled={!otherText.trim()}
+          className="rounded-lg bg-[#48C9B0] px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40">+</button>
+      </div>
+    </div>
+  )
+}
+
 function MembersEditor({ value, onChange }: { value: EditMember[]; onChange: (v: EditMember[]) => void }) {
   const MAX = 15
   const add = () => { if (value.length < MAX) onChange([...value, { name: '', phone: '', rsvp_status: 'pending' }]) }
@@ -146,6 +254,84 @@ type CsvDuplicateResult = {
   duplicates: Array<{ row: number; name: string; phone: string; conflictWith: string }>
 }
 
+function SwipeableGuestCard({
+  guest, groupColor, isSelected, guestTags, availableTags,
+  onSelect, onEdit, onDelete, onWaLongPressStart, onWaLongPressEnd, onWaTouchMove, onStatusChange,
+}: {
+  guest: Guest
+  groupColor: string | null
+  isSelected: boolean
+  guestTags: string[]
+  availableTags: string[]
+  onSelect: () => void
+  onEdit: () => void
+  onDelete: () => void
+  onWaLongPressStart: (g: Guest) => void
+  onWaLongPressEnd: (g: Guest) => void
+  onWaTouchMove: () => void
+  onStatusChange: (s: RsvpStatus) => void
+}) {
+  const x = useMotionValue(0)
+  const bgOpacity = useTransform(x, [-80, -20, 0], [1, 0.5, 0])
+
+  return (
+    <div className={'relative overflow-hidden ' + (groupColor ? 'rounded-t-xl' : 'rounded-xl')}>
+      <motion.div className="absolute inset-0 flex items-center justify-end bg-red-500 pr-5" style={{ opacity: bgOpacity }}>
+        <Trash2 size={20} className="text-white" />
+      </motion.div>
+      <motion.div
+        style={{ x }}
+        drag="x"
+        dragConstraints={{ left: -80, right: 0 }}
+        dragElastic={{ left: 0.1, right: 0 }}
+        onDragEnd={(_: unknown, info: PanInfo) => {
+          if (info.offset.x < -60) {
+            onDelete()
+          } else {
+            animate(x, 0, { type: 'spring', stiffness: 500, damping: 35 })
+          }
+        }}
+        className={'relative z-10 rounded-xl border bg-white px-3 py-3 ' + (isSelected ? 'border-[#48C9B0] bg-[#f0fdfb]' : 'border-[#e8e8e8]') + (groupColor ? ' rounded-b-none border-b-0' : '')}
+      >
+        <div className="flex items-center gap-2">
+          <input type="checkbox" checked={isSelected} onChange={onSelect} className="h-4 w-4 shrink-0 accent-[#48C9B0]" />
+          {groupColor && <div className="h-8 w-[3px] shrink-0 rounded-full" style={{ background: groupColor }} />}
+          <div className="shrink-0">
+            {guest.phone ? (
+              <button
+                onTouchStart={e => { e.stopPropagation(); onWaLongPressStart(guest) }}
+                onTouchEnd={e => { e.stopPropagation(); onWaLongPressEnd(guest) }}
+                onTouchMove={e => { e.stopPropagation(); onWaTouchMove() }}
+                className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#c0f0dc] bg-[#f0fff8]"
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="#25D366">{WA_ICON}</svg>
+              </button>
+            ) : (
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#f0f0f0] bg-[#fafafa]">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="#ddd">{WA_ICON}</svg>
+              </div>
+            )}
+          </div>
+          <div className="min-w-0 flex-1" onClick={onEdit}>
+            <p className="truncate text-sm font-semibold text-[#1D1E20]">
+              {guest.name}
+              {guest.party_members.length > 0 && <span className="ml-1 text-xs font-normal" style={{ color: groupColor || '#aaa' }}>+{guest.party_members.length}</span>}
+            </p>
+            <div className="mt-0.5 flex flex-wrap items-center gap-1">
+              {guestTags.map(tag => {
+                const tagIdx = availableTags.indexOf(tag)
+                const col = getTagColor(tagIdx >= 0 ? tagIdx : 0)
+                return <span key={tag} className="rounded-full border px-1.5 py-0.5 text-[10px] font-medium" style={{ background: col.bg, borderColor: col.border, color: col.text }}>{tag}</span>
+              })}
+            </div>
+          </div>
+          <StatusDot value={guest.rsvp_status} onChange={onStatusChange} />
+        </div>
+      </motion.div>
+    </div>
+  )
+}
+
 export default function EventPage() {
   const { id } = useParams()
 
@@ -155,7 +341,7 @@ export default function EventPage() {
   const [filtered, setFiltered] = useState<Guest[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
-  const [filter, setFilter] = useState<'all' | 'pending' | 'confirmed' | 'declined'>('all')
+  const [filter, setFilter] = useState<'all' | RsvpStatus>('all')
 
   const [guestTableMap, setGuestTableMap] = useState<Map<string, GuestTableInfo>>(new Map())
 
@@ -177,6 +363,8 @@ export default function EventPage() {
   const [editMembers, setEditMembers] = useState<EditMember[]>([])
   const [editSaving, setEditSaving] = useState(false)
   const [editError, setEditError] = useState('')
+  const [editSide, setEditSide] = useState('')
+  const [editAllergies, setEditAllergies] = useState<string[]>([])
 
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [showBulkMenu, setShowBulkMenu] = useState(false)
@@ -198,6 +386,8 @@ export default function EventPage() {
   const [notes, setNotes] = useState('')
   const [newTags, setNewTags] = useState<string[]>([])
   const [newMembers, setNewMembers] = useState<EditMember[]>([])
+  const [newSide, setNewSide] = useState('')
+  const [newAllergies, setNewAllergies] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
 
@@ -208,7 +398,10 @@ export default function EventPage() {
 
   useEffect(() => {
     let result = guests
-    if (filter !== 'all') result = result.filter(g => g.rsvp_status === filter)
+    if (filter !== 'all') result = result.filter(g =>
+      g.rsvp_status === filter ||
+      g.party_members.some(m => m.rsvp_status === filter)
+    )
     if (search) result = result.filter(g => g.name.toLowerCase().includes(search.toLowerCase()))
     if (sortField) {
       result = [...result].sort((a, b) => {
@@ -276,13 +469,13 @@ export default function EventPage() {
   }
 
   const updateStatus = async (guestId: string, status: RsvpStatus) => {
-    await supabase.from('guests').update({ rsvp_status: status }).eq('id', guestId)
     setGuests(prev => prev.map(g => g.id === guestId ? { ...g, rsvp_status: status } : g))
+    await supabase.from('guests').update({ rsvp_status: status }).eq('id', guestId)
   }
 
   const updatePartyMemberStatus = async (memberId: string, guestId: string, status: RsvpStatus) => {
-    await supabase.from('party_members').update({ rsvp_status: status }).eq('id', memberId)
     setGuests(prev => prev.map(g => g.id === guestId ? { ...g, party_members: g.party_members.map(m => m.id === memberId ? { ...m, rsvp_status: status } : m) } : g))
+    await supabase.from('party_members').update({ rsvp_status: status }).eq('id', memberId)
   }
 
   const deleteGuest = async (guestId: string) => {
@@ -304,6 +497,8 @@ export default function EventPage() {
     setEditGuest(guest); setEditName(guest.name); setEditPhone(guest.phone || '')
     setEditEmail(guest.email || ''); setEditNotes(guest.notes || '')
     setEditTags(guest.tags || []); setEditError('')
+    setEditSide(guest.side || '')
+    setEditAllergies(guest.allergies || [])
     setEditMembers(guest.party_members.map(m => ({ id: m.id, name: m.name, phone: m.phone || '', rsvp_status: m.rsvp_status })))
   }
 
@@ -313,7 +508,7 @@ export default function EventPage() {
   }
 
   const getSortIndicator = (field: 'name' | 'phone' | 'notes' | 'status') => {
-    if (sortField !== field) return ' ▢'
+    if (sortField !== field) return ''
     return sortDirection === 'asc' ? ' ▲' : ' ▼'
   }
 
@@ -328,7 +523,7 @@ export default function EventPage() {
       }
     }
     setEditSaving(true); setEditError('')
-    const { error } = await supabase.from('guests').update({ name: editName, phone: editPhone || null, email: editEmail || null, party_size: 1 + editMembers.length, notes: editNotes || null, tags: editTags }).eq('id', editGuest.id)
+    const { error } = await supabase.from('guests').update({ name: editName, phone: editPhone || null, email: editEmail || null, party_size: 1 + editMembers.length, notes: editNotes || null, tags: editTags, side: editSide || null, allergies: editAllergies.length > 0 ? editAllergies : null }).eq('id', editGuest.id)
     if (error) { setEditError('Error: ' + error.message); setEditSaving(false); return }
     const existingIds = editGuest.party_members.map(m => m.id)
     const keepIds = editMembers.filter(m => m.id).map(m => m.id as string)
@@ -416,7 +611,7 @@ export default function EventPage() {
     setShowBulkMenu(false)
   }
 
-  const resetForm = () => { setName(''); setPhone(''); setEmail(''); setNotes(''); setNewTags([]); setNewMembers([]); setFormError('') }
+  const resetForm = () => { setName(''); setPhone(''); setEmail(''); setNotes(''); setNewTags([]); setNewMembers([]); setNewSide(''); setNewAllergies([]); setFormError('') }
 
   const handleAddGuest = async () => {
     if (!name) { setFormError('El nombre es obligatorio'); return }
@@ -428,7 +623,7 @@ export default function EventPage() {
       }
     }
     setSaving(true); setFormError('')
-    const { data: guestData, error } = await supabase.from('guests').insert({ event_id: id, name, phone: phone || null, email: email || null, party_size: 1 + newMembers.length, notes: notes || null, tags: newTags, rsvp_status: 'pending' }).select().single()
+    const { data: guestData, error } = await supabase.from('guests').insert({ event_id: id, name, phone: phone || null, email: email || null, party_size: 1 + newMembers.length, notes: notes || null, tags: newTags, rsvp_status: 'pending', side: newSide || null, allergies: newAllergies.length > 0 ? newAllergies : null }).select().single()
     if (error || !guestData) { setFormError('Error: ' + error?.message); setSaving(false); return }
     if (newMembers.length > 0) await supabase.from('party_members').insert(newMembers.map(m => ({ guest_id: guestData.id, event_id: id, name: m.name, phone: m.phone || null, rsvp_status: m.rsvp_status })))
     await supabase.rpc('increment_guests', { event_id_input: id })
@@ -564,9 +759,25 @@ export default function EventPage() {
   }
 
   const totalPersonas = guests.reduce((acc, g) => acc + 1 + g.party_members.length, 0)
-  const confirmed = guests.reduce((acc, g) => { let n = g.rsvp_status === 'confirmed' ? 1 : 0; n += g.party_members.filter(m => m.rsvp_status === 'confirmed').length; return acc + n }, 0)
-  const pending   = guests.reduce((acc, g) => { let n = g.rsvp_status === 'pending' ? 1 : 0;   n += g.party_members.filter(m => m.rsvp_status === 'pending').length;   return acc + n }, 0)
-  const declined  = guests.reduce((acc, g) => { let n = g.rsvp_status === 'declined' ? 1 : 0;  n += g.party_members.filter(m => m.rsvp_status === 'declined').length;  return acc + n }, 0)
+
+  // Si el invitado principal declina, toda su familia se cuenta como declinada
+  const countByStatus = (s: RsvpStatus) => guests.reduce((acc, g) => {
+    if (g.rsvp_status === 'declined') {
+      // Toda la familia cuenta como declinada, no como ningún otro estado
+      return acc + (s === 'declined' ? 1 + g.party_members.length : 0)
+    }
+    let n = g.rsvp_status === s ? 1 : 0
+    n += g.party_members.filter(m => m.rsvp_status === s).length
+    return acc + n
+  }, 0)
+
+  const confirmed       = countByStatus('confirmed')
+  const pending         = countByStatus('pending')
+  const declined        = countByStatus('declined')
+  const mensajeEnviado  = countByStatus('mensaje_enviado')
+  const respondio       = countByStatus('respondio')
+  const accionNecesaria = countByStatus('accion_necesaria')
+  const conAtencion     = accionNecesaria + respondio
 
   const allSelected = filtered.length > 0 && selected.size === filtered.length
   const someSelected = selected.size > 0
@@ -583,74 +794,133 @@ export default function EventPage() {
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'visible', background: '#ffffff', color: '#1D1E20' }}>
 
       {/* ══ TOOLBAR ══ */}
-      <div style={{ flexShrink: 0, borderBottom: '1px solid #e8e8e8' }} className="px-4 pt-4 pb-0 sm:px-6 sm:pt-5 lg:px-10 lg:pt-6">
+      <div className="shrink-0 border-b border-[#e8e8e8] px-4 pt-4 pb-0 sm:px-6 sm:pt-5 lg:px-10 lg:pt-6">
 
-        {/* Métricas */}
-        <div className="mb-4 grid grid-cols-4 gap-2">
-          {[
-            { label: 'Total', value: totalPersonas, color: '#1D1E20' },
-            { label: 'Conf.', value: confirmed,     color: '#2a7a50' },
-            { label: 'Pend.', value: pending,       color: '#b8860b' },
-            { label: 'Decl.', value: declined,      color: '#cc3333' },
-          ].map(s => (
-            <div key={s.label} className="rounded-xl border border-[#e8e8e8] bg-[#f8f8f8] p-2 text-center">
-              <div className="text-lg font-bold sm:text-xl" style={{ color: s.color }}>{s.value}</div>
-              <div className="text-[10px] text-[#999]">{s.label}</div>
-            </div>
-          ))}
+        {/* Título */}
+        <div className="mb-4">
+          <h1 className="text-lg font-bold text-[#1D1E20] sm:text-xl">Invitados</h1>
+          <p className="mt-0.5 text-xs text-[#888] sm:text-sm">Gestiona a todos tus invitados desde un solo lugar.</p>
         </div>
 
-        {/* Búsqueda + filtros + acciones */}
-        <div className="mb-3 flex flex-col gap-2">
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-            <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Buscar..."
-              className="w-full rounded-lg border border-[#e0e0e0] bg-[#f8f8f8] px-3 py-2 text-sm text-[#1D1E20] outline-none sm:w-48" />
-            <div className="grid grid-cols-4 gap-1 w-full">
-              {[
-                { key: 'all',       label: 'Todos',       labelShort: 'Todos', count: totalPersonas },
-                { key: 'confirmed', label: 'Confirmados', labelShort: 'Conf.', count: confirmed },
-                { key: 'pending',   label: 'Pendientes',  labelShort: 'Pend.', count: pending },
-                { key: 'declined',  label: 'Declinados',  labelShort: 'Dec.',  count: declined },
-              ].map(tab => (
-                <button key={tab.key} onClick={() => setFilter(tab.key as typeof filter)}
-                  className={'flex items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-semibold transition ' + (filter === tab.key ? 'bg-[#1D1E20] text-white' : 'text-[#888] hover:bg-[#efefef]')}>
-                  <span className="sm:hidden">{tab.labelShort}</span>
-                  <span className="hidden sm:inline">{tab.label}</span>
-                  <span className={'rounded-full px-1.5 py-0.5 text-[10px] font-bold ' + (filter === tab.key ? 'bg-white/20 text-white' : 'bg-[#e8e8e8] text-[#666]')}>{tab.count}</span>
-                </button>
-              ))}
+        {/* Métricas estilo mesas */}
+        <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+
+          {/* Confirmados */}
+          <div className="rounded-xl border border-[#e8e8e8] bg-white p-3">
+            <div className="mb-1.5 flex items-center justify-between">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Confirmados</span>
+              <CheckCircle size={14} className="text-[#48C9B0]" />
             </div>
-            <div className="flex items-center justify-end gap-2 sm:ml-auto">
-              {someSelected && (
-                <div className="relative flex-1 sm:flex-none" ref={bulkMenuRef}>
-                  <button onClick={() => setShowBulkMenu(!showBulkMenu)} className="w-full whitespace-nowrap rounded-lg border border-[#48C9B0] bg-[#f0fdfb] px-3 py-1.5 text-xs font-semibold text-[#1a9e88] sm:w-auto">
-                    {selected.size} seleccionados ▾
+            <div className="text-xl font-bold text-[#1D1E20]">{confirmed}</div>
+            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[#e8e8e8]">
+              <div className="h-full rounded-full bg-[#48C9B0] transition-all" style={{ width: totalPersonas > 0 ? `${(confirmed / totalPersonas) * 100}%` : '0%' }} />
+            </div>
+            <div className="mt-1 text-[10px] text-[#aaa]">de {totalPersonas} totales</div>
+          </div>
+
+          {/* Pendientes */}
+          <div className="rounded-xl border border-[#e8e8e8] bg-white p-3">
+            <div className="mb-1.5 flex items-center justify-between">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Pendientes</span>
+              <Clock size={14} className={pending > 0 ? 'text-[#b8860b]' : 'text-[#bbb]'} />
+            </div>
+            <div className="text-xl font-bold" style={{ color: pending > 0 ? '#b8860b' : '#1D1E20' }}>{pending + mensajeEnviado}</div>
+            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[#e8e8e8]">
+              <div className="h-full rounded-full bg-[#f0d080] transition-all" style={{ width: totalPersonas > 0 ? `${((pending + mensajeEnviado) / totalPersonas) * 100}%` : '0%' }} />
+            </div>
+            <div className="mt-1 text-[10px] text-[#aaa]">sin confirmar aún</div>
+          </div>
+
+          {/* Requieren atención */}
+          <div className="rounded-xl border border-[#e8e8e8] bg-white p-3">
+            <div className="mb-1.5 flex items-center justify-between">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Atención</span>
+              <AlertCircle size={14} className={conAtencion > 0 ? 'text-[#cc3333]' : 'text-[#bbb]'} />
+            </div>
+            <div className="text-xl font-bold" style={{ color: conAtencion > 0 ? '#cc3333' : '#1D1E20' }}>{conAtencion}</div>
+            {conAtencion > 0
+              ? <div className="mt-1 text-[10px] font-medium text-[#cc3333]">Respondieron o acción requerida</div>
+              : <div className="mt-1 text-[10px] text-[#48C9B0]">Sin pendientes urgentes ✓</div>
+            }
+          </div>
+
+          {/* Declinados */}
+          <div className="rounded-xl border border-[#e8e8e8] bg-white p-3">
+            <div className="mb-1.5 flex items-center justify-between">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Declinados</span>
+              <XCircle size={14} className={declined > 0 ? 'text-[#cc3333]' : 'text-[#bbb]'} />
+            </div>
+            <div className="text-xl font-bold" style={{ color: declined > 0 ? '#cc3333' : '#1D1E20' }}>{declined}</div>
+            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[#e8e8e8]">
+              <div className="h-full rounded-full bg-[#ffc0c0] transition-all" style={{ width: totalPersonas > 0 ? `${(declined / totalPersonas) * 100}%` : '0%' }} />
+            </div>
+            <div className="mt-1 text-[10px] text-[#aaa]">no van a asistir</div>
+          </div>
+
+        </div>
+
+        {/* Toolbar — 1 sola fila en todos los breakpoints */}
+        <div className="mb-3 flex items-center gap-2">
+
+          {/* Búsqueda — crece en desktop, fijo en mobile */}
+          <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="🔍 Buscar..."
+            className="min-w-0 flex-1 rounded-lg border border-[#e0e0e0] bg-[#f8f8f8] px-3 py-2 text-sm text-[#1D1E20] outline-none sm:max-w-48" />
+
+          {/* Filtro dropdown */}
+          <select
+            value={filter}
+            onChange={e => setFilter(e.target.value as typeof filter)}
+            className="min-w-0 flex-1 cursor-pointer rounded-lg border-none bg-[#1D1E20] px-3 py-2 text-sm font-semibold text-white outline-none sm:max-w-48"
+          >
+            <option value="all">Todos ({totalPersonas})</option>
+            <option value="confirmed">Confirmados ({confirmed})</option>
+            <option value="pending">Pendientes ({pending})</option>
+            <option value="mensaje_enviado">Mensaje enviado ({mensajeEnviado})</option>
+            <option value="respondio">Respondió ({respondio})</option>
+            <option value="accion_necesaria">Acción necesaria ({accionNecesaria})</option>
+            <option value="declined">Declinados ({declined})</option>
+          </select>
+
+          {/* Acciones desktop/tablet — ocultas en mobile excepto + Agregar */}
+          {someSelected && (
+            <div className="relative hidden sm:block" ref={bulkMenuRef}>
+              <button onClick={() => setShowBulkMenu(!showBulkMenu)}
+                className="whitespace-nowrap rounded-lg bg-[#1D1E20] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#2d2e30]">
+                {selected.size} Seleccionados ▾
+              </button>
+              {showBulkMenu && (
+                <div className="absolute right-0 top-full z-50 mt-1 min-w-[200px] rounded-xl border border-[#e8e8e8] bg-white p-1 shadow-lg">
+                  <button onClick={bulkWhatsApp} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-[#25D366] hover:bg-[#f0fdfb]">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="#25D366">{WA_ICON}</svg>Enviar WhatsApp
                   </button>
-                  {showBulkMenu && (
-                    <div className="absolute right-0 top-full z-50 mt-1 min-w-[200px] rounded-xl border border-[#e8e8e8] bg-white p-1 shadow-lg">
-                      <button onClick={bulkWhatsApp} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-xs text-[#25D366] hover:bg-[#f0fdfb]">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="#25D366">{WA_ICON}</svg>Enviar WhatsApp
-                      </button>
-                      <div className="my-1 h-px bg-[#f0f0f0]" />
-                      <button onClick={() => bulkUpdateStatus('confirmed')} className="w-full rounded-lg px-3 py-2 text-left text-xs text-[#2a7a50] hover:bg-[#f0fff6]">✓ Marcar confirmados</button>
-                      <button onClick={() => bulkUpdateStatus('declined')}  className="w-full rounded-lg px-3 py-2 text-left text-xs text-[#cc3333] hover:bg-[#fff0f0]">✕ Marcar declinados</button>
-                      <button onClick={() => bulkUpdateStatus('pending')}   className="w-full rounded-lg px-3 py-2 text-left text-xs text-[#b8860b] hover:bg-[#fffbf0]">◷ Marcar pendientes</button>
-                      <div className="my-1 h-px bg-[#f0f0f0]" />
-                      <button onClick={() => { setShowBulkMenu(false); setBulkCompanionCount(1); setShowBulkCompanionModal(true) }}
-                        className="w-full rounded-lg px-3 py-2 text-left text-xs text-[#555] hover:bg-[#f8f8f8]">
-                        👥 Agregar acompañante
-                      </button>
-                      <div className="my-1 h-px bg-[#f0f0f0]" />
-                      <button onClick={bulkDelete} className="w-full rounded-lg px-3 py-2 text-left text-xs text-[#cc3333] hover:bg-[#fff0f0]">🗑 Eliminar seleccionados</button>
-                    </div>
-                  )}
+                  <div className="my-1 h-px bg-[#f0f0f0]" />
+                  <button onClick={() => bulkUpdateStatus('confirmed')} className="w-full rounded-lg px-3 py-2 text-left text-xs text-[#2a7a50] hover:bg-[#f0fff6]">✓ Marcar confirmados</button>
+                  <button onClick={() => bulkUpdateStatus('declined')}  className="w-full rounded-lg px-3 py-2 text-left text-xs text-[#cc3333] hover:bg-[#fff0f0]">✕ Marcar declinados</button>
+                  <button onClick={() => bulkUpdateStatus('pending')}   className="w-full rounded-lg px-3 py-2 text-left text-xs text-[#b8860b] hover:bg-[#fffbf0]">◷ Marcar pendientes</button>
+                  <div className="my-1 h-px bg-[#f0f0f0]" />
+                  <button onClick={() => { setShowBulkMenu(false); setBulkCompanionCount(1); setShowBulkCompanionModal(true) }}
+                    className="w-full rounded-lg px-3 py-2 text-left text-xs text-[#555] hover:bg-[#f8f8f8]">
+                    👥 Agregar acompañante
+                  </button>
+                  <div className="my-1 h-px bg-[#f0f0f0]" />
+                  <button onClick={bulkDelete} className="w-full rounded-lg px-3 py-2 text-left text-xs text-[#cc3333] hover:bg-[#fff0f0]">🗑 Eliminar seleccionados</button>
                 </div>
               )}
-              <button onClick={exportCSV} className="hidden whitespace-nowrap rounded-lg border border-[#e0e0e0] px-3 py-1.5 text-xs text-[#666] transition hover:border-[#48C9B0] hover:text-[#48C9B0] sm:block">⬇️ Exportar</button>
-              <button onClick={() => { setCsvError(''); setCsvSuccess(''); setCsvPreview(null); setShowCsvModal(true) }} className="hidden whitespace-nowrap rounded-lg border border-[#e0e0e0] px-3 py-1.5 text-xs text-[#666] transition hover:border-[#48C9B0] hover:text-[#48C9B0] sm:block">📂 Importar</button>
-              <button onClick={() => { resetForm(); setShowModal(true) }} className="shrink-0 whitespace-nowrap rounded-lg bg-[#48C9B0] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#3ab89f] sm:px-4 sm:text-sm">+ Agregar</button>
             </div>
-          </div>
+          )}
+          <button onClick={exportCSV}
+            className="hidden whitespace-nowrap rounded-lg border border-[#e0e0e0] px-3 py-2 text-xs text-[#666] transition hover:border-[#48C9B0] hover:text-[#48C9B0] sm:block">
+            ⬇️ Exportar
+          </button>
+          <button onClick={() => { setCsvError(''); setCsvSuccess(''); setCsvPreview(null); setShowCsvModal(true) }}
+            className="hidden whitespace-nowrap rounded-lg border border-[#e0e0e0] px-3 py-2 text-xs text-[#666] transition hover:border-[#48C9B0] hover:text-[#48C9B0] sm:block">
+            📂 Importar
+          </button>
+          <button onClick={() => { resetForm(); setShowModal(true) }}
+            className="shrink-0 whitespace-nowrap rounded-lg bg-[#48C9B0] px-3 py-2 text-xs font-semibold text-white transition hover:bg-[#3ab89f] sm:px-4 sm:text-sm">
+            + Agregar
+          </button>
+
         </div>
       </div>
 
@@ -674,51 +944,20 @@ export default function EventPage() {
                 const isSelected = selected.has(guest.id)
                 return (
                   <div key={guest.id}>
-                    <div className={'rounded-xl border bg-white px-3 py-3 transition ' + (isSelected ? 'border-[#48C9B0] bg-[#f0fdfb]' : 'border-[#e8e8e8]') + (groupColor ? ' rounded-b-none border-b-0' : '')}>
-                      <div className="flex items-center gap-2">
-                        <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(guest.id)} className="h-4 w-4 shrink-0 accent-[#48C9B0]" />
-                        {groupColor && <div className="h-8 w-[3px] shrink-0 rounded-full" style={{ background: groupColor }} />}
-                        <div className="shrink-0">
-                          {guest.phone ? (
-                            <button onTouchStart={e => { e.stopPropagation(); handleWaLongPressStart(guest) }} onTouchEnd={e => { e.stopPropagation(); handleWaLongPressEnd(guest) }} onTouchMove={e => { e.stopPropagation(); handleWaTouchMove() }} className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#c0f0dc] bg-[#f0fff8]">
-                              <svg width="18" height="18" viewBox="0 0 24 24" fill="#25D366">{WA_ICON}</svg>
-                            </button>
-                          ) : (
-                            <div className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#f0f0f0] bg-[#fafafa]">
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="#ddd">{WA_ICON}</svg>
-                            </div>
-                          )}
-                        </div>
-                        <div className="min-w-0 flex-1" onClick={() => openEdit(guest)}>
-                          <p className="truncate text-sm font-semibold text-[#1D1E20]">
-                            {guest.name}
-                            {guest.party_members.length > 0 && <span className="ml-1 text-xs font-normal" style={{ color: groupColor || '#aaa' }}>+{guest.party_members.length}</span>}
-                          </p>
-                          <div className="mt-0.5 flex flex-wrap items-center gap-1">
-                            {guestTags.map(tag => {
-                              const tagIdx = availableTags.indexOf(tag)
-                              const col = getTagColor(tagIdx >= 0 ? tagIdx : 0)
-                              return <span key={tag} className="rounded-full border px-1.5 py-0.5 text-[10px] font-medium" style={{ background: col.bg, borderColor: col.border, color: col.text }}>{tag}</span>
-                            })}
-                          </div>
-                        </div>
-                        <div className="shrink-0">
-                          <select value={guest.rsvp_status} onChange={e => updateStatus(guest.id, e.target.value as RsvpStatus)}
-                            className="rounded-lg border px-2 py-1.5 text-xs font-semibold outline-none"
-                            style={{ background: STATUS_LABEL[guest.rsvp_status].bg, borderColor: STATUS_LABEL[guest.rsvp_status].border, color: STATUS_LABEL[guest.rsvp_status].color, cursor: 'pointer' }}>
-                            <option value="mensaje_enviado">Mensaje enviado</option>
-                            <option value="pending">Pendiente</option>
-                            <option value="respondio">Respondió</option>
-                            <option value="accion_necesaria">Acción necesaria</option>
-                            <option value="confirmed">Confirmado</option>
-                            <option value="declined">Declinado</option>
-                          </select>
-                        </div>
-                        <button onClick={() => deleteGuest(guest.id)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#ffe0e0] bg-[#fff5f5]">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#cc3333" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{TRASH_ICON}</svg>
-                        </button>
-                      </div>
-                    </div>
+                    <SwipeableGuestCard
+                      guest={guest}
+                      groupColor={groupColor}
+                      isSelected={isSelected}
+                      guestTags={guestTags}
+                      availableTags={availableTags}
+                      onSelect={() => toggleSelect(guest.id)}
+                      onEdit={() => openEdit(guest)}
+                      onDelete={() => deleteGuest(guest.id)}
+                      onWaLongPressStart={handleWaLongPressStart}
+                      onWaLongPressEnd={handleWaLongPressEnd}
+                      onWaTouchMove={handleWaTouchMove}
+                      onStatusChange={(s) => updateStatus(guest.id, s)}
+                    />
                     {groupColor && guest.party_members.map((m, mi) => {
                       const isLast = mi === guest.party_members.length - 1
                       return (
@@ -727,19 +966,7 @@ export default function EventPage() {
                             <div className="h-6 w-[3px] shrink-0 rounded-full opacity-40" style={{ background: groupColor }} />
                             <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px] font-bold" style={{ background: groupColor + '22', color: groupColor }}>+{mi + 1}</div>
                             <span className="flex-1 truncate text-xs text-[#888]">{m.name || 'Acompañante'}</span>
-                            <select value={m.rsvp_status} onChange={e => updatePartyMemberStatus(m.id, guest.id, e.target.value as RsvpStatus)}
-                              className="rounded-lg border px-2 py-1.5 text-xs font-semibold outline-none"
-                              style={{ background: STATUS_LABEL[m.rsvp_status].bg, borderColor: STATUS_LABEL[m.rsvp_status].border, color: STATUS_LABEL[m.rsvp_status].color, cursor: 'pointer' }}>
-                              <option value="mensaje_enviado">Mensaje enviado</option>
-                              <option value="pending">Pendiente</option>
-                              <option value="respondio">Respondió</option>
-                              <option value="accion_necesaria">Acción necesaria</option>
-                              <option value="confirmed">Confirmado</option>
-                              <option value="declined">Declinado</option>
-                            </select>
-                            <button onClick={() => deletePartyMember(m.id, guest.id)} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-[#ffe0e0] bg-[#fff5f5]">
-                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#cc3333" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{TRASH_ICON}</svg>
-                            </button>
+                            <StatusDot value={m.rsvp_status} onChange={s => updatePartyMemberStatus(m.id, guest.id, s)} />
                           </div>
                         </div>
                       )
@@ -751,15 +978,15 @@ export default function EventPage() {
 
             {/* Desktop */}
             <div className="hidden rounded-xl border border-[#e8e8e8] sm:block">
-              <div className="grid items-center border-b border-[#e8e8e8] bg-[#f8f8f8] px-4 py-2"
-                style={{ gridTemplateColumns: '40px 2fr 1.2fr 100px 1fr 1.5fr 140px 40px' }}>
-                <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} style={{ cursor: 'pointer', accentColor: '#48C9B0' }} />
-                <button onClick={() => handleHeaderClick('name')}   className="text-left text-[11px] font-semibold uppercase tracking-wide text-[#aaa] hover:text-[#1D1E20] transition cursor-pointer">Nombre{getSortIndicator('name')}</button>
+              <div className="grid grid-cols-[40px_2fr_1.2fr_90px_100px_1fr_1.5fr_140px_40px] items-center border-b border-[#e8e8e8] bg-[#f8f8f8] px-4 py-2">
+                <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} className="cursor-pointer accent-[#48C9B0]" />
+                <button onClick={() => handleHeaderClick('name')}   className="cursor-pointer text-left text-[11px] font-semibold uppercase tracking-wide text-[#aaa] transition hover:text-[#1D1E20]">Nombre{getSortIndicator('name')}</button>
                 <div className="text-[11px] font-semibold uppercase tracking-wide text-[#aaa]">Tags</div>
                 <div className="text-[11px] font-semibold uppercase tracking-wide text-[#aaa]">Mesa</div>
-                <button onClick={() => handleHeaderClick('notes')}  className="text-left text-[11px] font-semibold uppercase tracking-wide text-[#aaa] hover:text-[#1D1E20] transition cursor-pointer">Notas{getSortIndicator('notes')}</button>
-                <button onClick={() => handleHeaderClick('phone')}  className="text-left text-[11px] font-semibold uppercase tracking-wide text-[#aaa] hover:text-[#1D1E20] transition cursor-pointer">Teléfono{getSortIndicator('phone')}</button>
-                <button onClick={() => handleHeaderClick('status')} className="text-left text-[11px] font-semibold uppercase tracking-wide text-[#aaa] hover:text-[#1D1E20] transition cursor-pointer">Status{getSortIndicator('status')}</button>
+                <div className="text-[11px] font-semibold uppercase tracking-wide text-[#aaa]">Lado</div>
+                <button onClick={() => handleHeaderClick('notes')}  className="cursor-pointer text-left text-[11px] font-semibold uppercase tracking-wide text-[#aaa] transition hover:text-[#1D1E20]">Notas{getSortIndicator('notes')}</button>
+                <button onClick={() => handleHeaderClick('phone')}  className="cursor-pointer text-left text-[11px] font-semibold uppercase tracking-wide text-[#aaa] transition hover:text-[#1D1E20]">Teléfono{getSortIndicator('phone')}</button>
+                <button onClick={() => handleHeaderClick('status')} className="cursor-pointer text-left text-[11px] font-semibold uppercase tracking-wide text-[#aaa] transition hover:text-[#1D1E20]">Estatus{getSortIndicator('status')}</button>
                 <div />
               </div>
 
@@ -772,8 +999,7 @@ export default function EventPage() {
                 return (
                   <div key={guest.id}>
                     {/* Fila invitado principal */}
-                    <div className={'grid items-center px-4 py-2.5 transition ' + (selected.has(guest.id) ? 'bg-[#f0fdfb]' : gIdx % 2 === 0 ? 'bg-white hover:bg-[#f5f5f5]' : 'bg-[#fafafa] hover:bg-[#f5f5f5]') + (!hasMembers && !isLastGuest ? ' border-b border-[#f0f0f0]' : '') + (hasMembers ? ' border-b border-[#f0f0f0]' : '')}
-                      style={{ gridTemplateColumns: '40px 2fr 1.2fr 100px 1fr 1.5fr 140px 40px' }}>
+                    <div className={'grid grid-cols-[40px_2fr_1.2fr_90px_100px_1fr_1.5fr_140px_40px] items-center px-4 py-2.5 transition ' + (selected.has(guest.id) ? 'bg-[#f0fdfb]' : gIdx % 2 === 0 ? 'bg-white hover:bg-[#f5f5f5]' : 'bg-[#fafafa] hover:bg-[#f5f5f5]') + (!hasMembers && !isLastGuest ? ' border-b border-[#f0f0f0]' : '') + (hasMembers ? ' border-b border-[#f0f0f0]' : '')}>
                       <input type="checkbox" checked={selected.has(guest.id)} onChange={() => toggleSelect(guest.id)} style={{ cursor: 'pointer', accentColor: '#48C9B0' }} />
                       <div onClick={() => openEdit(guest)} className="flex cursor-pointer items-center gap-1.5">
                         {groupColor && <div className="mr-1 h-5 w-[3px] shrink-0 rounded-full" style={{ background: groupColor }} />}
@@ -790,6 +1016,14 @@ export default function EventPage() {
                       <div>
                         {tableLabel
                           ? <span className="rounded-full border border-[#c8ede7] bg-[#f0fdfb] px-2 py-0.5 text-[10px] font-semibold text-[#1a9e88]">{tableLabel}</span>
+                          : <span className="text-[#ddd] text-xs">—</span>
+                        }
+                      </div>
+                      <div>
+                        {guest.side
+                          ? <span className="rounded-full border border-[#e0e0e0] bg-[#f8f8f8] px-2 py-0.5 text-[10px] font-medium text-[#555]">
+                              {SIDE_OPTIONS.find(o => o.value === guest.side)?.label ?? guest.side}
+                            </span>
                           : <span className="text-[#ddd] text-xs">—</span>
                         }
                       </div>
@@ -840,8 +1074,7 @@ export default function EventPage() {
                     {groupColor && guest.party_members.map((m, mi) => {
                       const isLastMember = mi === guest.party_members.length - 1
                       return (
-                        <div key={m.id} className={'grid items-center px-4 py-2.5 bg-[#fafafa] ' + (isLastMember && !isLastGuest ? 'border-b-2 border-[#f0f0f0]' : 'border-b border-[#f8f8f8]')}
-                          style={{ gridTemplateColumns: '40px 2fr 1.2fr 100px 1fr 1.5fr 140px 40px' }}>
+                        <div key={m.id} className={'grid grid-cols-[40px_2fr_1.2fr_90px_100px_1fr_1.5fr_140px_40px] items-center px-4 py-2.5 bg-[#fafafa] ' + (isLastMember && !isLastGuest ? 'border-b-2 border-[#f0f0f0]' : 'border-b border-[#f8f8f8]')}>
                           <div />
                           <div className="flex items-center gap-2 pl-4">
                             <div className="h-4 w-[2px] shrink-0 rounded-full opacity-40" style={{ background: groupColor }} />
@@ -849,6 +1082,8 @@ export default function EventPage() {
                             <span className="text-xs text-[#888]">{m.name || 'Acompañante'}</span>
                           </div>
                           <div /><div />
+                          <div />{/* Lado — vacío */}
+                          <div />{/* Notas — vacío */}
                           <div className="text-xs text-[#aaa]">{m.phone || ''}</div>
                           <select value={m.rsvp_status} onChange={e => updatePartyMemberStatus(m.id, guest.id, e.target.value as RsvpStatus)}
                             className="w-[120px] cursor-pointer rounded-md border px-2 py-1 text-xs font-semibold outline-none"
@@ -890,6 +1125,18 @@ export default function EventPage() {
               {availableTags.length > 0 && (
                 <div><label className="mb-1.5 block text-xs font-medium text-[#555]">Tags</label><TagSelector availableTags={availableTags} selectedTags={editTags} onChange={setEditTags} /></div>
               )}
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-[#555]">Lado <span className="font-normal text-[#ccc]">(opcional)</span></label>
+                <select value={editSide} onChange={e => setEditSide(e.target.value)}
+                  className="w-full rounded-lg border border-[#e0e0e0] bg-[#f8f8f8] px-3.5 py-2.5 text-sm text-[#1D1E20] outline-none transition focus:border-[#48C9B0]">
+                  <option value="">— Sin asignar —</option>
+                  {SIDE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-[#555]">Alergias <span className="font-normal text-[#ccc]">(opcional)</span></label>
+                <AllergySelector value={editAllergies} onChange={setEditAllergies} />
+              </div>
               <div className="border-t border-[#f0f0f0] pt-4"><MembersEditor value={editMembers} onChange={setEditMembers} /></div>
             </div>
             {editError && <div className="mt-3 rounded-lg border border-[#ffc0c0] bg-[#fff0f0] p-2.5 text-xs text-[#cc3333]">{editError}</div>}
@@ -897,6 +1144,12 @@ export default function EventPage() {
               <button onClick={() => setEditGuest(null)} className="flex-1 rounded-lg border border-[#e0e0e0] py-3 text-sm text-[#888]">Cancelar</button>
               <button onClick={handleEditSave} disabled={editSaving} className="flex-[2] rounded-lg bg-[#48C9B0] py-3 text-sm font-semibold text-white disabled:opacity-60">{editSaving ? 'Guardando...' : 'Guardar cambios'}</button>
             </div>
+            <button
+              onClick={() => { const gid = editGuest!.id; setEditGuest(null); setTimeout(() => deleteGuest(gid), 0) }}
+              className="mt-2 w-full rounded-lg border border-[#ffe0e0] bg-[#fff5f5] py-3 text-sm font-semibold text-[#cc3333] transition hover:bg-[#ffe8e8] sm:hidden"
+            >
+              Eliminar invitado
+            </button>
           </div>
         </div>
       )}
@@ -917,6 +1170,18 @@ export default function EventPage() {
               {availableTags.length > 0 && (
                 <div><label className="mb-1.5 block text-xs font-medium text-[#555]">Tags <span className="font-normal text-[#ccc]">(opcional)</span></label><TagSelector availableTags={availableTags} selectedTags={newTags} onChange={setNewTags} /></div>
               )}
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-[#555]">Lado <span className="font-normal text-[#ccc]">(opcional)</span></label>
+                <select value={newSide} onChange={e => setNewSide(e.target.value)}
+                  className="w-full rounded-lg border border-[#e0e0e0] bg-[#f8f8f8] px-3.5 py-2.5 text-sm text-[#1D1E20] outline-none transition focus:border-[#48C9B0]">
+                  <option value="">— Sin asignar —</option>
+                  {SIDE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-xs font-medium text-[#555]">Alergias <span className="font-normal text-[#ccc]">(opcional)</span></label>
+                <AllergySelector value={newAllergies} onChange={setNewAllergies} />
+              </div>
               <div className="border-t border-[#f0f0f0] pt-4"><MembersEditor value={newMembers} onChange={setNewMembers} /></div>
             </div>
             {formError && <div className="mt-3 rounded-lg border border-[#ffc0c0] bg-[#fff0f0] p-2.5 text-xs text-[#cc3333]">{formError}</div>}

@@ -2,8 +2,8 @@ import type { MetadataRoute } from 'next'
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'GuestFlow',
-    short_name: 'GuestFlow',
+    name: 'Anfiora',
+    short_name: 'Anfiora',
     description: 'Gestión de invitados para eventos',
     start_url: '/dashboard',
     display: 'standalone',

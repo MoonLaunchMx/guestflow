@@ -81,90 +81,82 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login', lang 
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
             onClick={handleClose}
-            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 100 }}
+            className="fixed inset-0 z-[100] bg-black/[0.45]"
           />
-          <div style={{
-            position: 'fixed', inset: 0, zIndex: 101,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: '0 1rem', pointerEvents: 'none',
-          }}>
+          <div className="pointer-events-none fixed inset-0 z-[101] flex items-center justify-center px-4">
             <motion.div
               key="modal"
               initial={{ opacity: 0, y: 24, scale: 0.97 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 16, scale: 0.97 }}
               transition={{ duration: 0.25, ease: 'easeOut' }}
-              style={{ width: '100%', maxWidth: '460px', pointerEvents: 'auto' }}
+              className="pointer-events-auto w-full max-w-[460px]"
             >
-              <div style={{
-                background: '#ffffff', borderRadius: '20px',
-                border: '1px solid #e8e8e8',
-                boxShadow: '0 8px 40px rgba(0,0,0,0.12)',
-                padding: '2rem', position: 'relative',
-              }}>
-                <button onClick={handleClose} style={{
-                  position: 'absolute', top: '1rem', right: '1rem',
-                  width: '28px', height: '28px', borderRadius: '50%',
-                  border: '1px solid #e8e8e8', background: 'transparent',
-                  cursor: 'pointer', display: 'flex', alignItems: 'center',
-                  justifyContent: 'center', fontSize: '14px', color: '#999',
-                }}>✕</button>
+              <div className="relative rounded-[20px] border border-[#e8e8e8] bg-white p-8 shadow-[0_8px_40px_rgba(0,0,0,0.12)]">
 
-                <div style={{ textAlign: 'center', marginBottom: '1.5rem' }}>
-                  <p style={{ fontFamily: 'Georgia, serif', fontSize: '24px', fontWeight: 700, color: '#1D1E20', margin: 0 }}>
-                    Guest<span style={{ color: '#48C9B0' }}>Flow</span>
+                <button
+                  onClick={handleClose}
+                  className="absolute right-4 top-4 flex h-7 w-7 cursor-pointer items-center justify-center rounded-full border border-[#e8e8e8] bg-transparent text-sm text-[#999] transition hover:bg-[#f5f5f5]"
+                >
+                  ✕
+                </button>
+
+                <div className="mb-6 text-center">
+                  <p className="m-0 text-2xl font-bold text-[#1D1E20]" style={{ fontFamily: 'Georgia, serif' }}>
+                    Anfi<span className="text-[#48C9B0]">ora</span>
                   </p>
                 </div>
 
-                <div style={{ display: 'flex', background: '#f2f2f2', borderRadius: '10px', padding: '4px', marginBottom: '1.5rem' }}>
+                <div className="mb-6 flex rounded-[10px] bg-[#f2f2f2] p-1">
                   {(['login', 'register'] as const).map(tab => (
-                    <button key={tab}
+                    <button
+                      key={tab}
                       onClick={() => { setMode(tab); setError(''); setSuccess('') }}
-                      style={{
-                        flex: 1, padding: '8px', borderRadius: '7px', border: 'none',
-                        cursor: 'pointer', fontSize: '13px',
-                        fontWeight: mode === tab ? 600 : 400,
-                        background: mode === tab ? '#48C9B0' : 'transparent',
-                        color: mode === tab ? '#ffffff' : '#888',
-                        transition: 'all 0.2s',
-                      }}
+                      className={`flex-1 cursor-pointer rounded-[7px] border-none py-2 text-[13px] transition-all ${
+                        mode === tab
+                          ? 'bg-[#48C9B0] font-semibold text-white'
+                          : 'bg-transparent font-normal text-[#888]'
+                      }`}
                     >
                       {tab === 'login' ? t.login : t.register}
                     </button>
                   ))}
                 </div>
 
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                <div className="flex flex-col gap-4">
                   {mode === 'register' && (
                     <div>
-                      <label style={{ display: 'block', fontSize: '12px', color: '#555', marginBottom: '6px' }}>{t.name}</label>
-                      <input type="text" value={name} onChange={e => setName(e.target.value)}
+                      <label className="mb-1.5 block text-xs text-[#555]">{t.name}</label>
+                      <input
+                        type="text" value={name} onChange={e => setName(e.target.value)}
                         placeholder={t.namePlaceholder}
-                        style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '10px', border: '1px solid #e0e0e0', background: '#f8f8f8', fontSize: '14px', color: '#1D1E20', outline: 'none' }}
+                        className="w-full rounded-[10px] border border-[#e0e0e0] bg-[#f8f8f8] px-3 py-2.5 text-sm text-[#1D1E20] outline-none"
                       />
                     </div>
                   )}
                   <div>
-                    <label style={{ display: 'block', fontSize: '12px', color: '#555', marginBottom: '6px' }}>{t.email}</label>
-                    <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+                    <label className="mb-1.5 block text-xs text-[#555]">{t.email}</label>
+                    <input
+                      type="email" value={email} onChange={e => setEmail(e.target.value)}
                       placeholder={t.emailPlaceholder}
-                      style={{ width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: '10px', border: '1px solid #e0e0e0', background: '#f8f8f8', fontSize: '14px', color: '#1D1E20', outline: 'none' }}
+                      className="w-full rounded-[10px] border border-[#e0e0e0] bg-[#f8f8f8] px-3 py-2.5 text-sm text-[#1D1E20] outline-none"
                     />
                   </div>
                   <div>
-                    <label style={{ display: 'block', fontSize: '12px', color: '#555', marginBottom: '6px' }}>{t.password}</label>
-                    <div style={{ position: 'relative' }}>
+                    <label className="mb-1.5 block text-xs text-[#555]">{t.password}</label>
+                    <div className="relative">
                       <input
                         type={showPassword ? 'text' : 'password'} value={password}
                         onChange={e => setPassword(e.target.value)}
                         placeholder="••••••••"
                         onKeyDown={e => e.key === 'Enter' && handleSubmit()}
-                        style={{ width: '100%', boxSizing: 'border-box', padding: '10px 52px 10px 12px', borderRadius: '10px', border: '1px solid #e0e0e0', background: '#f8f8f8', fontSize: '14px', color: '#1D1E20', outline: 'none' }}
+                        className="w-full rounded-[10px] border border-[#e0e0e0] bg-[#f8f8f8] py-2.5 pl-3 pr-[52px] text-sm text-[#1D1E20] outline-none"
                       />
-                      <button onClick={() => setShowPassword(!showPassword)}
-                        style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#aaa' }}
+                      <button
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-[10px] top-1/2 -translate-y-1/2 cursor-pointer border-none bg-transparent text-[#aaa]"
                       >
-                        <span style={{ fontSize: '11px', fontWeight: 500 }}>
+                        <span className="text-[11px] font-medium">
                           {showPassword ? t.hide : t.see}
                         </span>
                       </button>
@@ -173,25 +165,28 @@ export default function AuthModal({ isOpen, onClose, defaultTab = 'login', lang 
                 </div>
 
                 {error && (
-                  <div style={{ marginTop: '1rem', padding: '10px 12px', borderRadius: '8px', border: '1px solid #ffc0c0', background: '#fff0f0', fontSize: '12px', color: '#cc3333' }}>
+                  <div className="mt-4 rounded-lg border border-[#ffc0c0] bg-[#fff0f0] px-3 py-2.5 text-xs text-[#cc3333]">
                     {error}
                   </div>
                 )}
                 {success && (
-                  <div style={{ marginTop: '1rem', padding: '10px 12px', borderRadius: '8px', border: '1px solid #a0e0c0', background: '#f0fff6', fontSize: '12px', color: '#2a7a50' }}>
+                  <div className="mt-4 rounded-lg border border-[#a0e0c0] bg-[#f0fff6] px-3 py-2.5 text-xs text-[#2a7a50]">
                     {success}
                   </div>
                 )}
 
-                <button onClick={handleSubmit} disabled={loading} style={{
-                  marginTop: '1.25rem', width: '100%', padding: '12px',
-                  borderRadius: '10px', border: 'none',
-                  background: loading ? '#9ee0d4' : '#48C9B0',
-                  color: '#ffffff', fontSize: '14px', fontWeight: 600,
-                  cursor: loading ? 'not-allowed' : 'pointer', transition: 'background 0.2s',
-                }}>
+                <button
+                  onClick={handleSubmit}
+                  disabled={loading}
+                  className={`mt-5 w-full rounded-[10px] border-none py-3 text-sm font-semibold text-white transition-colors ${
+                    loading
+                      ? 'cursor-not-allowed bg-[#9ee0d4]'
+                      : 'cursor-pointer bg-[#48C9B0] hover:bg-[#3ab89f]'
+                  }`}
+                >
                   {loading ? t.loading : mode === 'login' ? t.submit_login : t.submit_register}
                 </button>
+
               </div>
             </motion.div>
           </div>

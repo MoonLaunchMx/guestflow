@@ -1,5 +1,45 @@
 @import "tailwindcss";
 
+/* ── FUENTES ─────────────────────────────────────────────── */
+
+@font-face {
+  font-family: 'Satoshi';
+  src: url('/fonts/Satoshi-Variable.ttf') format('truetype');
+  font-weight: 300 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Satoshi';
+  src: url('/fonts/Satoshi-VariableItalic.ttf') format('truetype');
+  font-weight: 300 900;
+  font-style: italic;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'General Sans';
+  src: url('/fonts/GeneralSans-Variable.ttf') format('truetype');
+  font-weight: 200 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'General Sans';
+  src: url('/fonts/GeneralSans-VariableItalic.ttf') format('truetype');
+  font-weight: 200 700;
+  font-style: italic;
+  font-display: swap;
+}
+
+@theme {
+  --font-sans: 'General Sans', system-ui, sans-serif;
+  --font-display: Satoshi, system-ui, sans-serif;
+  --font-weight-bold: 560;
+}
+
 /* ── DESIGN TOKENS ─────────────────────────────────────────
    Cambia los colores aquí y se actualiza toda la app.
 ──────────────────────────────────────────────────────────── */
@@ -42,5 +82,5 @@
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: 'General Sans', system-ui, sans-serif;
 }

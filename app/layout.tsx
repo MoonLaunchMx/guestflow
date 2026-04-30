@@ -3,7 +3,7 @@ import './globals.css'
 import { PostHogProvider } from './components/PostHogProvider'
 
 export const metadata: Metadata = {
-  title: 'GuestFlow',
+  title: 'Anfiora',
   description: 'Gestión de invitados para eventos',
 }
 

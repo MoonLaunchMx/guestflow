@@ -320,8 +320,9 @@ export default function MensajesGlobalPage() {
       {/* Header global */}
       <header className="shrink-0 border-b border-[#e8e8e8] bg-white">
         <div className="mx-auto flex h-14 max-w-full items-center justify-between px-4 sm:h-16 sm:px-6">
-          <span className="text-lg font-bold sm:text-xl" style={{ fontFamily: "Georgia, serif" }}>
-            Guest<span className="text-[#48C9B0]">Flow</span>
+          <span className="shrink-0">
+            <img src="/images/isotipo.svg" alt="Anfiora" className="h-11 w-11 sm:hidden" />
+            <img src="/images/logo.svg" alt="Anfiora" className="hidden h-11 sm:block lg:h-14" />
           </span>
           <button
             onClick={() => router.push("/dashboard")}
