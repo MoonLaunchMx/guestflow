@@ -542,14 +542,14 @@ function CanvasFullscreen({ tables, getOccupied, onBack, onTableClick, onPositio
 
   useEffect(()=>{
     setPositions(prev=>{
-      const p:Record<string,{x:number;y:number}>={}
+      const p:Record<string,{x:number;y:number}>={};
       tables.forEach((t,i)=>{
         p[t.id]=prev[t.id]??(((t.position_x||t.position_y)&&(t.position_x!==0||t.position_y!==0))?{x:t.position_x,y:t.position_y}:{x:80+(i%4)*240,y:80+Math.floor(i/4)*240})
       })
       return p
     })
     setRotations(prev=>{
-      const r:Record<string,number>={}
+      const r:Record<string,number>={};
       tables.forEach(t=>{ r[t.id]=prev[t.id]??(t.rotation||0) })
       return r
     })
@@ -794,16 +794,13 @@ function CanvasFullscreen({ tables, getOccupied, onBack, onTableClick, onPositio
     touchRef.current=null
   },[tables,onTableClick,onPositionSave])
 
-  // ── FIX MOBILE: onCanvasTouchStart no cancela touch en decos ──
   const onCanvasTouchStart=(e:React.TouchEvent)=>{
     if(e.touches.length===2){pinchRef.current={dist:0};return}
-    // Solo panear si el touch NO fue sobre un canvas item
     const isItem=(e.target as HTMLElement).closest('[data-canvas-item]')
     if(!isItem){
       const area=canvasRef.current; if(!area)return
       panRef.current={startMX:e.touches[0].clientX,startMY:e.touches[0].clientY,startScrollX:area.scrollLeft,startScrollY:area.scrollTop}
     }
-    // Si es un item, startTouchDrag lo maneja el onTouchStart del div hijo
   }
 
   const onCanvasTouchMove=(e:TouchEvent)=>{
@@ -863,13 +860,11 @@ function CanvasFullscreen({ tables, getOccupied, onBack, onTableClick, onPositio
 
   return (
     <div style={{position:'fixed',inset:0,zIndex:50,display:'flex',flexDirection:'column',background:'#f5f5f5'}}>
-
       {/* ── Header ── */}
       <div style={{flexShrink:0,background:'#fff',borderBottom:'1px solid #e8e8e8',display:'flex',alignItems:'center',gap:8,padding:'8px 12px'}}>
         <button onClick={handleBack} className="flex shrink-0 items-center gap-1.5 rounded-lg border border-[#e0e0e0] px-3 py-1.5 text-xs font-medium text-[#666] hover:border-[#48C9B0] hover:text-[#48C9B0]">
           <ArrowLeft width={13} height={13}/>Lista
         </button>
-
         <div className="relative hidden sm:flex flex-1">
           <Search width={12} height={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[#bbb]"/>
           <input type="text" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Buscar invitado…"
@@ -877,7 +872,6 @@ function CanvasFullscreen({ tables, getOccupied, onBack, onTableClick, onPositio
           {search&&<button onClick={()=>setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-[#bbb]"><X width={10} height={10}/></button>}
         </div>
         {hasSearch&&<span className="hidden sm:inline-flex rounded-full bg-[#f0fdfb] px-2 py-0.5 text-[10px] font-semibold text-[#48C9B0]">{matchingIds.size} mesa{matchingIds.size!==1?'s':''}</span>}
-
         {selectedTable&&(
           <div className="flex items-center gap-1.5 rounded-lg border border-[#48C9B0] bg-[#f0fdfb] px-2 py-1">
             <span className="text-[11px] font-medium text-[#48C9B0]">{selectedTable.name||`#${selectedTable.number}`}</span>
@@ -885,7 +879,6 @@ function CanvasFullscreen({ tables, getOccupied, onBack, onTableClick, onPositio
             <button onClick={()=>{setRotations(p=>({...p,[selectedTable.id]:0}));onRotationSave(selectedTable.id,0)}} className="text-[#48C9B0] hover:text-[#1a9e88]"><RotateCw width={12} height={12}/></button>
           </div>
         )}
-
         <div className="hidden sm:flex items-center gap-2 ml-auto">
           <div className="relative">
             <button onClick={()=>setShowDecoPicker(v=>!v)} className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium transition ${showDecoPicker?'border-[#48C9B0] bg-[#f0fdfb] text-[#1a9e88]':'border-[#e0e0e0] text-[#666] hover:border-[#48C9B0] hover:text-[#48C9B0]'}`}>
@@ -936,7 +929,6 @@ function CanvasFullscreen({ tables, getOccupied, onBack, onTableClick, onPositio
         </div>
 
         <div style={{position:'absolute',inset:0,minWidth:2400,minHeight:1800,transformOrigin:'top left',transform:`scale(${zoom})`}}>
-
           {/* Decos */}
           {decos.map(item=>{
             const isDecoActive=activeDeco===item.id
@@ -982,7 +974,6 @@ function CanvasFullscreen({ tables, getOccupied, onBack, onTableClick, onPositio
                 onMouseLeave={()=>handleTableLeave(table.id)}
                 onContextMenu={e=>openContextMenu(e,table.id,'table')}
                 onTouchStart={e=>startTouchDrag(e,table.id,false)}>
-
                 {isActive&&(
                   <div data-canvas-item="true"
                     onMouseDown={e=>startRotate(e,table.id,false)}
@@ -992,11 +983,9 @@ function CanvasFullscreen({ tables, getOccupied, onBack, onTableClick, onPositio
                     <RotateCw width={11} height={11} color="white" style={{pointerEvents:'none'}}/>
                   </div>
                 )}
-
                 <div style={{transform:`rotate(${rot}deg)`,transformOrigin:'center',display:'inline-block'}}>
                   <TableSVG table={table} occupied={occ} isSelected={isActive} isHighlighted={isHL} isDimmed={isDim} colorFill={tableColor.fill} colorBorder={tableColor.border}/>
                 </div>
-
                 {table.name&&(
                   <div style={{width:dims.w,textAlign:'center',marginTop:3,opacity:isDim?0.2:1,pointerEvents:'none'}}>
                     <span style={{fontSize:11,fontWeight:600,color:isSel?'#48C9B0':'#555',display:'block',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{table.name}</span>
@@ -1030,7 +1019,6 @@ function CanvasFullscreen({ tables, getOccupied, onBack, onTableClick, onPositio
             <Search width={12} height={12}/>{hasSearch?`${matchingIds.size} mesas`:'Buscar'}
           </button>
         )}
-
         {!showSearch&&(
           <div className="relative">
             <button onClick={()=>setShowDecoPicker(v=>!v)}
@@ -1052,7 +1040,6 @@ function CanvasFullscreen({ tables, getOccupied, onBack, onTableClick, onPositio
             )}
           </div>
         )}
-
         <button onClick={onOpenCreate} className="ml-auto flex shrink-0 items-center gap-1.5 rounded-lg bg-[#48C9B0] px-3 py-1.5 text-xs font-semibold text-white">
           <Plus width={13} height={13}/>Nueva mesa
         </button>
@@ -1312,7 +1299,6 @@ export default function MesasPage() {
     setTables(combined);setGuests(Array.from(gMap.values()))
     setEventTags(eR.data?.guest_tags||[])
     setEventInfo({name:eR.data?.name||'',event_date:eR.data?.event_date||null,venue:eR.data?.venue||null})
-    // Cargar canvas_data — solo si la columna existe (no truena si es null)
     const cd=eR.data?.canvas_data
     if(cd){
       if(cd.decos)          setCanvasDecos(cd.decos)
@@ -1349,25 +1335,98 @@ export default function MesasPage() {
   const totalFree=totalSeats-tables.reduce((a,t)=>a+getOccupied(t),0)
   const fullTables=tables.filter(t=>getOccupied(t)>=t.capacity).length
 
-  const openEditGuest=(g:GuestFull)=>{setEditGuest(g);setEName(g.name);setEPhone(g.phone||'');setEEmail(g.email||'');setENotes(g.notes||'');setETags(g.tags||[]);setEError('');setEMembers(g.party_members.map(m=>({id:m.id,name:m.name,phone:'',rsvp_status:m.rsvp_status})))}
-  const handleEditSave=async()=>{
-    if(!editGuest)return
-    if(!eName){setEError('El nombre es obligatorio');return}
-    if(ePhone){const n=normalizePhone(ePhone);const dup=guests.find(g=>g.id!==editGuest.id&&g.phone&&normalizePhone(g.phone)===n);if(dup){setEError(`WhatsApp ya registrado para "${dup.name}"`);return}}
-    setESaving(true);setEError('')
-    const newPartySize=1+eMembers.length
-    await supabase.from('guests').update({name:eName,phone:ePhone||null,email:eEmail||null,party_size:newPartySize,notes:eNotes||null,tags:eTags}).eq('id',editGuest.id)
-    const keepIds=eMembers.filter(m=>m.id).map(m=>m.id as string)
-    const toDel=editGuest.party_members.map(m=>m.id).filter(id=>!keepIds.includes(id))
-    if(toDel.length)await supabase.from('party_members').delete().in('id',toDel)
-    for(const m of eMembers.filter(m=>m.id))await supabase.from('party_members').update({name:m.name,phone:m.phone||null,rsvp_status:m.rsvp_status}).eq('id',m.id!)
-    const ins=eMembers.filter(m=>!m.id)
-    if(ins.length)await supabase.from('party_members').insert(ins.map(m=>({guest_id:editGuest.id,event_id:eventId as string,name:m.name,phone:m.phone||null,rsvp_status:m.rsvp_status})))
-    const seatRecord=gSeatMap.get(editGuest.id)
-    if(seatRecord){
-      await supabase.from('table_seats').update({party_size:newPartySize}).eq('id',seatRecord.seatId)
+  const openEditGuest=(g:GuestFull)=>{
+    setEditGuest(g)
+    setEName(g.name)
+    setEPhone(g.phone||'')
+    setEEmail(g.email||'')
+    setENotes(g.notes||'')
+    setETags(g.tags||[])
+    setEError('')
+    setEMembers(g.party_members.map(m=>({id:m.id,name:m.name,phone:'',rsvp_status:m.rsvp_status})))
+  }
+
+  // ─── FIX: handleEditSave con validacion de capacidad ─────────────────────
+  const handleEditSave = async () => {
+    if (!editGuest) return
+    if (!eName) { setEError('El nombre es obligatorio'); return }
+
+    if (ePhone) {
+      const n = normalizePhone(ePhone)
+      const dup = guests.find(g => g.id !== editGuest.id && g.phone && normalizePhone(g.phone) === n)
+      if (dup) { setEError(`WhatsApp ya registrado para "${dup.name}"`); return }
     }
-    await loadTables();setEditGuest(null);setESaving(false)
+
+    const newPartySize = 1 + eMembers.length
+
+    // Validar capacidad solo si el invitado ya está asignado a una mesa
+    const seatRecord = gSeatMap.get(editGuest.id)
+    if (seatRecord) {
+      const assignedTable = tables.find(t => t.id === seatRecord.tableId)
+      if (assignedTable) {
+        const currentOccupied = getOccupied(assignedTable)
+        // Espacio real = capacidad total - ocupados + lo que ocupa este grupo actualmente
+        // (descontamos el grupo actual porque va a ser reemplazado por el nuevo tamaño)
+        const spaceAvailableForThisGroup = assignedTable.capacity - currentOccupied + editGuest.party_size
+        if (newPartySize > spaceAvailableForThisGroup) {
+          setEError(
+            `Sin espacio en Mesa #${seatRecord.tableNumber}: necesitas ${newPartySize} asiento(s) ` +
+            `pero solo hay ${spaceAvailableForThisGroup} disponible(s) para este grupo. ` +
+            `Reduce acompañantes o mueve al invitado a otra mesa primero.`
+          )
+          return
+        }
+      }
+    }
+
+    setESaving(true)
+    setEError('')
+
+    await supabase.from('guests').update({
+      name: eName,
+      phone: ePhone || null,
+      email: eEmail || null,
+      party_size: newPartySize,
+      notes: eNotes || null,
+      tags: eTags,
+    }).eq('id', editGuest.id)
+
+    // Eliminar acompañantes removidos
+    const keepIds = eMembers.filter(m => m.id).map(m => m.id as string)
+    const toDel = editGuest.party_members.map(m => m.id).filter(id => !keepIds.includes(id))
+    if (toDel.length) await supabase.from('party_members').delete().in('id', toDel)
+
+    // Actualizar acompañantes existentes
+    for (const m of eMembers.filter(m => m.id)) {
+      await supabase.from('party_members').update({
+        name: m.name,
+        phone: m.phone || null,
+        rsvp_status: m.rsvp_status,
+      }).eq('id', m.id!)
+    }
+
+    // Insertar acompañantes nuevos
+    const ins = eMembers.filter(m => !m.id)
+    if (ins.length) {
+      await supabase.from('party_members').insert(
+        ins.map(m => ({
+          guest_id: editGuest.id,
+          event_id: eventId as string,
+          name: m.name,
+          phone: m.phone || null,
+          rsvp_status: m.rsvp_status,
+        }))
+      )
+    }
+
+    // Actualizar party_size en table_seats si está asignado
+    if (seatRecord) {
+      await supabase.from('table_seats').update({ party_size: newPartySize }).eq('id', seatRecord.seatId)
+    }
+
+    await loadTables()
+    setEditGuest(null)
+    setESaving(false)
   }
 
   const toggleCheckin=async(gId:string,cur:boolean)=>{await supabase.from('guests').update({checked_in:!cur}).eq('id',gId);setTables(p=>p.map(t=>({...t,seats:t.seats.map(s=>s.guest?.id!==gId?s:{...s,guest:{...s.guest!,checked_in:!cur}})})))}
@@ -1472,7 +1531,7 @@ export default function MesasPage() {
         <div className="mb-4"><h1 className="text-lg font-bold text-[#1D1E20] sm:text-xl lg:text-2xl">Mesas</h1><p className="mt-0.5 text-xs text-[#888] sm:text-sm">Organiza tus invitados por mesa</p></div>
         <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
           <div className="rounded-xl border border-[#e8e8e8] bg-white p-3"><div className="mb-1.5 flex items-center justify-between"><span className="text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Confirmados</span><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="#48C9B0" strokeWidth="1.5"/><path d="M5 8l2 2 4-4" stroke="#48C9B0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></div><div className="text-2xl font-bold text-[#1D1E20] sm:text-3xl">{confirmed}</div><div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[#e8e8e8]"><div className="h-full rounded-full bg-[#48C9B0]" style={{width:guests.length>0?`${(confirmed/guests.length)*100}%`:'0%'}}/></div><div className="mt-1 text-[10px] text-[#aaa]">{guests.length} invitados totales</div></div>
-          <div className="rounded-xl border border-[#e8e8e8] bg-white p-3"><div className="mb-1.5 flex items-center justify-between"><span className="text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Por asignar</span><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5" r="2.5" stroke={unassigned>0?'#cc8800':'#bbb'} strokeWidth="1.5"/><path d="M3 14c0-2.8 2.2-5 5-5s5 2.2 5 5" stroke={unassigned>0?'#cc8800':'#bbb'} strokeWidth="1.5" strokeLinecap="round"/></svg></div><div className="text-2xl font-bold sm:text-3xl" style={{color:unassigned>0?'#cc8800':'#1D1E20'}}>{unassigned}</div>{unassigned>0?<div className="mt-1 text-[10px] font-medium text-[#cc8800]">Sin mesa asignada</div>:<div className="mt-1 text-[10px] text-[#48C9B0]">Todos asignados ✓</div>}</div>
+          <div className="rounded-xl border border-[#e8e8e8] bg-white p-3"><div className="mb-1.5 flex items-center justify-between"><span className="text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Por asignar</span><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5" r="2.5" stroke={unassigned>0?'#cc8800':'#bbb'} strokeWidth="1.5"/><path d="M3 14c0-2.2 2.2-5 5-5s5 2.2 5 5" stroke={unassigned>0?'#cc8800':'#bbb'} strokeWidth="1.5" strokeLinecap="round"/></svg></div><div className="text-2xl font-bold sm:text-3xl" style={{color:unassigned>0?'#cc8800':'#1D1E20'}}>{unassigned}</div>{unassigned>0?<div className="mt-1 text-[10px] font-medium text-[#cc8800]">Sin mesa asignada</div>:<div className="mt-1 text-[10px] text-[#48C9B0]">Todos asignados ✓</div>}</div>
           <div className="rounded-xl border border-[#e8e8e8] bg-white p-3"><div className="mb-1.5 flex items-center justify-between"><span className="text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Asientos libres</span><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="3" y="9" width="10" height="4" rx="1" stroke="#48C9B0" strokeWidth="1.5"/><path d="M5 9V6a3 3 0 0 1 6 0v3" stroke="#48C9B0" strokeWidth="1.5" strokeLinecap="round"/></svg></div><div className="text-2xl font-bold text-[#1D1E20] sm:text-3xl">{String(totalFree).padStart(2,'0')}</div><div className="mt-1 text-[10px] text-[#aaa]">de {totalSeats} totales</div></div>
           <div className="rounded-xl border border-[#e8e8e8] bg-white p-3"><div className="mb-1.5"><span className="text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Mesas listas</span></div><div className="flex items-center justify-between"><div><div className="text-2xl font-bold text-[#1D1E20] sm:text-3xl">{fullTables}<span className="text-sm font-normal text-[#aaa]"> / {tables.length}</span></div><div className="mt-1 text-[10px] text-[#aaa]">Mesas al 100%</div></div><DonutChart value={fullTables} total={tables.length}/></div></div>
         </div>
@@ -1593,11 +1652,26 @@ export default function MesasPage() {
         )}
       </div>
 
-      {/* Modales lista */}
+      {/* Modal editar invitado */}
       {editGuest&&(
         <div className="fixed inset-0 z-[300] flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-md overflow-y-auto rounded-2xl border border-[#e8e8e8] bg-white p-6 shadow-xl sm:p-8" style={{maxHeight:'90vh'}}>
             <div className="mb-6 flex items-center justify-between"><h2 className="text-lg font-bold text-[#1D1E20] sm:text-xl">Editar invitado</h2><button onClick={()=>setEditGuest(null)} className="text-xl text-[#aaa]">✕</button></div>
+            {/* Aviso de mesa asignada */}
+            {gSeatMap.get(editGuest.id)&&(()=>{
+              const sr=gSeatMap.get(editGuest.id)
+              const assignedTable=tables.find(t=>t.id===sr.tableId)
+              if(!assignedTable)return null
+              const occ=getOccupied(assignedTable)
+              const available=assignedTable.capacity-occ+editGuest.party_size
+              return(
+                <div className="mb-4 rounded-lg border border-[#e8f8f4] bg-[#f0fdfb] px-3 py-2.5">
+                  <p className="text-[11px] font-semibold text-[#1a9e88]">
+                    Asignado a Mesa #{sr.tableNumber} · {available} asiento(s) disponibles para este grupo
+                  </p>
+                </div>
+              )
+            })()}
             <div className="flex flex-col gap-4">
               <div><label className="mb-1.5 block text-xs font-medium text-[#555]">Nombre *</label><input type="text" value={eName} onChange={e=>setEName(e.target.value)} style={inpStyle}/></div>
               <div><label className="mb-1.5 block text-xs font-medium text-[#555]">WhatsApp</label><input type="tel" value={ePhone} onChange={e=>setEPhone(e.target.value)} placeholder="+52 81 1234 5678" style={inpStyle}/></div>
@@ -1614,7 +1688,9 @@ export default function MesasPage() {
           </div>
         </div>
       )}
+
       <ModalMesa visible={showModal} editTable={editTable} mNum={mNum} setMNum={setMNum} mName={mName} setMName={setMName} mCap={mCap} setMCap={setMCap} mShape={mShape} setMShape={setMShape} mError={mError} mSaving={mSaving} onSave={handleSaveTable} onClose={()=>setShowModal(false)} inp={inp}/>
+
       {showBulk&&(
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-sm rounded-2xl border border-[#e8e8e8] bg-white p-6 shadow-xl">
@@ -1631,6 +1707,7 @@ export default function MesasPage() {
           </div>
         </div>
       )}
+
       <ModalAsignar tables={tables} guests={guests} assignModal={assignModal} assignSearch={assignSearch} setAssignSearch={setAssignSearch} assignRef={assignRef} gSeatMap={gSeatMap} getOccupied={getOccupied} handleSelectGuest={handleSelectGuest} onClose={()=>{setAssignModal(null);setAssignSearch('')}}/>
       <ModalMover moveModal={moveModal} tables={tables} moveSaving={moveSaving} onConfirm={handleMove} onClose={()=>setMoveModal(null)}/>
     </div>
