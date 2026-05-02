@@ -1,13 +1,29 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { MessageSquarePlus } from "lucide-react";
+import { supabase } from "@/lib/supabase";
 
 export default function FeedbackWidget() {
+  const pathname = usePathname();
+  const [isAuth, setIsAuth] = useState(false);
   const [page, setPage] = useState("");
 
   useEffect(() => {
     setPage(window.location.pathname);
+  }, [pathname]);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      setIsAuth(!!data.session);
+    });
+
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      setIsAuth(!!session);
+    });
+
+    return () => listener.subscription.unsubscribe();
   }, []);
 
   useEffect(() => {
@@ -17,6 +33,8 @@ export default function FeedbackWidget() {
     s.src = w;
     document.body.appendChild(s);
   }, []);
+
+  if (!isAuth) return null;
 
   return (
     <button
