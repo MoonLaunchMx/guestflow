@@ -1,8 +1,26 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import {
+  DndContext,
+  closestCenter,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+  DragStartEvent,
+  DragOverlay,
+} from '@dnd-kit/core'
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+  useSortable,
+  arrayMove,
+} from '@dnd-kit/sortable'
+import { CSS } from '@dnd-kit/utilities'
 
 interface Song {
   id: string
@@ -14,6 +32,9 @@ interface Song {
   created_at: string
   position: number
   notes: string | null
+  thumbnail: string | null
+  preview_url: string | null
+  duration_ms: number | null
 }
 
 function generateToken(length = 10): string {
@@ -21,136 +42,266 @@ function generateToken(length = 10): string {
   return Array.from({ length }, () => chars[Math.floor(Math.random() * chars.length)]).join('')
 }
 
-function detectPlatform(url: string): 'spotify' | 'youtube' | 'apple' | 'unknown' {
-  if (url.includes('spotify.com')) return 'spotify'
-  if (url.includes('youtube.com') || url.includes('youtu.be') || url.includes('music.youtube.com')) return 'youtube'
-  if (url.includes('music.apple.com')) return 'apple'
-  return 'unknown'
+function formatTime(sec: number): string {
+  const m = Math.floor(sec / 60)
+  const s = Math.floor(sec % 60)
+  return `${m}:${s.toString().padStart(2, '0')}`
 }
 
-const PLATFORM_CONFIG = {
-  spotify: { label: 'Spotify',     color: 'border-[#1DB954] text-[#1DB954] hover:bg-[#f0fdf4]' },
-  youtube: { label: 'YouTube',     color: 'border-[#FF0000] text-[#FF0000] hover:bg-[#fff5f5]' },
-  apple:   { label: 'Apple Music', color: 'border-[#fc3c44] text-[#fc3c44] hover:bg-[#fff5f5]' },
-  unknown: { label: 'Link',        color: 'border-[#d0d0d0] text-[#888]   hover:bg-[#fafafa]'  },
-}
-
-// ── Fuera del componente principal ─────────────────────────────────────────
-function SongCard({
-  song,
-  isFirst,
-  isLast,
-  isEditingNote,
-  onMoveUp,
-  onMoveDown,
-  onOpenNote,
-  onCloseNote,
-  onSaveNote,
+function MiniPlayer({
+  song, playing, currentTime, onToggle,
 }: {
   song: Song
-  isFirst: boolean
-  isLast: boolean
+  playing: boolean
+  currentTime: number
+  onToggle: () => void
+}) {
+  const pct = (currentTime / 30) * 100
+  return (
+    <div className="flex shrink-0 items-center gap-3 border-t border-[#e8e8e8] bg-white px-6 py-3">
+      {song.thumbnail && (
+        <img src={song.thumbnail} alt={song.song_title} className="h-8 w-8 shrink-0 rounded object-cover" />
+      )}
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-xs font-medium text-[#1D1E20]">
+          {song.song_title} · <span className="text-[#888]">{song.artist}</span>
+        </p>
+        <p className="text-[10px] text-[#bbb]">preview 30 seg</p>
+        <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-[#e8e8e8]">
+          <div className="h-full rounded-full bg-[#48C9B0] transition-all" style={{ width: `${pct}%` }} />
+        </div>
+      </div>
+      <button onClick={onToggle} className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#48C9B0]">
+        {playing ? (
+          <svg width="8" height="10" viewBox="0 0 8 10" fill="none">
+            <rect x="0" y="0" width="3" height="10" fill="white" />
+            <rect x="5" y="0" width="3" height="10" fill="white" />
+          </svg>
+        ) : (
+          <svg width="8" height="10" viewBox="0 0 8 10" fill="none">
+            <path d="M1 1L7 5L1 9V1Z" fill="white" />
+          </svg>
+        )}
+      </button>
+      <span className="text-[10px] text-[#bbb]">{formatTime(currentTime)} / 0:30</span>
+    </div>
+  )
+}
+
+function SongRow({
+  song, isPlaying, onTogglePlay, onEditNote, isEditingNote, onCloseNote, onSaveNote,
+}: {
+  song: Song
+  isPlaying: boolean
+  onTogglePlay: () => void
+  onEditNote: () => void
   isEditingNote: boolean
-  onMoveUp: () => Promise<void>
-  onMoveDown: () => Promise<void>
-  onOpenNote: () => void
   onCloseNote: () => void
   onSaveNote: (note: string) => Promise<void>
 }) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: song.id })
   const [localNote, setLocalNote] = useState(song.notes || '')
-  const platform = song.spotify_url ? detectPlatform(song.spotify_url) : 'unknown'
-  const platformConfig = PLATFORM_CONFIG[platform]
 
   useEffect(() => {
     if (isEditingNote) setLocalNote(song.notes || '')
-  }, [isEditingNote])
+  }, [isEditingNote, song.notes])
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.4 : 1,
+  }
 
   return (
-    <div className="rounded-xl border border-[#e8e8e8] bg-white">
-      <div className="flex items-center gap-2 px-3 py-3">
-        <div className="flex shrink-0 flex-col gap-0.5">
-          <button onClick={onMoveUp} className={`flex h-5 w-5 items-center justify-center rounded text-[#ccc] transition hover:bg-[#f0f0f0] hover:text-[#888] ${isFirst ? 'invisible' : ''}`}>
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><polygon points="5,2 9,8 1,8"/></svg>
-          </button>
-          <button onClick={onMoveDown} className={`flex h-5 w-5 items-center justify-center rounded text-[#ccc] transition hover:bg-[#f0f0f0] hover:text-[#888] ${isLast ? 'invisible' : ''}`}>
-            <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><polygon points="5,8 9,2 1,2"/></svg>
-          </button>
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`rounded-xl border bg-white transition ${isPlaying ? 'border-[#48C9B0] bg-[#f0fdfb]' : 'border-[#e8e8e8]'}`}
+    >
+      <div className="flex items-center gap-3 px-3 py-3">
+
+        {/* Drag handle */}
+        <div
+          {...attributes}
+          {...listeners}
+          className="flex shrink-0 cursor-grab flex-col gap-[3px] px-0.5 py-1 active:cursor-grabbing"
+        >
+          <span className="block h-px w-3 rounded bg-[#ccc]" />
+          <span className="block h-px w-3 rounded bg-[#ccc]" />
+          <span className="block h-px w-3 rounded bg-[#ccc]" />
         </div>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-[#1D1E20]">{song.song_title}</p>
-          <p className="truncate text-xs text-[#888]">
-            {song.artist}
-            <span className="mx-1.5 text-[#ddd]">·</span>
-            <span className="text-[#48C9B0]">{song.guest_name}</span>
-            {song.category && (
-              <>
-                <span className="mx-1.5 text-[#ddd]">·</span>
-                <span className="text-[#bbb]">{song.category}</span>
-              </>
-            )}
+
+        {/* Play button */}
+        <button
+          onClick={onTogglePlay}
+          disabled={!song.preview_url}
+          className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full border transition
+            ${isPlaying ? 'border-[#48C9B0] bg-[#48C9B0]' : 'border-[#e0e0e0] bg-white hover:border-[#48C9B0]'}
+            ${!song.preview_url ? 'cursor-not-allowed opacity-30' : ''}`}
+        >
+          {isPlaying ? (
+            <svg width="7" height="9" viewBox="0 0 8 10" fill="none">
+              <rect x="0" y="0" width="3" height="10" fill="white" />
+              <rect x="5" y="0" width="3" height="10" fill="white" />
+            </svg>
+          ) : (
+            <svg width="7" height="9" viewBox="0 0 8 10" fill="none">
+              <path d="M1 1L7 5L1 9V1Z" fill="#ccc" />
+            </svg>
+          )}
+        </button>
+
+        {/* Thumbnail */}
+        {song.thumbnail ? (
+          <img src={song.thumbnail} alt={song.song_title} className="h-9 w-9 shrink-0 rounded object-cover" />
+        ) : (
+          <div className="h-9 w-9 shrink-0 rounded bg-[#f0f0f0]" />
+        )}
+
+        {/* Título + Artista */}
+        <div className="w-48 shrink-0">
+          <p className={`truncate text-sm font-medium ${isPlaying ? 'text-[#48C9B0]' : 'text-[#1D1E20]'}`}>
+            {song.song_title}
+          </p>
+          <p className="truncate text-xs text-[#888]">{song.artist}</p>
+          {isPlaying && (
+            <div className="mt-1 h-0.5 w-full overflow-hidden rounded-full bg-[#e8e8e8]">
+              <div className="h-full animate-pulse rounded-full bg-[#48C9B0]" style={{ width: '60%' }} />
+            </div>
+          )}
+        </div>
+
+        {/* Recomendado por */}
+        <div className="w-24 shrink-0">
+          <p className="truncate text-xs text-[#48C9B0]">{song.guest_name}</p>
+        </div>
+
+        {/* Duración */}
+        <div className="w-10 shrink-0 text-right">
+          <p className="text-xs text-[#bbb]">
+            {song.duration_ms ? `${Math.floor(song.duration_ms / 60000)}:${String(Math.floor((song.duration_ms % 60000) / 1000)).padStart(2, '0')}` : '—'}
           </p>
         </div>
-        <button
-          onClick={() => isEditingNote ? onCloseNote() : onOpenNote()}
-          className={`shrink-0 rounded-full border px-2.5 py-1 text-xs transition ${song.notes || isEditingNote ? 'border-[#48C9B0] bg-[#f0fdfb] text-[#1a9e88]' : 'border-[#e0e0e0] text-[#bbb] hover:border-[#48C9B0] hover:text-[#1a9e88]'}`}
-        >
-          {song.notes ? 'Nota' : '+ Nota'}
-        </button>
+
+        {/* Nota inline */}
+        <div className="flex min-w-0 flex-1 items-center">
+          {isEditingNote ? (
+            <div className="flex flex-1 items-center gap-1.5">
+              <input
+                autoFocus
+                value={localNote}
+                onChange={e => setLocalNote(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') onSaveNote(localNote)
+                  if (e.key === 'Escape') onCloseNote()
+                }}
+                placeholder="Nota para el DJ..."
+                className="flex-1 rounded-lg border border-[#48C9B0] bg-white px-2.5 py-1 text-xs text-[#1D1E20] outline-none"
+              />
+              <button
+                onClick={() => onSaveNote(localNote)}
+                className="shrink-0 rounded-lg bg-[#48C9B0] px-2.5 py-1 text-xs font-semibold text-white hover:bg-[#3ab89f]"
+              >
+                ✓
+              </button>
+              <button
+                onClick={onCloseNote}
+                className="shrink-0 rounded-lg border border-[#e0e0e0] px-2.5 py-1 text-xs text-[#aaa] hover:bg-[#f5f5f5]"
+              >
+                ✕
+              </button>
+            </div>
+          ) : song.notes ? (
+            <button
+              onClick={onEditNote}
+              className="max-w-full truncate rounded-lg border border-[#48C9B0] bg-[#f0fdfb] px-2.5 py-1 text-left text-xs text-[#1a9e88] hover:bg-[#e0faf5]"
+            >
+              {song.notes}
+            </button>
+          ) : (
+            <button
+              onClick={onEditNote}
+              className="rounded-lg border border-dashed border-[#e0e0e0] px-2.5 py-1 text-xs text-[#ccc] transition hover:border-[#48C9B0] hover:text-[#1a9e88]"
+            >
+              + Nota
+            </button>
+          )}
+        </div>
+
+        {/* Etapa */}
+        {song.category ? (
+          <span className="shrink-0 rounded-full border border-[#e8e8e8] px-2.5 py-0.5 text-xs text-[#aaa]">
+            {song.category}
+          </span>
+        ) : (
+          <span className="shrink-0 rounded-full border border-dashed border-[#e0e0e0] px-2.5 py-0.5 text-xs text-[#ccc]">
+            Sin etapa
+          </span>
+        )}
+
+        {/* Spotify */}
         {song.spotify_url && (
           <button
             onClick={() => window.open(song.spotify_url!, '_blank')}
-            className={`shrink-0 rounded-full border px-2.5 py-1 text-xs transition ${platformConfig.color}`}
+            className="shrink-0 rounded-full border border-[#e0e0e0] px-2.5 py-0.5 text-xs text-[#aaa] transition hover:border-[#1DB954] hover:text-[#1DB954]"
           >
-            {platformConfig.label}
+            Spotify ↗
           </button>
         )}
       </div>
-      {isEditingNote && (
-        <div className="border-t border-[#f0f0f0] px-3 pb-3 pt-2">
-          <textarea
-            value={localNote}
-            onChange={e => setLocalNote(e.target.value)}
-            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSaveNote(localNote) } }}
-            placeholder="Ej: perfecta para abrir el vals..."
-            rows={2}
-            autoFocus
-            className="w-full resize-none rounded-lg border border-[#d0d0d0] bg-[#fafafa] px-3 py-2 text-xs text-[#1D1E20] outline-none transition focus:border-[#48C9B0]"
-          />
-          <div className="mt-1.5 flex items-center justify-between">
-            <p className="text-[10px] text-[#bbb]">Enter para guardar · Shift+Enter nueva línea</p>
-            <div className="flex gap-1.5">
-              <button onClick={onCloseNote} className="rounded-lg border border-[#e0e0e0] px-2.5 py-1 text-xs text-[#aaa] hover:bg-[#f5f5f5]">Cancelar</button>
-              <button onClick={() => onSaveNote(localNote)} className="rounded-lg bg-[#48C9B0] px-2.5 py-1 text-xs font-semibold text-white hover:bg-[#3ab89f]">Guardar</button>
-            </div>
-          </div>
-        </div>
+    </div>
+  )
+}
+
+function DragCard({ song }: { song: Song }) {
+  return (
+    <div className="flex items-center gap-2 rounded-xl border border-[#48C9B0] bg-white px-3 py-2.5 shadow-lg opacity-95">
+      <div className="flex shrink-0 cursor-grabbing flex-col gap-[3px] px-0.5 py-1">
+        <span className="block h-px w-3 rounded bg-[#ccc]" />
+        <span className="block h-px w-3 rounded bg-[#ccc]" />
+        <span className="block h-px w-3 rounded bg-[#ccc]" />
+      </div>
+      {song.thumbnail ? (
+        <img src={song.thumbnail} alt={song.song_title} className="h-8 w-8 shrink-0 rounded object-cover" />
+      ) : (
+        <div className="h-8 w-8 shrink-0 rounded bg-[#f0f0f0]" />
       )}
-      {song.notes && !isEditingNote && (
-        <div onClick={onOpenNote} className="cursor-pointer border-t border-[#f0f0f0] px-3 pb-2.5 pt-2">
-          <p className="text-xs text-[#888]">{song.notes}</p>
-        </div>
-      )}
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-xs font-medium text-[#1D1E20]">{song.song_title}</p>
+        <p className="truncate text-[10px] text-[#888]">{song.artist}</p>
+      </div>
     </div>
   )
 }
 
 export default function PlaylistPlannerPage() {
   const { id } = useParams()
+
   const [allSongs, setAllSongs]           = useState<Song[]>([])
   const [categories, setCategories]       = useState<string[]>([])
   const [playlistToken, setPlaylistToken] = useState<string | null>(null)
   const [loading, setLoading]             = useState(true)
   const [saving, setSaving]               = useState(false)
   const [filterCat, setFilterCat]         = useState('todas')
-  const [filterPlat, setFilterPlat]       = useState('todas')
   const [search, setSearch]               = useState('')
   const [editingNoteId, setEditingNoteId] = useState<string | null>(null)
   const [newCat, setNewCat]               = useState('')
   const [addingCat, setAddingCat]         = useState(false)
   const [copied, setCopied]               = useState(false)
   const [mobileTab, setMobileTab]         = useState<'playlist' | 'config'>('playlist')
+  const [activeDragId, setActiveDragId]   = useState<string | null>(null)
+
+  const [playingId, setPlayingId]         = useState<string | null>(null)
+  const [currentTime, setCurrentTime]     = useState(0)
+  const audioRef                          = useRef<HTMLAudioElement | null>(null)
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } })
+  )
 
   useEffect(() => { loadData() }, [])
+  useEffect(() => { return () => { audioRef.current?.pause() } }, [])
 
   const loadData = async () => {
     const [{ data: settingsData }, { data: songsData }] = await Promise.all([
@@ -204,108 +355,80 @@ export default function PlaylistPlannerPage() {
     await savePlaylistSettings(playlistToken, updated)
   }
 
-  const moveUp = async (index: number) => {
-    if (index === 0) return
-    const updated = [...allSongs]
-    ;[updated[index - 1], updated[index]] = [updated[index], updated[index - 1]]
-    const reindexed = updated.map((s, i) => ({ ...s, position: i }))
-    setAllSongs(reindexed)
-    await persistOrder(reindexed)
-  }
+  const togglePlay = useCallback((song: Song) => {
+    if (!song.preview_url) return
+    if (playingId === song.id) {
+      if (audioRef.current?.paused) {
+        audioRef.current.play()
+      } else {
+        audioRef.current?.pause()
+        setPlayingId(null)
+      }
+      return
+    }
+    audioRef.current?.pause()
+    const audio = new Audio(song.preview_url)
+    audioRef.current = audio
+    setPlayingId(song.id)
+    setCurrentTime(0)
+    audio.addEventListener('timeupdate', () => setCurrentTime(audio.currentTime))
+    audio.addEventListener('ended', () => { setPlayingId(null); setCurrentTime(0) })
+    audio.play()
+  }, [playingId])
 
-  const moveDown = async (index: number) => {
-    if (index === allSongs.length - 1) return
-    const updated = [...allSongs]
-    ;[updated[index], updated[index + 1]] = [updated[index + 1], updated[index]]
-    const reindexed = updated.map((s, i) => ({ ...s, position: i }))
-    setAllSongs(reindexed)
-    await persistOrder(reindexed)
-  }
+  const toggleMiniPlayer = useCallback(() => {
+    if (!audioRef.current) return
+    if (audioRef.current.paused) {
+      audioRef.current.play()
+      setPlayingId(prev => prev)
+    } else {
+      audioRef.current.pause()
+      setPlayingId(null)
+    }
+  }, [])
 
-  const persistOrder = async (ordered: Song[]) => {
+  const handleDragStart = (event: DragStartEvent) => setActiveDragId(event.active.id as string)
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    setActiveDragId(null)
+    const { active, over } = event
+    if (!over || active.id === over.id) return
+    const oldIndex = allSongs.findIndex(s => s.id === active.id)
+    const newIndex = allSongs.findIndex(s => s.id === over.id)
+    const reordered = arrayMove(allSongs, oldIndex, newIndex).map((s, i) => ({ ...s, position: i }))
+    setAllSongs(reordered)
     setSaving(true)
-    await Promise.all(ordered.map(s =>
+    await Promise.all(reordered.map(s =>
       supabase.from('song_recommendations').update({ position: s.position }).eq('id', s.id)
     ))
     setSaving(false)
   }
 
-  const openNote = (song: Song) => {
-    setEditingNoteId(song.id)
+  const saveNote = async (songId: string, note: string) => {
+    await supabase.from('song_recommendations').update({ notes: note || null }).eq('id', songId)
+    setAllSongs(prev => prev.map(s => s.id === songId ? { ...s, notes: note || null } : s))
+    setEditingNoteId(null)
   }
 
-  const closeNote = () => setEditingNoteId(null)
-
-const saveNote = async (songId: string, note: string) => {
-  await supabase.from('song_recommendations').update({ notes: note || null }).eq('id', songId)
-  setAllSongs(prev => prev.map(s => s.id === songId ? { ...s, notes: note || null } : s))
-  setEditingNoteId(null)
-}
-
-  const totalSongs   = allSongs.length
-  const uniqueGuests = new Set(allSongs.map(s => s.guest_name)).size
+  const totalSongs     = allSongs.length
+  const uniqueGuests   = new Set(allSongs.map(s => s.guest_name)).size
+  const activeDragSong = activeDragId ? allSongs.find(s => s.id === activeDragId) : null
+  const playingSong    = playingId ? allSongs.find(s => s.id === playingId) : null
 
   const filtered = allSongs.filter(s => {
-    const matchCat    = filterCat  === 'todas' || s.category === filterCat
-    const matchPlat   = filterPlat === 'todas' || (s.spotify_url && detectPlatform(s.spotify_url) === filterPlat)
+    const matchCat    = filterCat === 'todas' || s.category === filterCat || (filterCat === '__none__' && !s.category)
     const matchSearch = search === '' ||
       s.song_title.toLowerCase().includes(search.toLowerCase()) ||
       s.artist.toLowerCase().includes(search.toLowerCase()) ||
       s.guest_name.toLowerCase().includes(search.toLowerCase())
-    return matchCat && matchPlat && matchSearch
+    return matchCat && matchSearch
   })
 
   if (loading) return <div className="p-8 text-sm text-[#666]">Cargando playlist...</div>
 
-  const SongRows = ({ songs }: { songs: Song[] }) => (
-    <div className="flex flex-col gap-2">
-      {songs.map(song => {
-        const globalIndex = allSongs.findIndex(s => s.id === song.id)
-        return (
-          <SongCard
-            key={song.id}
-            song={song}
-            isFirst={globalIndex === 0}
-            isLast={globalIndex === allSongs.length - 1}
-            isEditingNote={editingNoteId === song.id}
-            onMoveUp={() => moveUp(globalIndex)}
-            onMoveDown={() => moveDown(globalIndex)}
-            onOpenNote={() => openNote(song)}
-            onCloseNote={closeNote}
-            onSaveNote={(note) => saveNote(song.id, note)}
-          />
-        )
-      })}
-    </div>
-  )
-
-  const KpiCards = () => (
-    <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
-      <div className="rounded-xl border border-[#e8e8e8] bg-white px-4 py-3">
-        <p className="text-[10px] uppercase tracking-wide text-[#999]">Canciones</p>
-        <p className="mt-1 text-2xl font-semibold text-[#1D1E20]">{totalSongs}</p>
-      </div>
-      <div className="rounded-xl border border-[#e8e8e8] bg-white px-4 py-3">
-        <p className="text-[10px] uppercase tracking-wide text-[#999]">Participaron</p>
-        <p className="mt-1 text-2xl font-semibold text-[#48C9B0]">{uniqueGuests}</p>
-        <p className="text-[10px] text-[#999]">invitados</p>
-      </div>
-      <div className="rounded-xl border border-[#e8e8e8] bg-white px-4 py-3">
-        <p className="text-[10px] uppercase tracking-wide text-[#999]">Categorías</p>
-        <p className="mt-1 text-2xl font-semibold text-[#1D1E20]">{categories.length}</p>
-      </div>
-      <div className="hidden rounded-xl border border-[#e8e8e8] bg-white px-4 py-3 sm:block">
-        <p className="text-[10px] uppercase tracking-wide text-[#999]">Sin categoría</p>
-        <p className="mt-1 text-2xl font-semibold text-[#1D1E20]">{allSongs.filter(s => !s.category).length}</p>
-      </div>
-    </div>
-  )
-
-  const CategoryManager = ({ compact = false }: { compact?: boolean }) => (
-    <div className={compact ? 'flex items-center gap-1.5 flex-wrap' : 'flex flex-col gap-3'}>
-      {!compact && (
-        <p className="text-[10px] font-semibold uppercase tracking-wide text-[#999]">Categorías</p>
-      )}
+  const StageManager = ({ compact = false }: { compact?: boolean }) => (
+    <div className={compact ? 'flex flex-wrap items-center gap-1.5' : 'flex flex-col gap-3'}>
+      {!compact && <p className="text-[10px] font-semibold uppercase tracking-wide text-[#999]">Etapas</p>}
       <div className="flex flex-wrap items-center gap-1.5">
         {categories.map(cat => (
           <span key={cat} className="flex items-center gap-1 rounded-full bg-[#E1F5EE] px-2.5 py-1 text-xs font-medium text-[#0F6E56]">
@@ -320,8 +443,8 @@ const saveNote = async (songId: string, note: string) => {
               value={newCat}
               onChange={e => setNewCat(e.target.value)}
               onKeyDown={e => { if (e.key === 'Enter') addCategory(); if (e.key === 'Escape') setAddingCat(false) }}
-              placeholder="Nueva categoría..."
-              className="w-32 rounded-lg border border-[#48C9B0] px-2 py-1 text-xs outline-none"
+              placeholder="Nueva etapa..."
+              className="w-28 rounded-lg border border-[#48C9B0] px-2 py-1 text-xs outline-none"
             />
             <button onClick={addCategory} className="rounded-lg bg-[#48C9B0] px-2 py-1 text-xs text-white">✓</button>
             <button onClick={() => setAddingCat(false)} className="rounded-lg border border-[#e0e0e0] px-2 py-1 text-xs text-[#aaa]">✕</button>
@@ -331,125 +454,82 @@ const saveNote = async (songId: string, note: string) => {
             onClick={() => setAddingCat(true)}
             className="rounded-full border border-dashed border-[#ccc] px-2.5 py-1 text-xs text-[#aaa] transition hover:border-[#48C9B0] hover:text-[#48C9B0]"
           >
-            + Categoría
+            + Etapa
           </button>
         )}
       </div>
     </div>
   )
 
-  const LinkPanel = ({ fullWidth = false }: { fullWidth?: boolean }) => (
-    <div className={fullWidth ? 'flex flex-col gap-2' : 'flex items-center gap-2'}>
-      {!playlistToken ? (
-        <button
-          onClick={handleGenerateToken}
-          className="rounded-lg border border-dashed border-[#48C9B0] bg-[#f0fdfb] px-3 py-1.5 text-xs font-medium text-[#1a9e88] transition hover:bg-[#e0faf5]"
-        >
-          + Generar link
-        </button>
-      ) : (
-        <>
-          <span className="max-w-[200px] truncate rounded-lg border border-dashed border-[#48C9B0] bg-[#f0fdfb] px-2.5 py-1.5 text-xs text-[#0F6E56]">
-            {playlistUrl}
-          </span>
-          <button
-            onClick={copyLink}
-            className="shrink-0 rounded-lg bg-[#48C9B0] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#3ab89f]"
-          >
-            {copied ? '¡Copiado!' : 'Copiar link'}
-          </button>
-        </>
-      )}
-    </div>
+  const SongList = () => (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+    >
+      <SortableContext items={filtered.map(s => s.id)} strategy={verticalListSortingStrategy}>
+        <div className="flex flex-col gap-2">
+          {filtered.map(song => (
+            <SongRow
+              key={song.id}
+              song={song}
+              isPlaying={playingId === song.id}
+              onTogglePlay={() => togglePlay(song)}
+              onEditNote={() => setEditingNoteId(song.id)}
+              isEditingNote={editingNoteId === song.id}
+              onCloseNote={() => setEditingNoteId(null)}
+              onSaveNote={(note) => saveNote(song.id, note)}
+            />
+          ))}
+        </div>
+      </SortableContext>
+      <DragOverlay>
+        {activeDragSong && <DragCard song={activeDragSong} />}
+      </DragOverlay>
+    </DndContext>
   )
 
-  const Toolbar = () => (
-    <div className="flex flex-wrap items-center gap-2">
-      <input
-        type="text" value={search} onChange={e => setSearch(e.target.value)}
-        placeholder="Buscar canción, artista o persona..."
-        className="min-w-[160px] flex-1 rounded-lg border border-[#d0d0d0] bg-white px-3 py-1.5 text-xs text-[#1D1E20] outline-none transition focus:border-[#48C9B0]"
-      />
-      {categories.length > 0 && (
-        <select value={filterCat} onChange={e => setFilterCat(e.target.value)}
-          className="rounded-lg border border-[#d0d0d0] bg-white px-2.5 py-1.5 text-xs text-[#555] outline-none transition focus:border-[#48C9B0]"
-        >
-          <option value="todas">Todas las categorías</option>
-          {categories.map(c => <option key={c} value={c}>{c}</option>)}
-          <option value="">Sin categoría</option>
-        </select>
-      )}
-      <select value={filterPlat} onChange={e => setFilterPlat(e.target.value)}
-        className="rounded-lg border border-[#d0d0d0] bg-white px-2.5 py-1.5 text-xs text-[#555] outline-none transition focus:border-[#48C9B0]"
-      >
-        <option value="todas">Todas las plataformas</option>
-        <option value="spotify">Spotify</option>
-        <option value="youtube">YouTube</option>
-        <option value="apple">Apple Music</option>
-      </select>
-      <div className="hidden h-5 w-px bg-[#e8e8e8] sm:block" />
-      <div className="hidden sm:flex"><CategoryManager compact /></div>
-      <div className="hidden h-5 w-px bg-[#e8e8e8] sm:block" />
-      <div className="hidden sm:flex"><LinkPanel /></div>
+  const EmptyState = () => (
+    <div className="flex flex-col items-center justify-center py-20 text-center">
+      <h2 className="text-base font-semibold text-[#1D1E20]">Sin recomendaciones aún</h2>
+      <p className="mt-1 text-sm text-[#999]">Comparte el link con tus invitados.</p>
     </div>
-  )
-
-  const DataList = () => (
-    <>
-      {totalSongs === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center">
-          <h2 className="text-base font-semibold text-[#1D1E20]">Sin recomendaciones aún</h2>
-          <p className="mt-1 text-sm text-[#999]">Comparte el link con tus invitados.</p>
-        </div>
-      ) : filtered.length === 0 ? (
-        <div className="py-10 text-center text-sm text-[#999]">Sin resultados para ese filtro.</div>
-      ) : (
-        <div className="flex flex-col gap-4">
-          {categories.map(cat => {
-            const songs = filtered.filter(s => s.category === cat)
-            if (songs.length === 0) return null
-            return (
-              <div key={cat}>
-                <div className="mb-2 flex items-center gap-2 border-b border-[#e8e8e8] pb-1.5">
-                  <span className="text-xs font-semibold text-[#555]">{cat}</span>
-                  <span className="rounded-full bg-[#E1F5EE] px-1.5 py-0.5 text-[10px] font-medium text-[#0F6E56]">{songs.length}</span>
-                </div>
-                <SongRows songs={songs} />
-              </div>
-            )
-          })}
-          {(() => {
-            const uncategorized = filtered.filter(s => !s.category)
-            if (uncategorized.length === 0) return null
-            return (
-              <div>
-                <div className="mb-2 flex items-center gap-2 border-b border-[#e8e8e8] pb-1.5">
-                  <span className="text-xs font-semibold text-[#555]">Sin categoría</span>
-                  <span className="rounded-full bg-[#f0f0f0] px-1.5 py-0.5 text-[10px] font-medium text-[#888]">{uncategorized.length}</span>
-                </div>
-                <SongRows songs={uncategorized} />
-              </div>
-            )
-          })()}
-        </div>
-      )}
-    </>
   )
 
   const MobileConfigPanel = () => (
     <div className="flex flex-col gap-5">
       <div>
         <p className="mb-2 text-[10px] font-semibold uppercase tracking-wide text-[#999]">Link para invitados</p>
-        <LinkPanel fullWidth />
+        {!playlistToken ? (
+          <button
+            onClick={handleGenerateToken}
+            className="rounded-lg border border-dashed border-[#48C9B0] bg-[#f0fdfb] px-3 py-1.5 text-xs font-medium text-[#1a9e88]"
+          >
+            + Generar link
+          </button>
+        ) : (
+          <div className="flex flex-col gap-2">
+            <span className="truncate rounded-lg border border-dashed border-[#48C9B0] bg-[#f0fdfb] px-2.5 py-1.5 text-xs text-[#0F6E56]">
+              {playlistUrl}
+            </span>
+            <button
+              onClick={copyLink}
+              className="rounded-lg bg-[#48C9B0] px-3 py-1.5 text-xs font-semibold text-white"
+            >
+              {copied ? '¡Copiado!' : 'Copiar link'}
+            </button>
+          </div>
+        )}
       </div>
-      <CategoryManager />
+      <StageManager />
     </div>
   )
 
   return (
     <div className="flex h-full flex-col overflow-hidden bg-[#fafafa]">
 
-      {/* ── MOBILE ──────────────────────────────────────────────────────────── */}
+      {/* MOBILE */}
       <div className="flex h-full flex-col sm:hidden">
         <div className="shrink-0 border-b border-[#e8e8e8] bg-white px-4 py-3">
           <h1 className="mb-3 text-base font-semibold text-[#1D1E20]">Playlist</h1>
@@ -463,7 +543,7 @@ const saveNote = async (songId: string, note: string) => {
               <p className="mt-0.5 text-xl font-semibold text-[#48C9B0]">{uniqueGuests}</p>
             </div>
             <div className="rounded-xl border border-[#e8e8e8] bg-white px-3 py-2">
-              <p className="text-[9px] uppercase tracking-wide text-[#999]">Categorías</p>
+              <p className="text-[9px] uppercase tracking-wide text-[#999]">Etapas</p>
               <p className="mt-0.5 text-xl font-semibold text-[#1D1E20]">{categories.length}</p>
             </div>
           </div>
@@ -483,27 +563,119 @@ const saveNote = async (songId: string, note: string) => {
           </button>
         </div>
         <div className="flex-1 overflow-y-auto p-4">
-          {mobileTab === 'playlist' ? <DataList /> : <MobileConfigPanel />}
+          {mobileTab === 'playlist'
+            ? (totalSongs === 0 ? <EmptyState /> : <SongList />)
+            : <MobileConfigPanel />}
         </div>
+        {playingSong && (
+          <MiniPlayer
+            song={playingSong}
+            playing={!audioRef.current?.paused}
+            currentTime={currentTime}
+            onToggle={toggleMiniPlayer}
+          />
+        )}
       </div>
 
-      {/* ── DESKTOP ─────────────────────────────────────────────────────────── */}
-      <div className="hidden h-full flex-col sm:flex overflow-hidden">
+      {/* DESKTOP */}
+      <div className="hidden h-full flex-col overflow-hidden sm:flex">
+
+        {/* Header + KPIs */}
         <div className="shrink-0 border-b border-[#e8e8e8] bg-white px-6 py-4">
           <div className="mb-3 flex items-center justify-between">
             <h1 className="text-lg font-semibold text-[#1D1E20]">Playlist</h1>
-            {saving && <span className="text-xs text-[#aaa]">Guardando...</span>}
+            {saving && <span className="text-xs text-[#aaa]">Guardando orden...</span>}
           </div>
-          <KpiCards />
+          <div className="grid grid-cols-4 gap-3">
+            <div className="rounded-xl border border-[#e8e8e8] bg-white px-4 py-3">
+              <p className="text-[10px] uppercase tracking-wide text-[#999]">Canciones</p>
+              <p className="mt-1 text-2xl font-semibold text-[#1D1E20]">{totalSongs}</p>
+            </div>
+            <div className="rounded-xl border border-[#e8e8e8] bg-white px-4 py-3">
+              <p className="text-[10px] uppercase tracking-wide text-[#999]">Participaron</p>
+              <p className="mt-1 text-2xl font-semibold text-[#48C9B0]">{uniqueGuests}</p>
+            </div>
+            <div className="rounded-xl border border-[#e8e8e8] bg-white px-4 py-3">
+              <p className="text-[10px] uppercase tracking-wide text-[#999]">Etapas</p>
+              <p className="mt-1 text-2xl font-semibold text-[#1D1E20]">{categories.length}</p>
+            </div>
+            <div className="rounded-xl border border-[#e8e8e8] bg-white px-4 py-3">
+              <p className="text-[10px] uppercase tracking-wide text-[#999]">Sin etapa</p>
+              <p className="mt-1 text-2xl font-semibold text-[#1D1E20]">{allSongs.filter(s => !s.category).length}</p>
+            </div>
+          </div>
         </div>
-        <div className="shrink-0 border-b border-[#e8e8e8] bg-white px-6 py-3">
-          <Toolbar />
-        </div>
-        <div className="flex-1 overflow-y-auto px-6 py-4">
-          <DataList />
-        </div>
-      </div>
 
+        {/* Toolbar — search fijo + filtro negro + etapas + link+copiar a la derecha */}
+        <div className="shrink-0 border-b border-[#e8e8e8] bg-white px-6 py-2.5">
+          <div className="flex items-center gap-2">
+
+            {/* Search — ancho fijo, no crece */}
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Buscar canción, artista..."
+              className="w-52 shrink-0 rounded-lg border border-[#d0d0d0] bg-white px-3 py-1.5 text-xs text-[#1D1E20] outline-none transition focus:border-[#48C9B0]"
+            />
+
+            {/* Filtro etapa negro */}
+            <select
+              value={filterCat}
+              onChange={e => setFilterCat(e.target.value)}
+              className="shrink-0 rounded-lg border border-[#1D1E20] bg-[#1D1E20] px-2.5 py-1.5 text-xs text-white outline-none"
+            >
+              <option value="todas">Todas las etapas</option>
+              {categories.map(c => <option key={c} value={c}>{c}</option>)}
+              <option value="__none__">Sin etapa</option>
+            </select>
+
+            <div className="h-4 w-px shrink-0 bg-[#e8e8e8]" />
+
+            {/* Etapas config — ocupa el espacio disponible */}
+            <div className="min-w-0 flex-1">
+              <StageManager compact />
+            </div>
+
+            <div className="h-4 w-px shrink-0 bg-[#e8e8e8]" />
+
+            {/* Link + Copiar — siempre a la derecha */}
+            {!playlistToken ? (
+              <button
+                onClick={handleGenerateToken}
+                className="shrink-0 rounded-lg border border-dashed border-[#48C9B0] bg-[#f0fdfb] px-3 py-1.5 text-xs font-medium text-[#1a9e88] transition hover:bg-[#e0faf5]"
+              >
+                + Generar link
+              </button>
+            ) : (
+              <div className="flex shrink-0 items-center gap-2">
+                <span className="max-w-[180px] truncate text-xs text-[#48C9B0]">{playlistUrl}</span>
+                <button
+                  onClick={copyLink}
+                  className="shrink-0 rounded-lg bg-[#48C9B0] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#3ab89f]"
+                >
+                  {copied ? '¡Copiado!' : 'Copiar link'}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* List */}
+        <div className="flex-1 overflow-y-auto px-6 py-4">
+          {totalSongs === 0 ? <EmptyState /> : <SongList />}
+        </div>
+
+        {/* Mini player */}
+        {playingSong && (
+          <MiniPlayer
+            song={playingSong}
+            playing={!audioRef.current?.paused}
+            currentTime={currentTime}
+            onToggle={toggleMiniPlayer}
+          />
+        )}
+      </div>
     </div>
   )
 }
