@@ -4,14 +4,17 @@ import { useEffect, useRef, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { EventStatus } from '@/lib/types'
+import DatePicker from '@/app/components/ui/DatePicker'
+import TimePicker from '@/app/components/ui/TimePicker'
+
 
 const EVENT_TYPES = [
-  { value: 'boda',        label: '💍 Boda' },
-  { value: 'cumpleanos',  label: '🎂 Cumpleaños' },
-  { value: 'fiesta',      label: '🎉 Fiesta' },
-  { value: 'corporativo', label: '💼 Corporativo' },
-  { value: 'bautizo',     label: '🕊️ Bautizo' },
-  { value: 'otro',        label: '📅 Otro' },
+  { value: 'boda',        label: 'Boda' },
+  { value: 'cumpleanos',  label: 'Cumpleaños' },
+  { value: 'fiesta',      label: 'Fiesta' },
+  { value: 'corporativo', label: 'Corporativo' },
+  { value: 'bautizo',     label: 'Bautizo' },
+  { value: 'otro',        label: 'Otro' },
 ]
 
 const VARIABLES = [
@@ -419,7 +422,7 @@ export default function ConfiguracionPage() {
             {/* COLUMNA IZQUIERDA */}
             <div className="flex flex-col gap-4 sm:gap-5">
               <div className="rounded-xl bg-[#fafafa] p-4 sm:p-5">
-                <h2 className="mb-4 text-base font-semibold text-[#1D1E20] sm:text-lg">📋 Datos del evento</h2>
+                <h2 className="mb-4 text-base font-semibold text-[#1D1E20] sm:text-lg">Datos del evento</h2>
                 <div className="flex flex-col gap-3 sm:gap-4">
 
                   <div>
@@ -445,9 +448,10 @@ export default function ConfiguracionPage() {
                   <div className="grid grid-cols-2 gap-3">
                     <div>
                       <label className="mb-1.5 block text-xs font-medium text-[#555]">Fecha de inicio</label>
-                      <input type="date" value={eventDate} onChange={e => { setEventDate(e.target.value); scheduleAutoSave() }}
-                        style={{ colorScheme: 'light' }}
-                        className="w-full rounded-lg border border-[#d0d0d0] bg-white px-3 py-2.5 text-sm text-[#1D1E20] outline-none transition focus:border-[#48C9B0]"
+                      <DatePicker
+                        value={eventDate}
+                        onChange={v => { setEventDate(v); scheduleAutoSave() }}
+                        placeholder="Seleccionar fecha de inicio"
                       />
                     </div>
                     <div>
@@ -455,17 +459,17 @@ export default function ConfiguracionPage() {
                         Fecha de término
                         <span className="ml-1 font-normal text-[#bbb]">(opcional)</span>
                       </label>
-                      <input type="date" value={eventEndDate} min={eventDate || undefined}
-                        onChange={e => { setEventEndDate(e.target.value); scheduleAutoSave() }}
-                        style={{ colorScheme: 'light' }}
-                        className="w-full rounded-lg border border-[#d0d0d0] bg-white px-3 py-2.5 text-sm text-[#1D1E20] outline-none transition focus:border-[#48C9B0]"
+                      <DatePicker
+                        value={eventEndDate}
+                        onChange={v => { setEventEndDate(v); scheduleAutoSave() }}
+                        placeholder="Fecha de término"
+                        minDate={eventDate || undefined}
                       />
                     </div>
                   </div>
 
                   {eventDays && (
                     <div className="flex items-center gap-1.5 rounded-lg border border-[#c8ede7] bg-[#f0fdfb] px-3 py-2">
-                      <span className="text-sm">📅</span>
                       <span className="text-xs font-semibold text-[#1a9e88]">
                         {eventDays === 1 ? '1 día' : `${eventDays} días`}
                       </span>
@@ -475,9 +479,9 @@ export default function ConfiguracionPage() {
 
                   <div>
                     <label className="mb-1.5 block text-xs font-medium text-[#555]">Hora</label>
-                    <input type="time" value={eventTime} onChange={e => { setEventTime(e.target.value); scheduleAutoSave() }}
-                      style={{ colorScheme: 'light' }}
-                      className="w-full rounded-lg border border-[#d0d0d0] bg-white px-3 py-2.5 text-sm text-[#1D1E20] outline-none transition focus:border-[#48C9B0]"
+                    <TimePicker
+                      value={eventTime}
+                      onChange={v => { setEventTime(v); scheduleAutoSave() }}
                     />
                   </div>
 
@@ -514,7 +518,7 @@ export default function ConfiguracionPage() {
 
               {/* Tags */}
               <div className="rounded-xl bg-[#fafafa] p-4 sm:p-5">
-                <h2 className="mb-1.5 text-base font-semibold text-[#1D1E20] sm:text-lg">🏷️ Tags para invitados</h2>
+                <h2 className="mb-1.5 text-base font-semibold text-[#1D1E20] sm:text-lg"> Tags para invitados</h2>
                 <p className="mb-3 text-xs text-[#666]">Define las etiquetas que podrás asignar a tus invitados. Ej: VIP, Mesa 1, Vegetariano...</p>
                 {guestTags.length > 0 && (
                   <div className="mb-3 flex flex-wrap gap-1.5">
@@ -548,7 +552,7 @@ export default function ConfiguracionPage() {
             {/* COLUMNA DERECHA — solo plantillas */}
             <div className="flex flex-col gap-4 sm:gap-5">
               <div className="rounded-xl bg-[#fafafa] p-4 sm:p-5">
-                <h2 className="mb-1.5 text-base font-semibold text-[#1D1E20] sm:text-lg">💬 Plantillas de WhatsApp</h2>
+                <h2 className="mb-1.5 text-base font-semibold text-[#1D1E20] sm:text-lg"> Plantillas de WhatsApp</h2>
                 <p className="mb-4 text-xs text-[#666]">Doble click en el nombre para renombrarlo. Usa los chips para insertar variables.</p>
                 <div className="flex flex-col gap-5">
                   {templates.slice(0, visibleTemplates).map((template, i) => (

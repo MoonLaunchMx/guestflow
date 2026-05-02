@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Event, EventStatus } from '@/lib/types'
-import { Bell } from 'lucide-react'
+import { Bell, User, LogOut } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
@@ -28,11 +28,20 @@ type ReminderTask = {
 
 const FEEDBACK_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSfESosGtmv8JPds_zhTw280121oV1h09WNIbAhW-IyCAFq8cw/viewform?usp=publish-editor'
 
+function getInitials(name: string, email: string): string {
+  if (name) {
+    const parts = name.trim().split(' ').filter(Boolean)
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase()
+    return parts[0][0].toUpperCase()
+  }
+  return email?.[0]?.toUpperCase() || '?'
+}
+
 function ReminderCategoryIcon({ category }: { category: string }) {
   const s = {
-    width: 13, height: 13, viewBox: "0 0 24 24",
-    fill: "none", stroke: "#888", strokeWidth: 1.5,
-    strokeLinecap: "round" as const, strokeLinejoin: "round" as const,
+    width: 13, height: 13, viewBox: '0 0 24 24',
+    fill: 'none', stroke: '#888', strokeWidth: 1.5,
+    strokeLinecap: 'round' as const, strokeLinejoin: 'round' as const,
   }
   const icons: Record<string, React.ReactElement> = {
     evento:       <svg {...s}><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>,
@@ -50,7 +59,9 @@ function ReminderCategoryIcon({ category }: { category: string }) {
 export default function Dashboard() {
   const [events, setEvents]             = useState<EventWithStats[]>([])
   const [loading, setLoading]           = useState(true)
+  const [userName, setUserName]         = useState('')
   const [userEmail, setUserEmail]       = useState('')
+  const [avatarOpen, setAvatarOpen]     = useState(false)
   const [sortAsc, setSortAsc]           = useState(true)
   const [now, setNow]                   = useState(new Date())
   const [activeTab, setActiveTab]       = useState<Tab>('activos')
@@ -58,6 +69,8 @@ export default function Dashboard() {
   const [showWelcome, setShowWelcome]   = useState(false)
   const [reminders, setReminders]       = useState<ReminderTask[]>([])
   const [showBellMenu, setShowBellMenu] = useState(false)
+
+  const avatarRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const interval = setInterval(() => setNow(new Date()), 1000)
@@ -71,6 +84,7 @@ export default function Dashboard() {
       const target = e.target as HTMLElement
       if (!target.closest('[data-menu]')) setOpenMenuId(null)
       if (!target.closest('[data-bell]')) setShowBellMenu(false)
+      if (avatarRef.current && !avatarRef.current.contains(target)) setAvatarOpen(false)
     }
     document.addEventListener('mousedown', handleClick)
     return () => document.removeEventListener('mousedown', handleClick)
@@ -80,48 +94,71 @@ export default function Dashboard() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { window.location.href = '/'; return }
     setUserEmail(user.email || '')
+    setUserName(user.user_metadata?.full_name || '')
     const welcomed = localStorage.getItem('gf_welcomed')
     if (!welcomed) { setShowWelcome(true); localStorage.setItem('gf_welcomed', '1') }
   }
 
+  // ─── 3 queries fijas en paralelo — sin loop por evento ───────────────────
   const loadData = async () => {
-    const { data: eventsData } = await supabase
-      .from('events')
-      .select('id, name, event_date, event_end_date, event_time, venue, total_guests, event_status')
-      .order('event_date', { ascending: true })
-
-    if (!eventsData) { setLoading(false); return }
-
     const today = new Date()
     today.setHours(23, 59, 59, 999)
 
-    const { data: reminderData } = await supabase
-      .from('event_timeline_tasks')
-      .select('id, event_id, title, category, reminder_date')
-      .not('reminder_date', 'is', null)
-      .eq('is_completed', false)
-      .lte('reminder_date', today.toISOString())
+    const [
+      { data: eventsData },
+      { data: guestsData },
+      { data: membersData },
+      { data: reminderData },
+    ] = await Promise.all([
+      supabase
+        .from('events')
+        .select('id, name, event_date, event_end_date, event_time, venue, total_guests, event_status')
+        .order('event_date', { ascending: true }),
+      supabase
+        .from('guests')
+        .select('event_id, rsvp_status'),
+      supabase
+        .from('party_members')
+        .select('event_id, rsvp_status'),
+      supabase
+        .from('event_timeline_tasks')
+        .select('id, event_id, title, category, reminder_date')
+        .not('reminder_date', 'is', null)
+        .eq('is_completed', false)
+        .lte('reminder_date', today.toISOString()),
+    ])
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const eventsWithStats: EventWithStats[] = await Promise.all(
-      eventsData.map(async (event: any) => {
-        const [{ data: guests }, { data: members }] = await Promise.all([
-          supabase.from('guests').select('rsvp_status').eq('event_id', event.id),
-          supabase.from('party_members').select('rsvp_status').eq('event_id', event.id),
-        ])
-        const all = [...(guests || []), ...(members || [])]
-        const pendingReminders = (reminderData || []).filter(r => r.event_id === event.id).length
-        return {
-          ...event,
-          event_status: event.event_status || 'active',
-          total:     all.length,
-          confirmed: all.filter((g: any) => g.rsvp_status === 'confirmed').length,
-          pending:   all.filter((g: any) => g.rsvp_status === 'pending').length,
-          declined:  all.filter((g: any) => g.rsvp_status === 'declined').length,
-          pendingReminders,
-        }
-      })
-    )
+    if (!eventsData) { setLoading(false); return }
+
+    // Agrupar guests y members por event_id en memoria — O(n) una sola vez
+    const guestsByEvent: Record<string, { rsvp_status: string }[]> = {}
+    const membersByEvent: Record<string, { rsvp_status: string }[]> = {}
+
+    for (const g of guestsData || []) {
+      if (!guestsByEvent[g.event_id]) guestsByEvent[g.event_id] = []
+      guestsByEvent[g.event_id].push(g)
+    }
+    for (const m of membersData || []) {
+      if (!membersByEvent[m.event_id]) membersByEvent[m.event_id] = []
+      membersByEvent[m.event_id].push(m)
+    }
+
+    const eventsWithStats: EventWithStats[] = eventsData.map((event: any) => {
+      const all = [
+        ...(guestsByEvent[event.id] || []),
+        ...(membersByEvent[event.id] || []),
+      ]
+      const pendingReminders = (reminderData || []).filter(r => r.event_id === event.id).length
+      return {
+        ...event,
+        event_status: event.event_status || 'active',
+        total:     all.length,
+        confirmed: all.filter(g => g.rsvp_status === 'confirmed').length,
+        pending:   all.filter(g => g.rsvp_status === 'pending').length,
+        declined:  all.filter(g => g.rsvp_status === 'declined').length,
+        pendingReminders,
+      }
+    })
 
     const enrichedReminders: ReminderTask[] = (reminderData || []).map(r => ({
       ...r,
@@ -178,8 +215,6 @@ export default function Dashboard() {
     const d = new Date(dateStr)
     const today = new Date()
     today.setHours(0, 0, 0, 0)
-    const yesterday = new Date(today)
-    yesterday.setDate(yesterday.getDate() - 1)
     const target = new Date(d)
     target.setHours(0, 0, 0, 0)
     if (target.getTime() === today.getTime()) return 'Hoy'
@@ -259,9 +294,9 @@ export default function Dashboard() {
 
   const getMenuOptions = (event: EventWithStats) => {
     const all: { label: string; status: EventStatus; color?: string }[] = [
-      { label: '● Activo',    status: 'active' },
-      { label: '⏸ Pausado',   status: 'paused' },
-      { label: '✕ Cancelado', status: 'cancelled', color: '#cc3333' },
+      { label: 'Activo',    status: 'active' },
+      { label: 'Pausado',   status: 'paused' },
+      { label: 'Cancelado', status: 'cancelled', color: '#cc3333' },
     ]
     return all.filter(o => o.status !== event.event_status)
   }
@@ -286,6 +321,8 @@ export default function Dashboard() {
     setEvents(prev => prev.map(e => ({ ...e, pendingReminders: 0 })))
   }
 
+  const initials = getInitials(userName, userEmail)
+
   const EventCard = ({ event }: { event: EventWithStats }) => {
     const pct = confirmPct(event)
     const isNext = event.id === nextEvent?.id
@@ -299,7 +336,7 @@ export default function Dashboard() {
       >
         <div className="mb-3 flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex flex-wrap items-center gap-2">
               <p className="truncate text-sm font-semibold text-[#1D1E20]">{event.name}</p>
               {event.pendingReminders > 0 && (
                 <span className="flex items-center gap-1 rounded-full border border-[#48C9B0]/40 bg-[#f0fdfb] px-2 py-0.5 text-[10px] font-semibold text-[#1a9e88]">
@@ -375,9 +412,7 @@ export default function Dashboard() {
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 px-4">
           <div className="w-full max-w-md rounded-2xl bg-white p-7 shadow-2xl">
             <div className="mb-5 flex items-center gap-3">
-              <span style={{ fontFamily: 'Georgia, serif' }} className="text-xl font-bold text-[#1D1E20]">
-                Anfi<span className="text-[#48C9B0]">ora</span>
-              </span>
+              <img src="/images/logo.png" alt="Anfiora" className="h-8 object-contain" />
               <span className="rounded-full border border-[#48C9B0]/40 bg-[#f0fdfb] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#48C9B0]">Beta</span>
             </div>
             <h2 className="mb-2 text-lg font-bold text-[#1D1E20]">¡Bienvenido a Anfiora!</h2>
@@ -386,14 +421,14 @@ export default function Dashboard() {
             </p>
             <div className="mb-5 flex flex-col gap-2 rounded-xl bg-[#f8f8f8] p-4">
               {[
-                { icon: '📋', text: 'Crea eventos y agrega invitados fácilmente' },
-                { icon: '💬', text: 'Envía mensajes de WhatsApp con plantillas personalizadas' },
-                { icon: '📊', text: 'Rastrea confirmaciones, pendientes y declinados en tiempo real' },
-                { icon: '📁', text: 'Importa listas desde CSV con un clic' },
-              ].map((item, i) => (
+                'Crea eventos y agrega invitados fácilmente',
+                'Envía mensajes de WhatsApp con plantillas personalizadas',
+                'Rastrea confirmaciones, pendientes y declinados en tiempo real',
+                'Importa listas desde CSV con un clic',
+              ].map((text, i) => (
                 <div key={i} className="flex items-start gap-2.5">
-                  <span className="text-base">{item.icon}</span>
-                  <p className="text-xs leading-relaxed text-[#555]">{item.text}</p>
+                  <div className="mt-0.5 h-1.5 w-1.5 shrink-0 rounded-full bg-[#48C9B0]" />
+                  <p className="text-xs leading-relaxed text-[#555]">{text}</p>
                 </div>
               ))}
             </div>
@@ -415,16 +450,14 @@ export default function Dashboard() {
       {/* Header */}
       <header className="shrink-0 border-b border-[#e8e8e8] bg-white">
         <div className="mx-auto flex h-14 max-w-4xl items-center justify-between px-4 sm:h-16 sm:px-6 lg:px-8">
-          <button
-            onClick={() => window.location.href = '/dashboard'}
-            className="shrink-0"
-          >
+          <button onClick={() => window.location.href = '/dashboard'} className="shrink-0">
             <img src="/images/isotipo.svg" alt="Anfiora" className="h-11 w-11 sm:hidden" />
             <img src="/images/logo.svg" alt="Anfiora" className="hidden h-11 sm:block lg:h-14" />
           </button>
 
           <div className="flex items-center gap-3 sm:gap-4">
-            {/* Bell con badge */}
+
+            {/* Bell */}
             <div data-bell className="relative">
               <button
                 onClick={() => setShowBellMenu(p => !p)}
@@ -437,21 +470,16 @@ export default function Dashboard() {
                   </span>
                 )}
               </button>
-
               {showBellMenu && (
                 <div className="absolute right-0 top-full z-50 mt-2 w-72 overflow-hidden rounded-xl border border-[#e8e8e8] bg-white shadow-lg">
                   <div className="flex items-center justify-between border-b border-[#f0f0f0] px-4 py-2.5">
                     <p className="text-xs font-semibold text-[#1D1E20]">Recordatorios</p>
                     {reminders.length > 0 && (
-                      <button
-                        onClick={markAllDone}
-                        className="text-[11px] text-[#aaa] transition hover:text-[#48C9B0]"
-                      >
+                      <button onClick={markAllDone} className="text-[11px] text-[#aaa] transition hover:text-[#48C9B0]">
                         Marcar todos ✓
                       </button>
                     )}
                   </div>
-
                   {reminders.length === 0 ? (
                     <div className="px-4 py-6 text-center">
                       <p className="text-xs text-[#aaa]">Sin recordatorios pendientes</p>
@@ -460,12 +488,9 @@ export default function Dashboard() {
                     <div className="max-h-64 overflow-y-auto">
                       {reminders.map(r => (
                         <div key={r.id} className="flex items-center gap-3 border-b border-[#f5f5f5] px-4 py-2.5 last:border-0">
-                          {/* Ícono categoría */}
-                          <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg border border-[#e8e8e8] bg-[#f8f8f8]">
+                          <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-[#e8e8e8] bg-[#f8f8f8]">
                             <ReminderCategoryIcon category={r.category} />
                           </div>
-
-                          {/* Texto */}
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-xs font-semibold text-[#1D1E20]">{r.title}</p>
                             <p className="truncate text-[11px] text-[#aaa]">
@@ -475,26 +500,16 @@ export default function Dashboard() {
                               </span>
                             </p>
                           </div>
-
-                          {/* Acciones */}
-                          <div className="flex flex-shrink-0 items-center gap-1.5">
-                            <button
-                              title="Marcar como hecha"
-                              onClick={() => markDone(r.id)}
-                              className="flex h-6 w-6 items-center justify-center rounded-md bg-[#E1F5EE] transition hover:bg-[#9FE1CB]"
-                            >
+                          <div className="flex shrink-0 items-center gap-1.5">
+                            <button title="Marcar como hecha" onClick={() => markDone(r.id)}
+                              className="flex h-6 w-6 items-center justify-center rounded-md bg-[#E1F5EE] transition hover:bg-[#9FE1CB]">
                               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#0F6E56" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                                 <path d="M20 6L9 17l-5-5"/>
                               </svg>
                             </button>
-                            <button
-                              title="Abrir tarea"
-                              onClick={() => {
-                                setShowBellMenu(false)
-                                window.location.href = `/events/${r.event_id}/timeline?task=${r.id}`
-                              }}
-                              className="flex h-6 w-6 items-center justify-center rounded-md bg-[#f8f8f8] transition hover:bg-[#e8e8e8]"
-                            >
+                            <button title="Abrir tarea"
+                              onClick={() => { setShowBellMenu(false); window.location.href = `/events/${r.event_id}/timeline?task=${r.id}` }}
+                              className="flex h-6 w-6 items-center justify-center rounded-md bg-[#f8f8f8] transition hover:bg-[#e8e8e8]">
                               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#888" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                                 <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6"/>
                                 <polyline points="15 3 21 3 21 9"/>
@@ -510,8 +525,37 @@ export default function Dashboard() {
               )}
             </div>
 
-            <span className="hidden truncate text-xs text-[#888] sm:block sm:max-w-[200px] sm:text-sm">{userEmail}</span>
-            <button onClick={handleLogout} className="rounded-md border border-[#e0e0e0] px-3 py-1.5 text-xs text-[#888] transition hover:bg-[#f5f5f5] sm:px-4 sm:text-sm">Salir</button>
+            {/* Avatar con dropdown */}
+            <div ref={avatarRef} className="relative">
+              <button
+                onClick={() => setAvatarOpen(p => !p)}
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-[#48C9B0] text-[12px] font-semibold text-white transition hover:bg-[#3ab89f]"
+              >
+                {initials}
+              </button>
+              {avatarOpen && (
+                <div className="absolute right-0 top-full z-50 mt-2 w-52 overflow-hidden rounded-xl border border-[#e8e8e8] bg-white shadow-lg">
+                  <div className="border-b border-[#f0f0f0] px-4 py-3">
+                    <p className="truncate text-xs font-semibold text-[#1D1E20]">{userName || 'Mi cuenta'}</p>
+                    <p className="truncate text-[11px] text-[#aaa]">{userEmail}</p>
+                  </div>
+                  <button
+                    onClick={() => { setAvatarOpen(false); window.location.href = '/perfil' }}
+                    className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-xs text-[#555] transition hover:bg-[#f8f8f8]"
+                  >
+                    <User size={14} className="text-[#aaa]" />
+                    Mi perfil
+                  </button>
+                  <button
+                    onClick={handleLogout}
+                    className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-xs text-[#cc3333] transition hover:bg-[#fff0f0]"
+                  >
+                    <LogOut size={14} />
+                    Cerrar sesión
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </header>
@@ -591,7 +635,7 @@ export default function Dashboard() {
             </div>
             {activeTab === 'activos' && (
               <button onClick={() => setSortAsc(!sortAsc)}
-                className="shrink-0 flex items-center gap-1.5 rounded-lg border border-[#e0e0e0] bg-white px-3 py-1.5 text-xs text-[#888] transition hover:border-[#48C9B0] hover:text-[#48C9B0]">
+                className="flex shrink-0 items-center gap-1.5 rounded-lg border border-[#e0e0e0] bg-white px-3 py-1.5 text-xs text-[#888] transition hover:border-[#48C9B0] hover:text-[#48C9B0]">
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                   <path d="M2 4l4-3 4 3M2 8l4 3 4-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
@@ -606,10 +650,13 @@ export default function Dashboard() {
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-4xl px-4 pb-8 sm:px-6 lg:px-8">
           {loading ? (
-            <div className="text-sm text-[#888]">Cargando...</div>
+            <div className="flex flex-col gap-3">
+              {[1,2,3].map(i => (
+                <div key={i} className="h-32 animate-pulse rounded-xl border border-[#e8e8e8] bg-white" />
+              ))}
+            </div>
           ) : events.length === 0 ? (
             <div className="rounded-xl border border-dashed border-[#e0e0e0] px-6 py-16 text-center sm:py-20">
-              <div className="mb-4 text-4xl">💍</div>
               <p className="text-sm text-[#888] sm:text-base">Aún no tienes eventos</p>
               <p className="mt-1 text-xs text-[#bbb] sm:text-sm">Crea tu primer evento para empezar</p>
             </div>

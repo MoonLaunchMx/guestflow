@@ -1,15 +1,17 @@
 'use client'
 
+import DatePicker from '@/app/components/ui/DatePicker'
 import { useState } from 'react'
+import Image from 'next/image'
 import { supabase } from '@/lib/supabase'
 
 const EVENT_TYPES = [
-  { value: 'boda',        label: '💍 Boda' },
-  { value: 'cumpleanos',  label: '🎂 Cumpleaños' },
-  { value: 'fiesta',      label: '🎉 Fiesta' },
-  { value: 'corporativo', label: '💼 Evento corporativo' },
-  { value: 'bautizo',     label: '🕊️ Bautizo / Primera comunión' },
-  { value: 'otro',        label: '📅 Otro' },
+  { value: 'boda',        label: 'Boda' },
+  { value: 'cumpleanos',  label: 'Cumpleaños' },
+  { value: 'fiesta',      label: 'Fiesta' },
+  { value: 'corporativo', label: 'Evento corporativo' },
+  { value: 'bautizo',     label: 'Bautizo / Primera comunión' },
+  { value: 'otro',        label: 'Otro' },
 ]
 
 export default function NewEvent() {
@@ -39,12 +41,12 @@ export default function NewEvent() {
   return (
     <div className="min-h-screen bg-white font-sans text-[#1D1E20]">
 
-      {/* ── Header ── */}
-      <header className="border-b border-[#e8e8e8] bg-white">
+      {/* Header */}
+      <header className="sticky top-0 z-10 border-b border-[#e8e8e8] bg-white">
         <div className="mx-auto flex h-14 max-w-lg items-center justify-between px-4 sm:h-16 sm:px-6">
-          <span className="text-lg font-bold sm:text-xl" style={{ fontFamily: 'Georgia, serif' }}>
-            Guest<span className="text-[#48C9B0]">Flow</span>
-          </span>
+          <button onClick={() => window.location.href = '/dashboard'} className="shrink-0">
+            <img src="/images/Logo-010526newest" alt="Anfiora" className="h-10 object-contain" />
+          </button>
           <button
             onClick={() => window.location.href = '/dashboard'}
             className="rounded-md border border-[#e0e0e0] px-3 py-1.5 text-xs text-[#888] transition hover:bg-[#f5f5f5] sm:px-4 sm:text-sm"
@@ -54,7 +56,7 @@ export default function NewEvent() {
         </div>
       </header>
 
-      {/* ── Contenido ── */}
+      {/* Contenido */}
       <main className="mx-auto max-w-lg px-4 py-6 sm:px-6 sm:py-10">
 
         <h1 className="text-xl font-bold text-[#1D1E20] sm:text-2xl">Nuevo evento</h1>
@@ -103,12 +105,10 @@ export default function NewEvent() {
             <label className="mb-1.5 block text-xs font-semibold text-[#555] sm:text-sm">
               Fecha del evento *
             </label>
-            <input
-              type="date"
+            <DatePicker
               value={date}
-              onChange={e => setDate(e.target.value)}
-              style={{ colorScheme: 'light' }}
-              className="w-full rounded-lg border border-[#e0e0e0] bg-[#f8f8f8] px-3 py-3 text-sm text-[#1D1E20] outline-none transition focus:border-[#48C9B0] sm:text-base"
+              onChange={setDate}
+              placeholder="Seleccionar fecha del evento"
             />
           </div>
 
@@ -127,14 +127,12 @@ export default function NewEvent() {
           </div>
         </div>
 
-        {/* Error */}
         {error && (
           <div className="mt-4 rounded-lg border border-[#ffc0c0] bg-[#fff0f0] p-3 text-xs text-[#cc3333] sm:text-sm">
             {error}
           </div>
         )}
 
-        {/* Botones */}
         <div className="mt-6 flex gap-3 sm:mt-8">
           <button
             onClick={() => window.location.href = '/dashboard'}

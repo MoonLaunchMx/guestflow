@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { useParams, usePathname, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
-import { Users, Images, Music2, Settings, LayoutGrid, PanelLeftClose, PanelLeftOpen, CalendarDays, House } from 'lucide-react'
+import { Users, Images, Music2, Settings, LayoutGrid, PanelLeftClose, PanelLeftOpen, CalendarDays, House, User, LogOut } from 'lucide-react'
 import { Event } from '@/lib/types'
 
 const EVENT_TYPE_LABELS: Record<string, string> = {
@@ -23,60 +23,53 @@ const EVENT_STATUS_STYLES: Record<string, { dot: string; badge: string; label: s
 }
 
 const NAV_ITEMS = [
-  {
-    label: 'Invitados',
-    labelMobile: 'Invitados',
-    path: '',
-    iconOutline: <Users width={18} height={18} strokeWidth={1.5} />,
-    iconFilled:  <Users width={18} height={18} strokeWidth={2.5} />,
-  },
-  {
-    label: 'Mesas',
-    labelMobile: 'Mesas',
-    path: '/mesas',
-    iconOutline: <LayoutGrid width={18} height={18} strokeWidth={1.5} />,
-    iconFilled:  <LayoutGrid width={18} height={18} strokeWidth={2.5} />,
-  },
-  {
-    label: 'Timeline',
-    labelMobile: 'Timeline',
-    path: '/timeline',
-    iconOutline: <CalendarDays width={18} height={18} strokeWidth={1.5} />,
-    iconFilled:  <CalendarDays width={18} height={18} strokeWidth={2.5} />,
-  },
-  {
-    label: 'Álbum',
-    labelMobile: 'Álbum',
-    path: '/album',
-    iconOutline: <Images width={18} height={18} strokeWidth={1.5} />,
-    iconFilled:  <Images width={18} height={18} strokeWidth={2.5} />,
-  },
-  {
-    label: 'Playlist',
-    labelMobile: 'Playlist',
-    path: '/playlist',
-    iconOutline: <Music2 width={18} height={18} strokeWidth={1.5} />,
-    iconFilled:  <Music2 width={18} height={18} strokeWidth={2.5} />,
-  },
-  {
-    label: 'Configuración',
-    labelMobile: 'Config',
-    path: '/configuracion',
-    iconOutline: <Settings width={18} height={18} strokeWidth={1.5} />,
-    iconFilled:  <Settings width={18} height={18} strokeWidth={2.5} />,
-  },
+  { label: 'Invitados',     labelMobile: 'Invitados', path: '',               iconOutline: <Users       width={18} height={18} strokeWidth={1.5} />, iconFilled: <Users       width={18} height={18} strokeWidth={2.5} /> },
+  { label: 'Mesas',         labelMobile: 'Mesas',     path: '/mesas',         iconOutline: <LayoutGrid  width={18} height={18} strokeWidth={1.5} />, iconFilled: <LayoutGrid  width={18} height={18} strokeWidth={2.5} /> },
+  { label: 'Timeline',      labelMobile: 'Timeline',  path: '/timeline',      iconOutline: <CalendarDays width={18} height={18} strokeWidth={1.5} />, iconFilled: <CalendarDays width={18} height={18} strokeWidth={2.5} /> },
+  { label: 'Álbum',         labelMobile: 'Álbum',     path: '/album',         iconOutline: <Images      width={18} height={18} strokeWidth={1.5} />, iconFilled: <Images      width={18} height={18} strokeWidth={2.5} /> },
+  { label: 'Playlist',      labelMobile: 'Playlist',  path: '/playlist',      iconOutline: <Music2      width={18} height={18} strokeWidth={1.5} />, iconFilled: <Music2      width={18} height={18} strokeWidth={2.5} /> },
+  { label: 'Configuración', labelMobile: 'Config',    path: '/configuracion', iconOutline: <Settings    width={18} height={18} strokeWidth={1.5} />, iconFilled: <Settings    width={18} height={18} strokeWidth={2.5} /> },
 ]
+
+// Genera iniciales desde nombre o email
+function getInitials(name: string, email: string): string {
+  if (name) {
+    const parts = name.trim().split(' ').filter(Boolean)
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase()
+    return parts[0][0].toUpperCase()
+  }
+  return email?.[0]?.toUpperCase() || '?'
+}
+
+// Avatar circular con iniciales
+function Avatar({ initials, size = 'md' }: { initials: string; size?: 'sm' | 'md' }) {
+  const cls = size === 'sm'
+    ? 'h-7 w-7 text-[11px]'
+    : 'h-8 w-8 text-[12px]'
+  return (
+    <div className={`${cls} flex shrink-0 items-center justify-center rounded-full bg-[#48C9B0] font-semibold text-white`}>
+      {initials}
+    </div>
+  )
+}
 
 export default function EventLayout({ children }: { children: React.ReactNode }) {
   const { id } = useParams()
   const pathname = usePathname()
   const router = useRouter()
-  const [event, setEvent] = useState<Event | null>(null)
+
+  const [event, setEvent]           = useState<Event | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [authChecked, setAuthChecked] = useState(false)
-  const [collapsed, setCollapsed] = useState(false)
-  const navScrollRef = useRef<HTMLDivElement>(null)
+  const [collapsed, setCollapsed]   = useState(false)
+  const [userName, setUserName]     = useState('')
+  const [userEmail, setUserEmail]   = useState('')
+  const [avatarOpen, setAvatarOpen] = useState(false)
 
+  const navScrollRef  = useRef<HTMLDivElement>(null)
+  const avatarRef     = useRef<HTMLDivElement>(null)
+
+  // Persistir estado sidebar
   useEffect(() => {
     const stored = localStorage.getItem('gf_sidebar_collapsed')
     if (stored === 'true') setCollapsed(true)
@@ -89,17 +82,33 @@ export default function EventLayout({ children }: { children: React.ReactNode })
     })
   }
 
+  // Cerrar avatar dropdown al hacer clic fuera
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const handler = (e: MouseEvent) => {
+      if (avatarRef.current && !avatarRef.current.contains(e.target as Node)) {
+        setAvatarOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  // Auth
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (event === 'INITIAL_SESSION' && !session) {
         router.replace('/')
       } else if (session) {
         setAuthChecked(true)
+        const meta = session.user.user_metadata
+        setUserName(meta?.full_name || '')
+        setUserEmail(session.user.email || '')
       }
     })
     return () => subscription.unsubscribe()
   }, [router])
 
+  // Cargar evento
   useEffect(() => {
     if (!authChecked) return
     const loadEvent = async () => {
@@ -113,18 +122,17 @@ export default function EventLayout({ children }: { children: React.ReactNode })
     loadEvent()
   }, [id, authChecked])
 
+  // Scroll nav al item activo
   useEffect(() => {
     const container = navScrollRef.current
     if (!container) return
     const activeIndex = NAV_ITEMS.findIndex(item => {
-      const full = `/events/${id}${item.path}`
       if (item.path === '') return pathname === `/events/${id}`
-      return pathname.startsWith(full)
+      return pathname.startsWith(`/events/${id}${item.path}`)
     })
     if (activeIndex === -1) return
     const itemWidth = container.scrollWidth / NAV_ITEMS.length
-    const scrollTo = itemWidth * activeIndex - itemWidth * 2
-    container.scrollTo({ left: Math.max(0, scrollTo), behavior: 'smooth' })
+    container.scrollTo({ left: Math.max(0, itemWidth * activeIndex - itemWidth * 2), behavior: 'smooth' })
   }, [pathname, id])
 
   const formatDate = (d: string) => {
@@ -158,6 +166,11 @@ export default function EventLayout({ children }: { children: React.ReactNode })
     setDrawerOpen(false)
   }
 
+  const handleLogout = async () => {
+    await supabase.auth.signOut()
+    window.location.href = '/'
+  }
+
   if (!authChecked) {
     return (
       <div className="flex h-screen items-center justify-center bg-white">
@@ -169,23 +182,93 @@ export default function EventLayout({ children }: { children: React.ReactNode })
     )
   }
 
+  const initials = getInitials(userName, userEmail)
   const displayStatus = event ? getDisplayStatus() : null
   const badgeStyle = displayStatus ? EVENT_STATUS_STYLES[displayStatus] : null
+
+  // Dropdown del avatar — reutilizable en desktop y mobile
+  const AvatarDropdown = () => (
+    <div className="absolute bottom-full right-0 z-50 mb-2 w-52 overflow-hidden rounded-xl border border-[#e8e8e8] bg-white shadow-lg">
+      {/* Info usuario */}
+      <div className="border-b border-[#f0f0f0] px-4 py-3">
+        <p className="truncate text-xs font-semibold text-[#1D1E20]">{userName || 'Mi cuenta'}</p>
+        <p className="truncate text-[11px] text-[#aaa]">{userEmail}</p>
+      </div>
+      {/* Acciones */}
+      <button
+        onClick={() => { setAvatarOpen(false); router.push('/perfil') }}
+        className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-xs text-[#555] transition hover:bg-[#f8f8f8]"
+      >
+        <User size={14} className="text-[#aaa]" />
+        Mi perfil
+      </button>
+      <button
+        onClick={handleLogout}
+        className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-xs text-[#cc3333] transition hover:bg-[#fff0f0]"
+      >
+        <LogOut size={14} />
+        Cerrar sesión
+      </button>
+    </div>
+  )
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-white font-sans text-[#1D1E20]">
 
+      {/* ══ HEADER MOBILE — solo visible en mobile ══ */}
+      <header className="flex h-12 shrink-0 items-center justify-between border-b border-[#e8e8e8] bg-white px-4 sm:hidden">
+        {/* Nombre del evento */}
+        <div className="flex min-w-0 flex-1 items-center gap-2">
+          <button
+            onClick={() => router.push('/dashboard')}
+            className="shrink-0 text-[#bbb] transition hover:text-[#48C9B0]"
+          >
+            <House size={16} />
+          </button>
+          <span className="truncate text-sm font-semibold text-[#1D1E20]">
+            {event?.name || '...'}
+          </span>
+        </div>
+
+        {/* Avatar mobile */}
+        <div ref={avatarRef} className="relative ml-3 shrink-0">
+          <button
+            onClick={() => setAvatarOpen(p => !p)}
+            className="flex items-center"
+          >
+            <Avatar initials={initials} size="sm" />
+          </button>
+          {avatarOpen && (
+            <div className="absolute right-0 top-full z-50 mt-2 w-52 overflow-hidden rounded-xl border border-[#e8e8e8] bg-white shadow-lg">
+              <div className="border-b border-[#f0f0f0] px-4 py-3">
+                <p className="truncate text-xs font-semibold text-[#1D1E20]">{userName || 'Mi cuenta'}</p>
+                <p className="truncate text-[11px] text-[#aaa]">{userEmail}</p>
+              </div>
+              <button
+                onClick={() => { setAvatarOpen(false); router.push('/perfil') }}
+                className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-xs text-[#555] transition hover:bg-[#f8f8f8]"
+              >
+                <User size={14} className="text-[#aaa]" />
+                Mi perfil
+              </button>
+              <button
+                onClick={handleLogout}
+                className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-xs text-[#cc3333] transition hover:bg-[#fff0f0]"
+              >
+                <LogOut size={14} />
+                Cerrar sesión
+              </button>
+            </div>
+          )}
+        </div>
+      </header>
+
       {/* ══ HEADER DESKTOP ══ */}
       <header className="hidden h-14 shrink-0 items-center justify-between border-b border-[#e8e8e8] bg-white px-4 sm:flex sm:h-16 sm:px-6">
-        {/* Logo */}
-        <button
-          onClick={() => router.push('/dashboard')}
-          className="shrink-0"
-        >
+        <button onClick={() => router.push('/dashboard')} className="shrink-0">
           <img src="/images/logo.svg" alt="Anfiora" className="h-10 sm:h-11 lg:h-14" />
         </button>
 
-        {/* Info del evento — centro */}
         {event && (
           <div className="flex min-w-0 flex-1 items-center justify-center gap-2 px-4">
             <span className="max-w-[200px] truncate text-sm font-semibold text-[#1D1E20] lg:max-w-xs">
@@ -210,7 +293,6 @@ export default function EventLayout({ children }: { children: React.ReactNode })
           </div>
         )}
 
-        {/* Derecha */}
         <div className="flex shrink-0 items-center gap-3">
           <button onClick={() => router.push('/dashboard')} className="text-xs text-[#999] transition hover:text-[#48C9B0]">
             ← Mis eventos
@@ -231,12 +313,12 @@ export default function EventLayout({ children }: { children: React.ReactNode })
       {/* ══ BODY ══ */}
       <div className="flex min-h-0 flex-1 overflow-hidden">
 
-        {/* ══ SIDEBAR — solo desktop ══ */}
+        {/* ══ SIDEBAR — solo desktop lg+ ══ */}
         <aside
           className="hidden shrink-0 flex-col overflow-hidden border-r border-[#e8e8e8] bg-[#f8f5f0] lg:flex"
           style={{ width: collapsed ? '56px' : '224px', transition: 'width 0.2s ease' }}
         >
-          <nav className="py-2">
+          <nav className="flex-1 py-2">
             {NAV_ITEMS.map(item => (
               <button
                 key={item.path}
@@ -254,19 +336,41 @@ export default function EventLayout({ children }: { children: React.ReactNode })
               </button>
             ))}
           </nav>
-          <div className="flex-1" />
-          <div className="shrink-0 border-t border-[#e8e8e8] px-4 py-3">
-            <button
-              onClick={toggleSidebar}
-              title={collapsed ? 'Expandir' : 'Colapsar'}
-              className={`flex w-full items-center rounded-md border border-[#e0e0e0] text-[#aaa] transition hover:border-[#48C9B0] hover:text-[#48C9B0]
-                ${collapsed ? 'h-7 justify-center' : 'gap-2 px-2.5 py-2'}`}
-            >
-              {collapsed
-                ? <PanelLeftOpen width={14} height={14} />
-                : <><PanelLeftClose width={14} height={14} /><span className="text-xs font-medium">Colapsar</span></>
-              }
-            </button>
+
+          {/* Avatar desktop — fijo al fondo del sidebar */}
+          <div className="shrink-0 border-t border-[#e8e8e8]">
+            <div ref={avatarRef} className="relative px-3 py-3">
+              <button
+                onClick={() => setAvatarOpen(p => !p)}
+                title={collapsed ? (userName || userEmail) : undefined}
+                className={`flex w-full items-center rounded-lg transition hover:bg-white/70
+                  ${collapsed ? 'justify-center py-1.5' : 'gap-2.5 px-2 py-1.5'}`}
+              >
+                <Avatar initials={initials} />
+                {!collapsed && (
+                  <div className="min-w-0 flex-1 text-left">
+                    <p className="truncate text-xs font-semibold text-[#1D1E20]">{userName || 'Mi cuenta'}</p>
+                    <p className="truncate text-[10px] text-[#aaa]">{userEmail}</p>
+                  </div>
+                )}
+              </button>
+              {avatarOpen && <AvatarDropdown />}
+            </div>
+
+            {/* Botón colapsar */}
+            <div className="px-3 pb-3">
+              <button
+                onClick={toggleSidebar}
+                title={collapsed ? 'Expandir' : 'Colapsar'}
+                className={`flex w-full items-center rounded-md border border-[#e0e0e0] text-[#aaa] transition hover:border-[#48C9B0] hover:text-[#48C9B0]
+                  ${collapsed ? 'h-7 justify-center' : 'gap-2 px-2.5 py-2'}`}
+              >
+                {collapsed
+                  ? <PanelLeftOpen width={14} height={14} />
+                  : <><PanelLeftClose width={14} height={14} /><span className="text-xs font-medium">Colapsar</span></>
+                }
+              </button>
+            </div>
           </div>
         </aside>
 
