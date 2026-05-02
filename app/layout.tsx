@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import './globals.css'
 import { PostHogProvider } from './components/PostHogProvider'
+import FeedbackWidget from "@/app/components/FeedbackWidget";
 
 export const metadata: Metadata = {
   title: 'Anfiora — Gestión de invitados para eventos',
@@ -37,7 +38,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="es">
-      <body><PostHogProvider>{children}</PostHogProvider></body>
+      <body>
+        <PostHogProvider>{children}</PostHogProvider>
+        <FeedbackWidget />
+      </body>
     </html>
   )
 }
