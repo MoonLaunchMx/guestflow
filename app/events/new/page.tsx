@@ -2,7 +2,6 @@
 
 import DatePicker from '@/app/components/ui/DatePicker'
 import { useState } from 'react'
-import Image from 'next/image'
 import { supabase } from '@/lib/supabase'
 
 const EVENT_TYPES = [
@@ -13,6 +12,11 @@ const EVENT_TYPES = [
   { value: 'bautizo',     label: 'Bautizo / Primera comunión' },
   { value: 'otro',        label: 'Otro' },
 ]
+
+function generatePlaylistToken(): string {
+  return Math.random().toString(36).substring(2, 10) +
+    Math.random().toString(36).substring(2, 10)
+}
 
 export default function NewEvent() {
   const [name, setName]           = useState('')
@@ -28,14 +32,46 @@ export default function NewEvent() {
       return
     }
     setLoading(true); setError('')
+
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) { window.location.href = '/'; return }
-    const { error } = await supabase.from('events').insert({
-      user_id: user.id, name, event_date: date,
-      venue: venue || null, event_type: eventType, total_guests: 0,
-    })
-    if (error) { setError('Error: ' + error.message); setLoading(false) }
-    else window.location.href = '/dashboard'
+
+    // 1. Crear el evento y obtener su id
+    const { data: eventData, error: eventError } = await supabase
+      .from('events')
+      .insert({
+        user_id: user.id,
+        name,
+        event_date: date,
+        venue: venue || null,
+        event_type: eventType,
+        total_guests: 0,
+      })
+      .select()
+      .single()
+
+    if (eventError) {
+      setError('Error: ' + eventError.message)
+      setLoading(false)
+      return
+    }
+
+    // 2. Crear event_settings con playlist_token
+    const { error: settingsError } = await supabase
+      .from('event_settings')
+      .insert({
+        event_id: eventData.id,
+        playlist_token: generatePlaylistToken(),
+        message_templates: [],
+        template_names: [],
+      })
+
+    if (settingsError) {
+      // El evento ya se creó — no es crítico, pero lo reportamos
+      console.error('Error creando event_settings:', settingsError.message)
+    }
+
+    window.location.href = '/dashboard'
   }
 
   return (
@@ -45,7 +81,7 @@ export default function NewEvent() {
       <header className="sticky top-0 z-10 border-b border-[#e8e8e8] bg-white">
         <div className="mx-auto flex h-14 max-w-lg items-center justify-between px-4 sm:h-16 sm:px-6">
           <button onClick={() => window.location.href = '/dashboard'} className="shrink-0">
-            <img src="/images/Logo-010526newest" alt="Anfiora" className="h-10 object-contain" />
+            <img src="/images/Logo-010526newest.svg" alt="Anfiora" className="h-10 object-contain" />
           </button>
           <button
             onClick={() => window.location.href = '/dashboard'}
