@@ -289,6 +289,7 @@ function SwipeableGuestCard({ guest, groupColor, isSelected, guestTags, availabl
 export default function EventPage() {
   const { id } = useParams()
 
+  // Estado de sesión — esperar a que Supabase hidrate antes de cargar datos
   const [event, setEvent] = useState<Event | null>(null)
   const [eventSettings, setEventSettings] = useState<EventSettings | null>(null)
   const [guests, setGuests] = useState<Guest[]>([])
@@ -351,7 +352,17 @@ export default function EventPage() {
   const [sortField, setSortField] = useState<'name' | 'phone' | 'notes' | 'status' | null>('name')
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc')
 
-  useEffect(() => { loadEvent(); loadGuests() }, [])
+// Inicializar: esperar sesión con getSession() antes de cargar datos
+  useEffect(() => {
+    const init = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session) {
+        loadEvent()
+        loadGuests()
+      }
+    }
+    init()
+  }, [])
 
   useEffect(() => {
     let result = guests
@@ -723,7 +734,6 @@ export default function EventPage() {
 
   const gridCols = ['40px', '2fr', ...(visibleCols.has('tags') ? ['1.2fr'] : []), ...(visibleCols.has('mesa') ? ['90px'] : []), ...(visibleCols.has('lado') ? ['100px'] : []), ...(visibleCols.has('notas') ? ['1fr'] : []), ...(visibleCols.has('telefono') ? ['1.5fr'] : []), ...(visibleCols.has('estatus') ? ['140px'] : []), '40px'].join(' ')
 
-  // Contenido compartido entre desktop dropdown y mobile bottom sheet
   const BulkMenuContent = ({ onClose }: { onClose: () => void }) => (
     <>
       <p className="mb-1 px-3 pt-0.5 text-[10px] font-semibold uppercase tracking-wider text-[#aaa]">Estatus</p>
@@ -758,7 +768,6 @@ export default function EventPage() {
   )
 
   return (
-    // ── KEY FIX: overflow: hidden en el contenedor raíz para que sticky funcione ──
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', background: '#ffffff', color: '#1D1E20', overflow: 'hidden' }}>
 
       {/* ══ TOOLBAR ══ */}
@@ -768,7 +777,6 @@ export default function EventPage() {
           <p className="mt-0.5 text-xs text-[#888] sm:text-sm">Gestiona a todos tus invitados desde un solo lugar.</p>
         </div>
 
-        {/* Métricas */}
         <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
           <div className="rounded-xl border border-[#e8e8e8] bg-white p-3">
             <div className="mb-1.5 flex items-center justify-between">
@@ -810,14 +818,12 @@ export default function EventPage() {
           </div>
         </div>
 
-        {/* Toolbar row */}
         <div className="mb-3 flex items-center gap-2">
           <div className="relative min-w-0 flex-1 sm:w-72 sm:flex-none lg:w-80">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#aaa] pointer-events-none" />
             <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Buscar..."
               className="w-full rounded-lg border border-[#e0e0e0] bg-[#f8f8f8] pl-8 pr-3 py-2 text-sm text-[#1D1E20] outline-none" />
           </div>
-
           <select value={filter} onChange={e => setFilter(e.target.value as typeof filter)}
             className="min-w-0 flex-1 cursor-pointer rounded-lg border-none bg-[#1D1E20] px-3 py-2 text-sm font-semibold text-white outline-none sm:flex-none sm:w-48">
             <option value="all">Todos ({totalPersonas})</option>
@@ -828,18 +834,13 @@ export default function EventPage() {
             <option value="accion_necesaria">Acción necesaria ({accionNecesaria})</option>
             <option value="declined">Declinados ({declined})</option>
           </select>
-
           <div className="hidden sm:block sm:flex-1" />
-
-          {/* Mobile: botón seleccionados → abre bottom sheet */}
           {someSelected && (
             <button onClick={() => setShowMobileBulkSheet(true)}
               className="whitespace-nowrap rounded-lg bg-[#1D1E20] px-3 py-2 text-xs font-semibold text-white sm:hidden">
               {selected.size} sel. ▾
             </button>
           )}
-
-          {/* Desktop: dropdown seleccionados */}
           {someSelected && (
             <div className="relative hidden sm:block" ref={bulkMenuRef}>
               <button onClick={() => setShowBulkMenu(!showBulkMenu)}
@@ -853,7 +854,6 @@ export default function EventPage() {
               )}
             </div>
           )}
-
           <div className="relative hidden sm:block" ref={colMenuRef}>
             <button onClick={() => setShowColMenu(v => !v)}
               className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-[#e0e0e0] px-3 py-2 text-xs text-[#666] transition hover:border-[#48C9B0] hover:text-[#48C9B0]">
@@ -872,7 +872,6 @@ export default function EventPage() {
               </div>
             )}
           </div>
-
           <button onClick={exportCSV} className="hidden items-center gap-1.5 whitespace-nowrap rounded-lg border border-[#e0e0e0] px-3 py-2 text-xs text-[#666] transition hover:border-[#48C9B0] hover:text-[#48C9B0] sm:flex">
             <Download size={13} />Exportar
           </button>
@@ -886,7 +885,6 @@ export default function EventPage() {
         </div>
       </div>
 
-      {/* ══ HEADER COLUMNAS DESKTOP — fuera del scroll, siempre visible ══ */}
       <div className="hidden shrink-0 border-b border-[#e8e8e8] bg-[#f8f8f8] px-6 py-2 sm:px-6 lg:px-10 sm:block">
         <div className="items-center" style={{ display: 'grid', gridTemplateColumns: gridCols }}>
           <input type="checkbox" checked={allSelected} onChange={toggleSelectAll} className="cursor-pointer accent-[#48C9B0]" />
@@ -901,7 +899,6 @@ export default function EventPage() {
         </div>
       </div>
 
-      {/* ══ LISTA ══ */}
       <div className="flex-1 overflow-y-auto px-4 pb-6 pt-3 sm:px-6 lg:px-10">
         {loading ? (
           <p className="pt-5 text-sm text-[#999]">Cargando...</p>
@@ -1028,7 +1025,6 @@ export default function EventPage() {
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#cc3333" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">{TRASH_ICON}</svg>
                       </button>
                     </div>
-
                     {groupColor && guest.party_members.map((m, mi) => {
                       const isLastMember = mi === guest.party_members.length - 1
                       return (
@@ -1172,7 +1168,7 @@ export default function EventPage() {
                     <span className="font-semibold text-[#48C9B0]">tags</span> — separados por coma (opcional)<br/>
                     <span className="font-semibold text-[#48C9B0]">rsvp_status</span> — confirmed | pending | declined
                   </div>
-                  <button onClick={downloadTemplate} className="ml-8 rounded-lg border border-[#48C9B0] px-4 py-2 text-xs text-[#1a9e88] transition hover:bg-[#f0fdfb]">⬇️ Descargar plantilla CSV</button>
+                  <button onClick={downloadTemplate} className="ml-8 rounded-lg border border-[#48C9B0] px-4 py-2 text-xs text-[#1a9e88] transition hover:bg-[#f0fdfb]">Descargar plantilla CSV</button>
                 </div>
                 <div className="mb-6 border-t border-[#f0f0f0]" />
                 <div>
@@ -1183,7 +1179,7 @@ export default function EventPage() {
                   {csvError && <div className="mb-3 ml-8 rounded-lg border border-[#ffc0c0] bg-[#fff0f0] p-2.5 text-xs text-[#cc3333]">{csvError}</div>}
                   {csvSuccess && <div className="mb-3 ml-8 rounded-lg border border-[#a0e0c0] bg-[#f0fff6] p-2.5 text-xs text-[#2a7a50]">{csvSuccess}</div>}
                   <label className="ml-8 inline-flex cursor-pointer items-center gap-2 rounded-lg bg-[#48C9B0] px-4 py-2 text-xs font-semibold text-white">
-                    📁 Seleccionar archivo CSV
+                    Seleccionar archivo CSV
                     <input ref={fileRef} type="file" accept=".csv,.txt" onChange={handleCSV} className="hidden" />
                   </label>
                 </div>
@@ -1201,7 +1197,7 @@ export default function EventPage() {
                 </div>
                 {csvPreview.hasDuplicates && (
                   <div className="mb-4">
-                    <p className="mb-2 text-xs font-semibold text-[#cc3333]">⚠️ Números duplicados detectados:</p>
+                    <p className="mb-2 text-xs font-semibold text-[#cc3333]">Números duplicados detectados:</p>
                     <div className="flex max-h-40 flex-col gap-1 overflow-y-auto rounded-lg border border-[#ffc0c0] bg-[#fff8f8] p-3">
                       {csvPreview.duplicates.map((d, i) => (
                         <div key={i} className="text-xs text-[#cc3333]">
