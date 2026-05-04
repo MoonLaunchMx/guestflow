@@ -5,14 +5,16 @@ import { useParams, usePathname, useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { Users, Images, Music2, Settings, LayoutGrid, PanelLeftClose, PanelLeftOpen, CalendarDays, House, User, LogOut } from 'lucide-react'
 import { Event } from '@/lib/types'
+// NUEVO: import del provider de acceso
+import { EventAccessProvider } from '@/lib/event-access-context'
 
 const EVENT_TYPE_LABELS: Record<string, string> = {
-  boda:        '💍 Boda',
-  cumpleanos:  '🎂 Cumpleaños',
-  fiesta:      '🎉 Fiesta',
-  corporativo: '💼 Corporativo',
-  bautizo:     '🕊️ Bautizo',
-  otro:        '📅 Otro',
+  boda:        'Boda',
+  cumpleanos:  'Cumpleanos',
+  fiesta:      'Fiesta',
+  corporativo: 'Corporativo',
+  bautizo:     'Bautizo',
+  otro:        'Otro',
 }
 
 const EVENT_STATUS_STYLES: Record<string, { dot: string; badge: string; label: string }> = {
@@ -26,12 +28,11 @@ const NAV_ITEMS = [
   { label: 'Invitados',     labelMobile: 'Invitados', path: '',               iconOutline: <Users       width={18} height={18} strokeWidth={1.5} />, iconFilled: <Users       width={18} height={18} strokeWidth={2.5} /> },
   { label: 'Mesas',         labelMobile: 'Mesas',     path: '/mesas',         iconOutline: <LayoutGrid  width={18} height={18} strokeWidth={1.5} />, iconFilled: <LayoutGrid  width={18} height={18} strokeWidth={2.5} /> },
   { label: 'Timeline',      labelMobile: 'Timeline',  path: '/timeline',      iconOutline: <CalendarDays width={18} height={18} strokeWidth={1.5} />, iconFilled: <CalendarDays width={18} height={18} strokeWidth={2.5} /> },
-  { label: 'Álbum',         labelMobile: 'Álbum',     path: '/album',         iconOutline: <Images      width={18} height={18} strokeWidth={1.5} />, iconFilled: <Images      width={18} height={18} strokeWidth={2.5} /> },
+  { label: 'Album',         labelMobile: 'Album',     path: '/album',         iconOutline: <Images      width={18} height={18} strokeWidth={1.5} />, iconFilled: <Images      width={18} height={18} strokeWidth={2.5} /> },
   { label: 'Playlist',      labelMobile: 'Playlist',  path: '/playlist',      iconOutline: <Music2      width={18} height={18} strokeWidth={1.5} />, iconFilled: <Music2      width={18} height={18} strokeWidth={2.5} /> },
-  { label: 'Configuración', labelMobile: 'Config',    path: '/configuracion', iconOutline: <Settings    width={18} height={18} strokeWidth={1.5} />, iconFilled: <Settings    width={18} height={18} strokeWidth={2.5} /> },
+  { label: 'Configuracion', labelMobile: 'Config',    path: '/configuracion', iconOutline: <Settings    width={18} height={18} strokeWidth={1.5} />, iconFilled: <Settings    width={18} height={18} strokeWidth={2.5} /> },
 ]
 
-// Genera iniciales desde nombre o email
 function getInitials(name: string, email: string): string {
   if (name) {
     const parts = name.trim().split(' ').filter(Boolean)
@@ -41,7 +42,6 @@ function getInitials(name: string, email: string): string {
   return email?.[0]?.toUpperCase() || '?'
 }
 
-// Avatar circular con iniciales
 function Avatar({ initials, size = 'md' }: { initials: string; size?: 'sm' | 'md' }) {
   const cls = size === 'sm'
     ? 'h-7 w-7 text-[11px]'
@@ -58,18 +58,17 @@ export default function EventLayout({ children }: { children: React.ReactNode })
   const pathname = usePathname()
   const router = useRouter()
 
-  const [event, setEvent]           = useState<Event | null>(null)
-  const [drawerOpen, setDrawerOpen] = useState(false)
+  const [event, setEvent]             = useState<Event | null>(null)
+  const [drawerOpen, setDrawerOpen]   = useState(false)
   const [authChecked, setAuthChecked] = useState(false)
-  const [collapsed, setCollapsed]   = useState(false)
-  const [userName, setUserName]     = useState('')
-  const [userEmail, setUserEmail]   = useState('')
-  const [avatarOpen, setAvatarOpen] = useState(false)
+  const [collapsed, setCollapsed]     = useState(false)
+  const [userName, setUserName]       = useState('')
+  const [userEmail, setUserEmail]     = useState('')
+  const [avatarOpen, setAvatarOpen]   = useState(false)
 
-  const navScrollRef  = useRef<HTMLDivElement>(null)
-  const avatarRef     = useRef<HTMLDivElement>(null)
+  const navScrollRef = useRef<HTMLDivElement>(null)
+  const avatarRef    = useRef<HTMLDivElement>(null)
 
-  // Persistir estado sidebar
   useEffect(() => {
     const stored = localStorage.getItem('gf_sidebar_collapsed')
     if (stored === 'true') setCollapsed(true)
@@ -82,7 +81,6 @@ export default function EventLayout({ children }: { children: React.ReactNode })
     })
   }
 
-  // Cerrar avatar dropdown al hacer clic fuera
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (avatarRef.current && !avatarRef.current.contains(e.target as Node)) {
@@ -182,19 +180,16 @@ export default function EventLayout({ children }: { children: React.ReactNode })
     )
   }
 
-  const initials = getInitials(userName, userEmail)
+  const initials      = getInitials(userName, userEmail)
   const displayStatus = event ? getDisplayStatus() : null
-  const badgeStyle = displayStatus ? EVENT_STATUS_STYLES[displayStatus] : null
+  const badgeStyle    = displayStatus ? EVENT_STATUS_STYLES[displayStatus] : null
 
-  // Dropdown del avatar — reutilizable en desktop y mobile
   const AvatarDropdown = () => (
     <div className="absolute bottom-full right-0 z-50 mb-2 w-52 overflow-hidden rounded-xl border border-[#e8e8e8] bg-white shadow-lg">
-      {/* Info usuario */}
       <div className="border-b border-[#f0f0f0] px-4 py-3">
         <p className="truncate text-xs font-semibold text-[#1D1E20]">{userName || 'Mi cuenta'}</p>
         <p className="truncate text-[11px] text-[#aaa]">{userEmail}</p>
       </div>
-      {/* Acciones */}
       <button
         onClick={() => { setAvatarOpen(false); router.push('/perfil') }}
         className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-xs text-[#555] transition hover:bg-[#f8f8f8]"
@@ -207,249 +202,244 @@ export default function EventLayout({ children }: { children: React.ReactNode })
         className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-xs text-[#cc3333] transition hover:bg-[#fff0f0]"
       >
         <LogOut size={14} />
-        Cerrar sesión
+        Cerrar sesion
       </button>
     </div>
   )
 
   return (
-    <div className="flex h-screen flex-col overflow-hidden bg-white font-sans text-[#1D1E20]">
+    // NUEVO: EventAccessProvider envuelve todo — una query, acceso global
+    <EventAccessProvider eventId={id as string}>
+      <div className="flex h-screen flex-col overflow-hidden bg-white font-sans text-[#1D1E20]">
 
-      {/* ══ HEADER MOBILE — solo visible en mobile ══ */}
-      <header className="flex h-12 shrink-0 items-center justify-between border-b border-[#e8e8e8] bg-white px-4 sm:hidden">
-        {/* Nombre del evento */}
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <button
-            onClick={() => router.push('/dashboard')}
-            className="shrink-0 text-[#bbb] transition hover:text-[#48C9B0]"
-          >
-            <House size={16} />
-          </button>
-          <span className="truncate text-sm font-semibold text-[#1D1E20]">
-            {event?.name || '...'}
-          </span>
-        </div>
-
-        {/* Avatar mobile */}
-        <div ref={avatarRef} className="relative ml-3 shrink-0">
-          <button
-            onClick={() => setAvatarOpen(p => !p)}
-            className="flex items-center"
-          >
-            <Avatar initials={initials} size="sm" />
-          </button>
-          {avatarOpen && (
-            <div className="absolute right-0 top-full z-50 mt-2 w-52 overflow-hidden rounded-xl border border-[#e8e8e8] bg-white shadow-lg">
-              <div className="border-b border-[#f0f0f0] px-4 py-3">
-                <p className="truncate text-xs font-semibold text-[#1D1E20]">{userName || 'Mi cuenta'}</p>
-                <p className="truncate text-[11px] text-[#aaa]">{userEmail}</p>
+        {/* HEADER MOBILE */}
+        <header className="flex h-12 shrink-0 items-center justify-between border-b border-[#e8e8e8] bg-white px-4 sm:hidden">
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <button
+              onClick={() => router.push('/dashboard')}
+              className="shrink-0 text-[#bbb] transition hover:text-[#48C9B0]"
+            >
+              <House size={16} />
+            </button>
+            <span className="truncate text-sm font-semibold text-[#1D1E20]">
+              {event?.name || '...'}
+            </span>
+          </div>
+          <div ref={avatarRef} className="relative ml-3 shrink-0">
+            <button onClick={() => setAvatarOpen(p => !p)} className="flex items-center">
+              <Avatar initials={initials} size="sm" />
+            </button>
+            {avatarOpen && (
+              <div className="absolute right-0 top-full z-50 mt-2 w-52 overflow-hidden rounded-xl border border-[#e8e8e8] bg-white shadow-lg">
+                <div className="border-b border-[#f0f0f0] px-4 py-3">
+                  <p className="truncate text-xs font-semibold text-[#1D1E20]">{userName || 'Mi cuenta'}</p>
+                  <p className="truncate text-[11px] text-[#aaa]">{userEmail}</p>
+                </div>
+                <button
+                  onClick={() => { setAvatarOpen(false); router.push('/perfil') }}
+                  className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-xs text-[#555] transition hover:bg-[#f8f8f8]"
+                >
+                  <User size={14} className="text-[#aaa]" />
+                  Mi perfil
+                </button>
+                <button
+                  onClick={handleLogout}
+                  className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-xs text-[#cc3333] transition hover:bg-[#fff0f0]"
+                >
+                  <LogOut size={14} />
+                  Cerrar sesion
+                </button>
               </div>
-              <button
-                onClick={() => { setAvatarOpen(false); router.push('/perfil') }}
-                className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-xs text-[#555] transition hover:bg-[#f8f8f8]"
-              >
-                <User size={14} className="text-[#aaa]" />
-                Mi perfil
-              </button>
-              <button
-                onClick={handleLogout}
-                className="flex w-full items-center gap-2.5 px-4 py-2.5 text-left text-xs text-[#cc3333] transition hover:bg-[#fff0f0]"
-              >
-                <LogOut size={14} />
-                Cerrar sesión
-              </button>
+            )}
+          </div>
+        </header>
+
+        {/* HEADER DESKTOP */}
+        <header className="hidden h-14 shrink-0 items-center justify-between border-b border-[#e8e8e8] bg-white px-4 sm:flex sm:h-16 sm:px-6">
+          <button onClick={() => router.push('/dashboard')} className="shrink-0">
+            <img src="/images/Logo-010526newest.svg" alt="Anfiora" className="h-10 sm:h-11 lg:h-14" />
+          </button>
+
+          {event && (
+            <div className="flex min-w-0 flex-1 items-center justify-center gap-2 px-4">
+              <span className="max-w-[200px] truncate text-sm font-semibold text-[#1D1E20] lg:max-w-xs">
+                {event.name}
+              </span>
+              {event.event_type && (
+                <span className="hidden text-xs text-[#888] lg:block">
+                  {EVENT_TYPE_LABELS[event.event_type]}
+                </span>
+              )}
+              {badgeStyle && (
+                <span className={'flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ' + badgeStyle.badge}>
+                  <span className={'h-1.5 w-1.5 rounded-full ' + badgeStyle.dot} />
+                  {badgeStyle.label}
+                </span>
+              )}
+              {event.event_date && (
+                <span className="hidden text-xs text-[#aaa] lg:block">
+                  {formatDate(event.event_date)}
+                </span>
+              )}
             </div>
           )}
-        </div>
-      </header>
 
-      {/* ══ HEADER DESKTOP ══ */}
-      <header className="hidden h-14 shrink-0 items-center justify-between border-b border-[#e8e8e8] bg-white px-4 sm:flex sm:h-16 sm:px-6">
-        <button onClick={() => router.push('/dashboard')} className="shrink-0">
-          <img src="/images/logo.svg" alt="Anfiora" className="h-10 sm:h-11 lg:h-14" />
-        </button>
-
-        {event && (
-          <div className="flex min-w-0 flex-1 items-center justify-center gap-2 px-4">
-            <span className="max-w-[200px] truncate text-sm font-semibold text-[#1D1E20] lg:max-w-xs">
-              {event.name}
-            </span>
-            {event.event_type && (
-              <span className="hidden text-xs text-[#888] lg:block">
-                {EVENT_TYPE_LABELS[event.event_type]}
-              </span>
-            )}
-            {badgeStyle && (
-              <span className={'flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-semibold ' + badgeStyle.badge}>
-                <span className={'h-1.5 w-1.5 rounded-full ' + badgeStyle.dot} />
-                {badgeStyle.label}
-              </span>
-            )}
-            {event.event_date && (
-              <span className="hidden text-xs text-[#aaa] lg:block">
-                {formatDate(event.event_date)}
-              </span>
-            )}
+          <div className="flex shrink-0 items-center gap-3">
+            <button onClick={() => router.push('/dashboard')} className="text-xs text-[#999] transition hover:text-[#48C9B0]">
+              Mis eventos
+            </button>
+            <button
+              onClick={() => setDrawerOpen(!drawerOpen)}
+              className="hidden h-8 w-8 items-center justify-center rounded-md border border-[#e0e0e0] text-[#888] transition hover:border-[#48C9B0] hover:text-[#48C9B0] sm:flex lg:hidden"
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <line x1="3" y1="6" x2="21" y2="6"/>
+                <line x1="3" y1="12" x2="21" y2="12"/>
+                <line x1="3" y1="18" x2="21" y2="18"/>
+              </svg>
+            </button>
           </div>
-        )}
+        </header>
 
-        <div className="flex shrink-0 items-center gap-3">
-          <button onClick={() => router.push('/dashboard')} className="text-xs text-[#999] transition hover:text-[#48C9B0]">
-            ← Mis eventos
-          </button>
-          <button
-            onClick={() => setDrawerOpen(!drawerOpen)}
-            className="hidden h-8 w-8 items-center justify-center rounded-md border border-[#e0e0e0] text-[#888] transition hover:border-[#48C9B0] hover:text-[#48C9B0] sm:flex lg:hidden"
+        {/* BODY */}
+        <div className="flex min-h-0 flex-1 overflow-hidden">
+
+          {/* SIDEBAR desktop lg+ */}
+          <aside
+            className="hidden shrink-0 flex-col overflow-hidden border-r border-[#e8e8e8] bg-[#f8f5f0] lg:flex"
+            style={{ width: collapsed ? '56px' : '224px', transition: 'width 0.2s ease' }}
           >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <line x1="3" y1="6" x2="21" y2="6"/>
-              <line x1="3" y1="12" x2="21" y2="12"/>
-              <line x1="3" y1="18" x2="21" y2="18"/>
-            </svg>
-          </button>
-        </div>
-      </header>
+            <nav className="flex-1 py-2">
+              {NAV_ITEMS.map(item => (
+                <button
+                  key={item.path}
+                  onClick={() => navigate(item.path)}
+                  title={collapsed ? item.label : undefined}
+                  className={`flex w-full items-center border-l-[3px] py-2.5 text-left text-sm transition
+                    ${collapsed ? 'justify-center px-0' : 'gap-2.5 px-4'}
+                    ${isActive(item.path)
+                      ? 'border-[#48C9B0] bg-white font-semibold text-[#1D1E20]'
+                      : 'border-transparent font-normal text-[#888] hover:bg-white/60 hover:text-[#1D1E20]'
+                    }`}
+                >
+                  {isActive(item.path) ? item.iconFilled : item.iconOutline}
+                  {!collapsed && <span>{item.label}</span>}
+                </button>
+              ))}
+            </nav>
 
-      {/* ══ BODY ══ */}
-      <div className="flex min-h-0 flex-1 overflow-hidden">
-
-        {/* ══ SIDEBAR — solo desktop lg+ ══ */}
-        <aside
-          className="hidden shrink-0 flex-col overflow-hidden border-r border-[#e8e8e8] bg-[#f8f5f0] lg:flex"
-          style={{ width: collapsed ? '56px' : '224px', transition: 'width 0.2s ease' }}
-        >
-          <nav className="flex-1 py-2">
-            {NAV_ITEMS.map(item => (
-              <button
-                key={item.path}
-                onClick={() => navigate(item.path)}
-                title={collapsed ? item.label : undefined}
-                className={`flex w-full items-center border-l-[3px] py-2.5 text-left text-sm transition
-                  ${collapsed ? 'justify-center px-0' : 'gap-2.5 px-4'}
-                  ${isActive(item.path)
-                    ? 'border-[#48C9B0] bg-white font-semibold text-[#1D1E20]'
-                    : 'border-transparent font-normal text-[#888] hover:bg-white/60 hover:text-[#1D1E20]'
-                  }`}
-              >
-                {isActive(item.path) ? item.iconFilled : item.iconOutline}
-                {!collapsed && <span>{item.label}</span>}
-              </button>
-            ))}
-          </nav>
-
-          {/* Avatar desktop — fijo al fondo del sidebar */}
-          <div className="shrink-0 border-t border-[#e8e8e8]">
-            <div ref={avatarRef} className="relative px-3 py-3">
-              <button
-                onClick={() => setAvatarOpen(p => !p)}
-                title={collapsed ? (userName || userEmail) : undefined}
-                className={`flex w-full items-center rounded-lg transition hover:bg-white/70
-                  ${collapsed ? 'justify-center py-1.5' : 'gap-2.5 px-2 py-1.5'}`}
-              >
-                <Avatar initials={initials} />
-                {!collapsed && (
-                  <div className="min-w-0 flex-1 text-left">
-                    <p className="truncate text-xs font-semibold text-[#1D1E20]">{userName || 'Mi cuenta'}</p>
-                    <p className="truncate text-[10px] text-[#aaa]">{userEmail}</p>
-                  </div>
-                )}
-              </button>
-              {avatarOpen && <AvatarDropdown />}
-            </div>
-
-            {/* Botón colapsar */}
-            <div className="px-3 pb-3">
-              <button
-                onClick={toggleSidebar}
-                title={collapsed ? 'Expandir' : 'Colapsar'}
-                className={`flex w-full items-center rounded-md border border-[#e0e0e0] text-[#aaa] transition hover:border-[#48C9B0] hover:text-[#48C9B0]
-                  ${collapsed ? 'h-7 justify-center' : 'gap-2 px-2.5 py-2'}`}
-              >
-                {collapsed
-                  ? <PanelLeftOpen width={14} height={14} />
-                  : <><PanelLeftClose width={14} height={14} /><span className="text-xs font-medium">Colapsar</span></>
-                }
-              </button>
-            </div>
-          </div>
-        </aside>
-
-        {/* ══ DRAWER — tablet ══ */}
-        {drawerOpen && (
-          <>
-            <div onClick={() => setDrawerOpen(false)} className="fixed inset-0 top-16 z-40 bg-black/30 lg:hidden" />
-            <div className="fixed left-0 top-16 z-50 flex h-[calc(100vh-64px)] w-56 flex-col overflow-y-auto border-r border-[#e8e8e8] bg-[#f8f5f0] shadow-lg lg:hidden">
-              <div className="border-b border-[#e8e8e8] px-4 py-5">
-                {event?.event_type && (
-                  <p className="mb-1 text-[11px] text-[#999]">{EVENT_TYPE_LABELS[event.event_type] || event.event_type}</p>
-                )}
-                <p className="text-sm font-bold leading-snug text-[#1D1E20]">{event?.name || '...'}</p>
-                {event?.event_date && (
-                  <p className="mt-1 text-[11px] text-[#999]">{formatDate(event.event_date)}</p>
-                )}
-                {event?.venue && (
-                  <p className="mt-0.5 text-[11px] text-[#aaa]">📍 {event.venue}</p>
-                )}
+            {/* Avatar desktop fijo al fondo */}
+            <div className="shrink-0 border-t border-[#e8e8e8]">
+              <div ref={avatarRef} className="relative px-3 py-3">
+                <button
+                  onClick={() => setAvatarOpen(p => !p)}
+                  title={collapsed ? (userName || userEmail) : undefined}
+                  className={`flex w-full items-center rounded-lg transition hover:bg-white/70
+                    ${collapsed ? 'justify-center py-1.5' : 'gap-2.5 px-2 py-1.5'}`}
+                >
+                  <Avatar initials={initials} />
+                  {!collapsed && (
+                    <div className="min-w-0 flex-1 text-left">
+                      <p className="truncate text-xs font-semibold text-[#1D1E20]">{userName || 'Mi cuenta'}</p>
+                      <p className="truncate text-[10px] text-[#aaa]">{userEmail}</p>
+                    </div>
+                  )}
+                </button>
+                {avatarOpen && <AvatarDropdown />}
               </div>
-              <nav className="flex-1 py-2">
-                {NAV_ITEMS.map(item => (
-                  <button
-                    key={item.path}
-                    onClick={() => navigate(item.path)}
-                    className={`flex w-full items-center gap-2.5 border-l-[3px] px-4 py-2.5 text-left text-sm transition
-                      ${isActive(item.path)
-                        ? 'border-[#48C9B0] bg-white font-semibold text-[#1D1E20]'
-                        : 'border-transparent font-normal text-[#888] hover:bg-white/60 hover:text-[#1D1E20]'
-                      }`}
-                  >
-                    {isActive(item.path) ? item.iconFilled : item.iconOutline}
-                    <span>{item.label}</span>
-                  </button>
-                ))}
-              </nav>
+              <div className="px-3 pb-3">
+                <button
+                  onClick={toggleSidebar}
+                  title={collapsed ? 'Expandir' : 'Colapsar'}
+                  className={`flex w-full items-center rounded-md border border-[#e0e0e0] text-[#aaa] transition hover:border-[#48C9B0] hover:text-[#48C9B0]
+                    ${collapsed ? 'h-7 justify-center' : 'gap-2 px-2.5 py-2'}`}
+                >
+                  {collapsed
+                    ? <PanelLeftOpen width={14} height={14} />
+                    : <><PanelLeftClose width={14} height={14} /><span className="text-xs font-medium">Colapsar</span></>
+                  }
+                </button>
+              </div>
             </div>
-          </>
-        )}
+          </aside>
 
-        {/* ══ MAIN CONTENT ══ */}
-        <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white pb-16 sm:pb-0">
-          {children}
-        </main>
-      </div>
+          {/* DRAWER tablet */}
+          {drawerOpen && (
+            <>
+              <div onClick={() => setDrawerOpen(false)} className="fixed inset-0 top-16 z-40 bg-black/30 lg:hidden" />
+              <div className="fixed left-0 top-16 z-50 flex h-[calc(100vh-64px)] w-56 flex-col overflow-y-auto border-r border-[#e8e8e8] bg-[#f8f5f0] shadow-lg lg:hidden">
+                <div className="border-b border-[#e8e8e8] px-4 py-5">
+                  {event?.event_type && (
+                    <p className="mb-1 text-[11px] text-[#999]">{EVENT_TYPE_LABELS[event.event_type] || event.event_type}</p>
+                  )}
+                  <p className="text-sm font-bold leading-snug text-[#1D1E20]">{event?.name || '...'}</p>
+                  {event?.event_date && (
+                    <p className="mt-1 text-[11px] text-[#999]">{formatDate(event.event_date)}</p>
+                  )}
+                  {event?.venue && (
+                    <p className="mt-0.5 text-[11px] text-[#aaa]">{event.venue}</p>
+                  )}
+                </div>
+                <nav className="flex-1 py-2">
+                  {NAV_ITEMS.map(item => (
+                    <button
+                      key={item.path}
+                      onClick={() => navigate(item.path)}
+                      className={`flex w-full items-center gap-2.5 border-l-[3px] px-4 py-2.5 text-left text-sm transition
+                        ${isActive(item.path)
+                          ? 'border-[#48C9B0] bg-white font-semibold text-[#1D1E20]'
+                          : 'border-transparent font-normal text-[#888] hover:bg-white/60 hover:text-[#1D1E20]'
+                        }`}
+                    >
+                      {isActive(item.path) ? item.iconFilled : item.iconOutline}
+                      <span>{item.label}</span>
+                    </button>
+                  ))}
+                </nav>
+              </div>
+            </>
+          )}
 
-      {/* ══ BOTTOM NAV — solo mobile ══ */}
-      <nav
-        ref={navScrollRef}
-        className="fixed bottom-0 left-0 right-0 z-40 flex overflow-x-auto border-t border-[#e8e8e8] bg-white sm:hidden"
-        style={{
-          scrollSnapType: 'x mandatory',
-          WebkitOverflowScrolling: 'touch',
-          scrollbarWidth: 'none',
-          msOverflowStyle: 'none',
-        }}
-      >
-        <button
-          onClick={() => router.push('/dashboard')}
-          className="flex shrink-0 flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium text-[#bbb] transition"
-          style={{ width: '20vw', scrollSnapAlign: 'center' }}
+          {/* MAIN CONTENT */}
+          <main className="flex min-h-0 flex-1 flex-col overflow-hidden bg-white pb-16 sm:pb-0">
+            {children}
+          </main>
+        </div>
+
+        {/* BOTTOM NAV mobile */}
+        <nav
+          ref={navScrollRef}
+          className="fixed bottom-0 left-0 right-0 z-40 flex overflow-x-auto border-t border-[#e8e8e8] bg-white sm:hidden"
+          style={{
+            scrollSnapType: 'x mandatory',
+            WebkitOverflowScrolling: 'touch',
+            scrollbarWidth: 'none',
+            msOverflowStyle: 'none',
+          }}
         >
-          <House width={18} height={18} strokeWidth={1.5} />
-          <span>Inicio</span>
-        </button>
-        {NAV_ITEMS.map(item => (
           <button
-            key={item.path}
-            onClick={() => navigate(item.path)}
-            className={`flex shrink-0 flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition
-              ${isActive(item.path) ? 'text-[#48C9B0]' : 'text-[#bbb]'}`}
+            onClick={() => router.push('/dashboard')}
+            className="flex shrink-0 flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium text-[#bbb] transition"
             style={{ width: '20vw', scrollSnapAlign: 'center' }}
           >
-            {isActive(item.path) ? item.iconFilled : item.iconOutline}
-            <span>{item.labelMobile ?? item.label}</span>
+            <House width={18} height={18} strokeWidth={1.5} />
+            <span>Inicio</span>
           </button>
-        ))}
-      </nav>
+          {NAV_ITEMS.map(item => (
+            <button
+              key={item.path}
+              onClick={() => navigate(item.path)}
+              className={`flex shrink-0 flex-col items-center justify-center gap-1 py-2.5 text-[10px] font-medium transition
+                ${isActive(item.path) ? 'text-[#48C9B0]' : 'text-[#bbb]'}`}
+              style={{ width: '20vw', scrollSnapAlign: 'center' }}
+            >
+              {isActive(item.path) ? item.iconFilled : item.iconOutline}
+              <span>{item.labelMobile ?? item.label}</span>
+            </button>
+          ))}
+        </nav>
 
-    </div>
+      </div>
+    </EventAccessProvider>
   )
 }
