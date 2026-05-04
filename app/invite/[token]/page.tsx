@@ -142,16 +142,15 @@ export default function InvitePage() {
       if (error) { setAuthError(error.message); setAuthLoading(false); return }
       if (!data.user) { setAuthError('Error al crear cuenta'); setAuthLoading(false); return }
 
-      // Crear perfil en tabla users
-// Crear perfil en tabla users solo si no existe
-await supabase.from('users').upsert({
-  id:        data.user.id,
-  email:     data.user.email,
-  full_name: fullName.trim(),
-  plan:      'free',
-}, { onConflict: 'id', ignoreDuplicates: true })
+    // Crear perfil en tabla users solo si no existe
+    await supabase.from('users').upsert({
+    id:        data.user.id,
+    email:     data.user.email,
+    full_name: fullName.trim(),
+    plan:      'free',
+    }, { onConflict: 'id', ignoreDuplicates: true })
 
-await acceptInvite(invite.id, invite.event_id, data.user.id, invite.role)
+    await acceptInvite(invite.id, invite.event_id, data.user.id, invite.role)
     }
 
     setAuthLoading(false)
@@ -252,7 +251,7 @@ await acceptInvite(invite.id, invite.event_id, data.user.id, invite.role)
 
         {/* Logo */}
         <div className="mb-6 flex justify-center">
-          <img src="/images/Logo SVG.svg" alt="Anfiora" className="h-10" />
+          <img src="/images/Logo-010526newest.svg" alt="Anfiora" className="h-10" />
         </div>
 
         {/* Card de invitacion */}
