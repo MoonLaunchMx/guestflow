@@ -251,7 +251,7 @@ export default function InvitePage() {
 
         {/* Logo */}
         <div className="mb-6 flex justify-center">
-          <img src="/images/Logo-010526newest.svg" alt="Anfiora" className="h-10" />
+          <img src="/images/logo.svg" alt="Anfiora" className="h-10" />
         </div>
 
         {/* Card de invitacion */}

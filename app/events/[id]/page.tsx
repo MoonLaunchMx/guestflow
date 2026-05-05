@@ -8,6 +8,7 @@ import type { PanInfo } from 'framer-motion'
 import { Trash2, Send, Clock, MessageSquare, AlertCircle, CheckCircle, XCircle, Download, Upload, Columns3, Search, UserPlus } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { PartyMember, Guest, Event, EventSettings, EventStatus, RsvpStatus } from '@/lib/types'
+import StatsCollapse, { StatsToggleButton, useStatsToggle } from '@/app/components/ui/StatsCollapse'
 
 const STATUS_LABEL: Record<string, { label: string; color: string; bg: string; border: string; icon: React.ReactNode }> = {
   mensaje_enviado:  { label: 'Mensaje enviado',  color: '#1a56a0', bg: '#f0f5ff', border: '#b3c8ee', icon: <Send       size={13} /> },
@@ -288,6 +289,9 @@ function SwipeableGuestCard({ guest, groupColor, isSelected, guestTags, availabl
 
 export default function EventPage() {
   const { id } = useParams()
+
+  // Toggle de estadísticas en mobile (persiste por evento en localStorage)
+  const { visible: statsVisible, toggle: toggleStats } = useStatsToggle(id as string, 'guests')
 
   // Estado de sesión — esperar a que Supabase hidrate antes de cargar datos
   const [event, setEvent] = useState<Event | null>(null)
@@ -772,51 +776,60 @@ export default function EventPage() {
 
       {/* ══ TOOLBAR ══ */}
       <div className="shrink-0 border-b border-[#e8e8e8] px-4 pt-4 pb-0 sm:px-6 sm:pt-5 lg:px-10 lg:pt-6">
-        <div className="mb-4">
-          <h1 className="text-lg font-bold text-[#1D1E20] sm:text-xl">Invitados</h1>
-          <p className="mt-0.5 text-xs text-[#888] sm:text-sm">Gestiona a todos tus invitados desde un solo lugar.</p>
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-lg font-bold text-[#1D1E20] sm:text-xl">Invitados</h1>
+            <p className="mt-0.5 text-xs text-[#888] sm:text-sm">Gestiona a todos tus invitados.</p>
+          </div>
+          {/* Toggle de stats: solo mobile, alineado arriba a la derecha */}
+          <div className="lg:hidden shrink-0 pt-1">
+            <StatsToggleButton visible={statsVisible} onClick={toggleStats} />
+          </div>
         </div>
 
-        <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <div className="rounded-xl border border-[#e8e8e8] bg-white p-3">
-            <div className="mb-1.5 flex items-center justify-between">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Confirmados</span>
-              <CheckCircle size={14} className="text-[#48C9B0]" />
+        {/* Bloque de stats colapsable en mobile, siempre visible en desktop */}
+        <StatsCollapse visible={statsVisible}>
+          <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="rounded-xl border border-[#e8e8e8] bg-white p-3">
+              <div className="mb-1.5 flex items-center justify-between">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Confirmados</span>
+                <CheckCircle size={14} className="text-[#48C9B0]" />
+              </div>
+              <div className="text-xl font-bold text-[#1D1E20]">{confirmed}<span className="ml-1.5 text-sm font-normal text-[#aaa]">/ {totalPersonas}</span></div>
+              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[#e8e8e8]">
+                <div className="h-full rounded-full bg-[#48C9B0] transition-all" style={{ width: totalPersonas > 0 ? `${(confirmed / totalPersonas) * 100}%` : '0%' }} />
+              </div>
             </div>
-            <div className="text-xl font-bold text-[#1D1E20]">{confirmed}<span className="ml-1.5 text-sm font-normal text-[#aaa]">/ {totalPersonas}</span></div>
-            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[#e8e8e8]">
-              <div className="h-full rounded-full bg-[#48C9B0] transition-all" style={{ width: totalPersonas > 0 ? `${(confirmed / totalPersonas) * 100}%` : '0%' }} />
+            <div className="rounded-xl border border-[#e8e8e8] bg-white p-3">
+              <div className="mb-1.5 flex items-center justify-between">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Pendientes</span>
+                <Clock size={14} className={pending > 0 ? 'text-[#b8860b]' : 'text-[#bbb]'} />
+              </div>
+              <div className="text-xl font-bold" style={{ color: pending > 0 ? '#b8860b' : '#1D1E20' }}>{pending + mensajeEnviado}</div>
+              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[#e8e8e8]">
+                <div className="h-full rounded-full bg-[#f0d080] transition-all" style={{ width: totalPersonas > 0 ? `${((pending + mensajeEnviado) / totalPersonas) * 100}%` : '0%' }} />
+              </div>
+            </div>
+            <div className="rounded-xl border border-[#e8e8e8] bg-white p-3">
+              <div className="mb-1.5 flex items-center justify-between">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Atención</span>
+                <AlertCircle size={14} className={conAtencion > 0 ? 'text-[#cc3333]' : 'text-[#bbb]'} />
+              </div>
+              <div className="text-xl font-bold" style={{ color: conAtencion > 0 ? '#cc3333' : '#1D1E20' }}>{conAtencion}</div>
+              {conAtencion > 0 ? <div className="mt-1 text-[10px] font-medium text-[#cc3333]">Respondieron o acción requerida</div> : <div className="mt-1 text-[10px] text-[#48C9B0]">Sin pendientes urgentes ✓</div>}
+            </div>
+            <div className="rounded-xl border border-[#e8e8e8] bg-white p-3">
+              <div className="mb-1.5 flex items-center justify-between">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Declinados</span>
+                <XCircle size={14} className={declined > 0 ? 'text-[#cc3333]' : 'text-[#bbb]'} />
+              </div>
+              <div className="text-xl font-bold" style={{ color: declined > 0 ? '#cc3333' : '#1D1E20' }}>{declined}</div>
+              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[#e8e8e8]">
+                <div className="h-full rounded-full bg-[#ffc0c0] transition-all" style={{ width: totalPersonas > 0 ? `${(declined / totalPersonas) * 100}%` : '0%' }} />
+              </div>
             </div>
           </div>
-          <div className="rounded-xl border border-[#e8e8e8] bg-white p-3">
-            <div className="mb-1.5 flex items-center justify-between">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Pendientes</span>
-              <Clock size={14} className={pending > 0 ? 'text-[#b8860b]' : 'text-[#bbb]'} />
-            </div>
-            <div className="text-xl font-bold" style={{ color: pending > 0 ? '#b8860b' : '#1D1E20' }}>{pending + mensajeEnviado}</div>
-            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[#e8e8e8]">
-              <div className="h-full rounded-full bg-[#f0d080] transition-all" style={{ width: totalPersonas > 0 ? `${((pending + mensajeEnviado) / totalPersonas) * 100}%` : '0%' }} />
-            </div>
-          </div>
-          <div className="rounded-xl border border-[#e8e8e8] bg-white p-3">
-            <div className="mb-1.5 flex items-center justify-between">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Atención</span>
-              <AlertCircle size={14} className={conAtencion > 0 ? 'text-[#cc3333]' : 'text-[#bbb]'} />
-            </div>
-            <div className="text-xl font-bold" style={{ color: conAtencion > 0 ? '#cc3333' : '#1D1E20' }}>{conAtencion}</div>
-            {conAtencion > 0 ? <div className="mt-1 text-[10px] font-medium text-[#cc3333]">Respondieron o acción requerida</div> : <div className="mt-1 text-[10px] text-[#48C9B0]">Sin pendientes urgentes ✓</div>}
-          </div>
-          <div className="rounded-xl border border-[#e8e8e8] bg-white p-3">
-            <div className="mb-1.5 flex items-center justify-between">
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Declinados</span>
-              <XCircle size={14} className={declined > 0 ? 'text-[#cc3333]' : 'text-[#bbb]'} />
-            </div>
-            <div className="text-xl font-bold" style={{ color: declined > 0 ? '#cc3333' : '#1D1E20' }}>{declined}</div>
-            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[#e8e8e8]">
-              <div className="h-full rounded-full bg-[#ffc0c0] transition-all" style={{ width: totalPersonas > 0 ? `${(declined / totalPersonas) * 100}%` : '0%' }} />
-            </div>
-          </div>
-        </div>
+        </StatsCollapse>
 
         <div className="mb-3 flex items-center gap-2">
           <div className="relative min-w-0 flex-1 sm:w-72 sm:flex-none lg:w-80">

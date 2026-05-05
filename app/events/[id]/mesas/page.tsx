@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { Guest } from '@/lib/types'
 import { Plus, Trash2, ChevronDown, ChevronUp, X, List, Map as MapIcon, Printer, Search, LayoutGrid, ArrowLeft, LayoutPanelLeft, RotateCw } from 'lucide-react'
+import StatsCollapse, { StatsToggleButton, useStatsToggle } from '@/app/components/ui/StatsCollapse'
 
 // ─── CONSTANTES ───────────────────────────────
 const STATUS_COLORS: Record<string, { bg: string; border: string; text: string; label: string }> = {
@@ -1222,6 +1223,10 @@ function ModalMover({ moveModal, tables, moveSaving, onConfirm, onClose }: {
 // ─── PÁGINA PRINCIPAL ─────────────────────────
 export default function MesasPage() {
   const {id:eventId}=useParams()
+
+  // Toggle de estadísticas en mobile (persiste por evento en localStorage)
+  const { visible: statsVisible, toggle: toggleStats } = useStatsToggle(eventId as string, 'tables')
+
   const [tables,setTables]=useState<TableRecord[]>([])
   const [guests,setGuests]=useState<GuestFull[]>([])
   const [eventTags,setEventTags]=useState<string[]>([])
@@ -1528,13 +1533,27 @@ export default function MesasPage() {
     <div style={{height:'100%',display:'flex',flexDirection:'column',overflow:'hidden',background:'#ffffff',color:'#1D1E20'}}>
       {/* Header */}
       <div style={{flexShrink:0,borderBottom:'1px solid #e8e8e8'}} className="px-4 pt-4 pb-0 sm:px-6 sm:pt-5 lg:px-10 lg:pt-6">
-        <div className="mb-4"><h1 className="text-lg font-bold text-[#1D1E20] sm:text-xl lg:text-2xl">Mesas</h1><p className="mt-0.5 text-xs text-[#888] sm:text-sm">Organiza tus invitados por mesa</p></div>
-        <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <div className="rounded-xl border border-[#e8e8e8] bg-white p-3"><div className="mb-1.5 flex items-center justify-between"><span className="text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Confirmados</span><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="#48C9B0" strokeWidth="1.5"/><path d="M5 8l2 2 4-4" stroke="#48C9B0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></div><div className="text-2xl font-bold text-[#1D1E20] sm:text-3xl">{confirmed}</div><div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[#e8e8e8]"><div className="h-full rounded-full bg-[#48C9B0]" style={{width:guests.length>0?`${(confirmed/guests.length)*100}%`:'0%'}}/></div><div className="mt-1 text-[10px] text-[#aaa]">{guests.length} invitados totales</div></div>
-          <div className="rounded-xl border border-[#e8e8e8] bg-white p-3"><div className="mb-1.5 flex items-center justify-between"><span className="text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Por asignar</span><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5" r="2.5" stroke={unassigned>0?'#cc8800':'#bbb'} strokeWidth="1.5"/><path d="M3 14c0-2.2 2.2-5 5-5s5 2.2 5 5" stroke={unassigned>0?'#cc8800':'#bbb'} strokeWidth="1.5" strokeLinecap="round"/></svg></div><div className="text-2xl font-bold sm:text-3xl" style={{color:unassigned>0?'#cc8800':'#1D1E20'}}>{unassigned}</div>{unassigned>0?<div className="mt-1 text-[10px] font-medium text-[#cc8800]">Sin mesa asignada</div>:<div className="mt-1 text-[10px] text-[#48C9B0]">Todos asignados ✓</div>}</div>
-          <div className="rounded-xl border border-[#e8e8e8] bg-white p-3"><div className="mb-1.5 flex items-center justify-between"><span className="text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Asientos libres</span><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="3" y="9" width="10" height="4" rx="1" stroke="#48C9B0" strokeWidth="1.5"/><path d="M5 9V6a3 3 0 0 1 6 0v3" stroke="#48C9B0" strokeWidth="1.5" strokeLinecap="round"/></svg></div><div className="text-2xl font-bold text-[#1D1E20] sm:text-3xl">{String(totalFree).padStart(2,'0')}</div><div className="mt-1 text-[10px] text-[#aaa]">de {totalSeats} totales</div></div>
-          <div className="rounded-xl border border-[#e8e8e8] bg-white p-3"><div className="mb-1.5"><span className="text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Mesas listas</span></div><div className="flex items-center justify-between"><div><div className="text-2xl font-bold text-[#1D1E20] sm:text-3xl">{fullTables}<span className="text-sm font-normal text-[#aaa]"> / {tables.length}</span></div><div className="mt-1 text-[10px] text-[#aaa]">Mesas al 100%</div></div><DonutChart value={fullTables} total={tables.length}/></div></div>
+        {/* Título + toggle de stats (solo mobile) */}
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-lg font-bold text-[#1D1E20] sm:text-xl lg:text-2xl">Mesas</h1>
+            <p className="mt-0.5 text-xs text-[#888] sm:text-sm">Organiza tus invitados por mesa</p>
+          </div>
+          <div className="lg:hidden shrink-0 pt-1">
+            <StatsToggleButton visible={statsVisible} onClick={toggleStats} />
+          </div>
         </div>
+
+        {/* Bloque de stats colapsable en mobile, siempre visible en desktop */}
+        <StatsCollapse visible={statsVisible}>
+          <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <div className="rounded-xl border border-[#e8e8e8] bg-white p-3"><div className="mb-1.5 flex items-center justify-between"><span className="text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Confirmados</span><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="7" stroke="#48C9B0" strokeWidth="1.5"/><path d="M5 8l2 2 4-4" stroke="#48C9B0" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg></div><div className="text-2xl font-bold text-[#1D1E20] sm:text-3xl">{confirmed}</div><div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[#e8e8e8]"><div className="h-full rounded-full bg-[#48C9B0]" style={{width:guests.length>0?`${(confirmed/guests.length)*100}%`:'0%'}}/></div><div className="mt-1 text-[10px] text-[#aaa]">{guests.length} invitados totales</div></div>
+            <div className="rounded-xl border border-[#e8e8e8] bg-white p-3"><div className="mb-1.5 flex items-center justify-between"><span className="text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Por asignar</span><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="5" r="2.5" stroke={unassigned>0?'#cc8800':'#bbb'} strokeWidth="1.5"/><path d="M3 14c0-2.2 2.2-5 5-5s5 2.2 5 5" stroke={unassigned>0?'#cc8800':'#bbb'} strokeWidth="1.5" strokeLinecap="round"/></svg></div><div className="text-2xl font-bold sm:text-3xl" style={{color:unassigned>0?'#cc8800':'#1D1E20'}}>{unassigned}</div>{unassigned>0?<div className="mt-1 text-[10px] font-medium text-[#cc8800]">Sin mesa asignada</div>:<div className="mt-1 text-[10px] text-[#48C9B0]">Todos asignados ✓</div>}</div>
+            <div className="rounded-xl border border-[#e8e8e8] bg-white p-3"><div className="mb-1.5 flex items-center justify-between"><span className="text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Asientos libres</span><svg width="15" height="15" viewBox="0 0 16 16" fill="none"><rect x="3" y="9" width="10" height="4" rx="1" stroke="#48C9B0" strokeWidth="1.5"/><path d="M5 9V6a3 3 0 0 1 6 0v3" stroke="#48C9B0" strokeWidth="1.5" strokeLinecap="round"/></svg></div><div className="text-2xl font-bold text-[#1D1E20] sm:text-3xl">{String(totalFree).padStart(2,'0')}</div><div className="mt-1 text-[10px] text-[#aaa]">de {totalSeats} totales</div></div>
+            <div className="rounded-xl border border-[#e8e8e8] bg-white p-3"><div className="mb-1.5"><span className="text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Mesas listas</span></div><div className="flex items-center justify-between"><div><div className="text-2xl font-bold text-[#1D1E20] sm:text-3xl">{fullTables}<span className="text-sm font-normal text-[#aaa]"> / {tables.length}</span></div><div className="mt-1 text-[10px] text-[#aaa]">Mesas al 100%</div></div><DonutChart value={fullTables} total={tables.length}/></div></div>
+          </div>
+        </StatsCollapse>
+
         <div className="mb-3 flex flex-wrap items-center gap-2">
           <div className="flex overflow-hidden rounded-lg border border-[#e0e0e0]">
             <button className="flex items-center gap-1.5 bg-[#1D1E20] px-3 py-1.5 text-xs font-medium text-white"><List width={13} height={13}/><span className="hidden sm:inline">Lista</span></button>

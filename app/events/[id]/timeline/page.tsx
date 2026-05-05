@@ -9,6 +9,7 @@ import {
   Plus, ChevronDown, ChevronLeft, ChevronRight,
   Calendar, LayoutList, Search, SlidersHorizontal, X, Bell
 } from 'lucide-react'
+import StatsCollapse, { StatsToggleButton, useStatsToggle } from '@/app/components/ui/StatsCollapse'
 
 const CATEGORIES = [
   { value: 'evento',       label: 'Evento',       color: 'bg-teal-100 text-teal-800' },
@@ -308,7 +309,6 @@ function TaskModal({ editTask, prefillDate, onClose, onSaved, eventId }: ModalPr
 
         {/* Destacar + Recordatorio en una sola fila */}
         <div className="grid grid-cols-2 gap-2 mb-4">
-          {/* Botón destacar — simple, no toggle */}
           <button
             onClick={() => setForm(f => ({ ...f, is_highlighted: !f.is_highlighted }))}
             className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-sm transition-colors ${
@@ -321,7 +321,6 @@ function TaskModal({ editTask, prefillDate, onClose, onSaved, eventId }: ModalPr
             {form.is_highlighted ? 'Destacada' : 'Destacar'}
           </button>
 
-          {/* Toggle recordatorio */}
           <button
             onClick={() => setForm(f => ({ ...f, reminder_enabled: !f.reminder_enabled }))}
             className={`flex items-center justify-between px-3 py-2.5 rounded-xl border text-sm transition-colors ${
@@ -344,7 +343,6 @@ function TaskModal({ editTask, prefillDate, onClose, onSaved, eventId }: ModalPr
           </button>
         </div>
 
-        {/* Expand recordatorio */}
         {form.reminder_enabled && (
           <div className="grid grid-cols-2 gap-3 px-3 pb-3 pt-2 border border-[#48C9B0] rounded-xl mb-4 bg-[#f0fdfb]">
             <div>
@@ -362,7 +360,6 @@ function TaskModal({ editTask, prefillDate, onClose, onSaved, eventId }: ModalPr
           </div>
         )}
 
-        {/* Acciones */}
         <div className="flex gap-2.5">
           {editTask && (
             <button onClick={handleDelete}
@@ -524,6 +521,10 @@ export default function TimelinePage() {
   const searchParams            = useSearchParams()
   const { id: eventId }         = useParams<{ id: string }>()
   const router                  = useRouter()
+
+  // Toggle de estadísticas en mobile (persiste por evento en localStorage)
+  const { visible: statsVisible, toggle: toggleStats } = useStatsToggle(eventId, 'timeline')
+
   const [tasks, setTasks]             = useState<TimelineTask[]>([])
   const [loading, setLoading]         = useState(true)
   const [view, setView]               = useState<'lista' | 'calendario'>('lista')
@@ -717,23 +718,70 @@ export default function TimelinePage() {
   return (
     <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'visible', background: '#ffffff', color: '#1D1E20' }}>
       <div style={{ flexShrink: 0, borderBottom: '1px solid #e8e8e8' }} className="px-4 pt-4 pb-0 sm:px-6 sm:pt-5 lg:px-10 lg:pt-6">
-        <div className="mb-4">
-          <h1 className="text-lg font-bold text-[#1D1E20] sm:text-xl lg:text-2xl">Timeline</h1>
-          <p className="mt-0.5 text-xs text-[#888] sm:text-sm">Planea tu evento desde el save the date hasta la torna boda</p>
+        {/* Título + toggle de stats (solo mobile) */}
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-lg font-bold text-[#1D1E20] sm:text-xl lg:text-2xl">Timeline</h1>
+            <p className="mt-0.5 text-xs text-[#888] sm:text-sm">Planea tu evento desde el save the date hasta la torna boda</p>
+          </div>
+          <div className="lg:hidden shrink-0 pt-1">
+            <StatsToggleButton visible={statsVisible} onClick={toggleStats} />
+          </div>
         </div>
-        <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {[
-            { label: 'Total',       value: total,       color: '#1D1E20' },
-            { label: 'Pendientes',  value: pending,     color: '#1D1E20' },
-            { label: 'Completadas', value: completed,   color: '#2a7a50' },
-            { label: 'Destacadas',  value: highlighted, color: '#b8860b' },
-          ].map(s => (
-            <div key={s.label} className="rounded-xl border border-[#e8e8e8] bg-[#f8f8f8] p-2 text-center">
-              <div className="text-lg font-bold sm:text-xl" style={{ color: s.color }}>{s.value}</div>
-              <div className="text-[10px] text-[#999]">{s.label}</div>
+
+        {/* Bloque de stats colapsable en mobile, siempre visible en desktop */}
+        <StatsCollapse visible={statsVisible}>
+          <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {/* Total — todas las tareas con icono de calendario */}
+            <div className="rounded-xl border border-[#e8e8e8] bg-white p-3">
+              <div className="mb-1.5 flex items-center justify-between">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Total</span>
+                <CalendarDays size={14} className="text-[#888]" />
+              </div>
+              <div className="text-xl font-bold text-[#1D1E20]">{total}</div>
+              <div className="mt-1 text-[10px] text-[#aaa]">tareas en timeline</div>
             </div>
-          ))}
-        </div>
+
+            {/* Pendientes — color ambar si hay, gris si todo está al día */}
+            <div className="rounded-xl border border-[#e8e8e8] bg-white p-3">
+              <div className="mb-1.5 flex items-center justify-between">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Pendientes</span>
+                <Circle size={14} className={pending > 0 ? 'text-[#b8860b]' : 'text-[#bbb]'} />
+              </div>
+              <div className="text-xl font-bold" style={{ color: pending > 0 ? '#b8860b' : '#1D1E20' }}>{pending}</div>
+              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[#e8e8e8]">
+                <div className="h-full rounded-full bg-[#f0d080] transition-all" style={{ width: total > 0 ? `${(pending / total) * 100}%` : '0%' }} />
+              </div>
+            </div>
+
+            {/* Completadas — con progreso visual */}
+            <div className="rounded-xl border border-[#e8e8e8] bg-white p-3">
+              <div className="mb-1.5 flex items-center justify-between">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Completadas</span>
+                <CheckCircle2 size={14} className="text-[#48C9B0]" />
+              </div>
+              <div className="text-xl font-bold text-[#1D1E20]">
+                {completed}<span className="ml-1.5 text-sm font-normal text-[#aaa]">/ {total}</span>
+              </div>
+              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-[#e8e8e8]">
+                <div className="h-full rounded-full bg-[#48C9B0] transition-all" style={{ width: total > 0 ? `${(completed / total) * 100}%` : '0%' }} />
+              </div>
+            </div>
+
+            {/* Destacadas — estrella ámbar */}
+            <div className="rounded-xl border border-[#e8e8e8] bg-white p-3">
+              <div className="mb-1.5 flex items-center justify-between">
+                <span className="text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Destacadas</span>
+                <Star size={14} className={highlighted > 0 ? 'text-amber-400 fill-amber-400' : 'text-[#bbb]'} />
+              </div>
+              <div className="text-xl font-bold text-[#1D1E20]">{highlighted}</div>
+              {highlighted > 0
+                ? <div className="mt-1 text-[10px] font-medium text-[#b8860b]">Marcadas como importantes</div>
+                : <div className="mt-1 text-[10px] text-[#aaa]">Marca con la estrella</div>}
+            </div>
+          </div>
+        </StatsCollapse>
+
         <div className="mb-3 flex items-center gap-2">
           <div className="flex overflow-hidden rounded-lg border border-[#e0e0e0]">
             <button onClick={() => setView('lista')}
