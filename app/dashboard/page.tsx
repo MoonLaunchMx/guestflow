@@ -7,12 +7,16 @@ import { Bell } from 'lucide-react'
 
 export const dynamic = 'force-dynamic'
 
+// Tipo de evento con stats. Los compartidos llevan campos extra (rol, owner_name, is_shared)
 type EventWithStats = Event & {
   confirmed: number
   pending: number
   declined: number
   total: number
   pendingReminders: number
+  is_shared?: boolean
+  shared_role?: 'admin' | 'editor' | 'viewer'
+  owner_name?: string | null
 }
 
 type Tab = 'activos' | 'pasados' | 'pausados' | 'cancelados'
@@ -27,6 +31,19 @@ type ReminderTask = {
 }
 
 const FEEDBACK_URL = 'https://docs.google.com/forms/d/e/1FAIpQLSfESosGtmv8JPds_zhTw280121oV1h09WNIbAhW-IyCAFq8cw/viewform?usp=publish-editor'
+
+// Etiquetas y estilos para badges de rol en eventos compartidos
+const ROLE_LABEL: Record<string, string> = {
+  admin: 'Admin',
+  editor: 'Editor',
+  viewer: 'Viewer',
+}
+
+const ROLE_STYLES: Record<string, string> = {
+  admin: 'bg-[#E1F5EE] text-[#0F6E56]',
+  editor: 'bg-[#FAEEDA] text-[#854F0B]',
+  viewer: 'bg-[#f1efe8] text-[#444441]',
+}
 
 function ReminderCategoryIcon({ category }: { category: string }) {
   const s = {
@@ -47,8 +64,35 @@ function ReminderCategoryIcon({ category }: { category: string }) {
   return icons[category] || icons.otro
 }
 
+// Skeleton card que se muestra mientras se cargan los eventos
+function SkeletonCard() {
+  return (
+    <div className="rounded-xl border border-[#e8e8e8] bg-white px-4 py-4 sm:px-5 sm:py-4 animate-pulse">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="mb-2 h-4 w-3/5 rounded bg-[#f0f0f0]" />
+          <div className="h-3 w-2/5 rounded bg-[#f0f0f0]" />
+        </div>
+        <div className="h-7 w-7 shrink-0 rounded-lg bg-[#f0f0f0]" />
+      </div>
+      <div className="mb-3 grid grid-cols-4 gap-2">
+        {[1,2,3,4].map(j => <div key={j} className="h-12 rounded-lg bg-[#f8f8f8]" />)}
+      </div>
+      <div>
+        <div className="mb-1 flex items-center justify-between">
+          <div className="h-2 w-20 rounded bg-[#f0f0f0]" />
+          <div className="h-2 w-8 rounded bg-[#f0f0f0]" />
+        </div>
+        <div className="h-1.5 w-full rounded-full bg-[#f0f0f0]" />
+      </div>
+    </div>
+  )
+}
+
 export default function Dashboard() {
-  const [events, setEvents]             = useState<EventWithStats[]>([])
+  // State separado: eventos propios y eventos compartidos
+  const [myEvents, setMyEvents]         = useState<EventWithStats[]>([])
+  const [sharedEvents, setSharedEvents] = useState<EventWithStats[]>([])
   const [loading, setLoading]           = useState(true)
   const [userEmail, setUserEmail]       = useState('')
   const [sortAsc, setSortAsc]           = useState(true)
@@ -84,59 +128,157 @@ export default function Dashboard() {
     if (!welcomed) { setShowWelcome(true); localStorage.setItem('gf_welcomed', '1') }
   }
 
+  // Carga de datos en 2 fases paralelas. Antes era N+1 (una query por evento).
   const loadData = async () => {
-    const { data: eventsData } = await supabase
-      .from('events')
-      .select('id, name, event_date, event_end_date, event_time, venue, total_guests, event_status')
-      .order('event_date', { ascending: true })
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) { setLoading(false); return }
+    const userId = user.id
 
-    if (!eventsData) { setLoading(false); return }
+    // FASE 1 (paralela): mis eventos propios + filas de event_collaborators
+    // El nested select trae el evento completo + el nombre del owner desde users
+    const [myRes, collabRes] = await Promise.all([
+      supabase
+        .from('events')
+        .select('id, name, event_date, event_end_date, event_time, venue, total_guests, event_status')
+        .eq('user_id', userId)
+        .order('event_date', { ascending: true }),
+      supabase
+        .from('event_collaborators')
+        .select(`
+          role,
+          event:event_id (
+            id, name, event_date, event_end_date, event_time, venue, total_guests, event_status, user_id,
+            owner:user_id ( full_name )
+          )
+        `)
+        .eq('user_id', userId)
+        .eq('status', 'active'),
+    ])
 
+    const myEventsData = myRes.data || []
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const collabRows = (collabRes.data || []) as any[]
+
+    // Aplanar eventos compartidos. Si event viene null (evento eliminado) lo descartamos.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sharedRaw: any[] = collabRows
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      .map((c: any) => {
+        if (!c.event) return null
+        return {
+          ...c.event,
+          shared_role: c.role,
+          is_shared: true,
+          owner_name: c.event.owner?.full_name || null,
+        }
+      })
+      .filter(Boolean)
+
+    // IDs para queries dependientes
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const myIds = myEventsData.map((e: any) => e.id)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const sharedIds = sharedRaw.map((e: any) => e.id)
+    const allEventIds = [...myIds, ...sharedIds]
+
+    // Si no hay nada, salimos limpios
+    if (allEventIds.length === 0) {
+      setMyEvents([])
+      setSharedEvents([])
+      setReminders([])
+      setLoading(false)
+      return
+    }
+
+    // FASE 2 (paralela): guests + party_members de TODOS los eventos visibles, y reminders solo de propios
     const today = new Date()
     today.setHours(23, 59, 59, 999)
 
-    const { data: reminderData } = await supabase
-      .from('event_timeline_tasks')
-      .select('id, event_id, title, category, reminder_date')
-      .not('reminder_date', 'is', null)
-      .eq('is_completed', false)
-      .lte('reminder_date', today.toISOString())
+    const [guestsRes, membersRes, remindersRes] = await Promise.all([
+      supabase
+        .from('guests')
+        .select('event_id, rsvp_status')
+        .in('event_id', allEventIds),
+      supabase
+        .from('party_members')
+        .select('event_id, rsvp_status')
+        .in('event_id', allEventIds),
+      myIds.length > 0
+        ? supabase
+            .from('event_timeline_tasks')
+            .select('id, event_id, title, category, reminder_date')
+            .in('event_id', myIds)
+            .not('reminder_date', 'is', null)
+            .eq('is_completed', false)
+            .lte('reminder_date', today.toISOString())
+        : Promise.resolve({ data: [] }),
+    ])
+
+    // Agrupar guests y members por event_id en memoria. Esto evita el N+1.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const guestsByEvent: Record<string, any[]> = {}
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const membersByEvent: Record<string, any[]> = {}
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const g of (guestsRes.data || []) as any[]) {
+      if (!guestsByEvent[g.event_id]) guestsByEvent[g.event_id] = []
+      guestsByEvent[g.event_id].push(g)
+    }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    for (const m of (membersRes.data || []) as any[]) {
+      if (!membersByEvent[m.event_id]) membersByEvent[m.event_id] = []
+      membersByEvent[m.event_id].push(m)
+    }
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const eventsWithStats: EventWithStats[] = await Promise.all(
-      eventsData.map(async (event: any) => {
-        const [{ data: guests }, { data: members }] = await Promise.all([
-          supabase.from('guests').select('rsvp_status').eq('event_id', event.id),
-          supabase.from('party_members').select('rsvp_status').eq('event_id', event.id),
-        ])
-        const all = [...(guests || []), ...(members || [])]
-        const pendingReminders = (reminderData || []).filter(r => r.event_id === event.id).length
-        return {
-          ...event,
-          event_status: event.event_status || 'active',
-          total:     all.length,
-          confirmed: all.filter((g: any) => g.rsvp_status === 'confirmed').length,
-          pending:   all.filter((g: any) => g.rsvp_status === 'pending').length,
-          declined:  all.filter((g: any) => g.rsvp_status === 'declined').length,
-          pendingReminders,
-        }
-      })
-    )
+    const reminderData = (remindersRes.data || []) as any[]
 
-    const enrichedReminders: ReminderTask[] = (reminderData || []).map(r => ({
+    // Calcular stats de un evento juntando guests + party_members
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const computeStats = (event: any): EventWithStats => {
+      const guests = guestsByEvent[event.id] || []
+      const members = membersByEvent[event.id] || []
+      const all = [...guests, ...members]
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const pendingReminders = reminderData.filter((r: any) => r.event_id === event.id).length
+      return {
+        ...event,
+        event_status: event.event_status || 'active',
+        total: all.length,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        confirmed: all.filter((g: any) => g.rsvp_status === 'confirmed').length,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        pending:   all.filter((g: any) => g.rsvp_status === 'pending').length,
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        declined:  all.filter((g: any) => g.rsvp_status === 'declined').length,
+        pendingReminders,
+      }
+    }
+
+    const myEventsWithStats = myEventsData.map(computeStats)
+    const sharedEventsWithStats = sharedRaw.map(computeStats)
+
+    // Enriquecer reminders con el nombre del evento (lookup en propios + compartidos)
+    const allEventsForLookup = [...myEventsData, ...sharedRaw]
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const enrichedReminders: ReminderTask[] = reminderData.map((r: any) => ({
       ...r,
-      event_name: eventsData.find((e: any) => e.id === r.event_id)?.name || '',
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      event_name: allEventsForLookup.find((e: any) => e.id === r.event_id)?.name || '',
     }))
 
-    setEvents(eventsWithStats)
+    setMyEvents(myEventsWithStats)
+    setSharedEvents(sharedEventsWithStats)
     setReminders(enrichedReminders)
     setLoading(false)
   }
 
+  // Solo cambia el status en eventos propios. El menú está oculto en compartidos.
   const handleStatusChange = async (event: EventWithStats, newStatus: EventStatus, e: React.MouseEvent) => {
     e.stopPropagation()
     setOpenMenuId(null)
-    setEvents(prev => prev.map(ev => ev.id === event.id ? { ...ev, event_status: newStatus } : ev))
+    if (event.is_shared) return
+    setMyEvents(prev => prev.map(ev => ev.id === event.id ? { ...ev, event_status: newStatus } : ev))
     await supabase.from('events').update({ event_status: newStatus }).eq('id', event.id)
   }
 
@@ -216,46 +358,64 @@ export default function Dashboard() {
     return d >= today
   }
 
-  const activeEvents = [...events]
-    .filter(e => e.event_status === 'active' && isUpcoming(e))
-    .sort((a, b) => {
-      const diff = getEventDateTime(a).getTime() - getEventDateTime(b).getTime()
-      return sortAsc ? diff : -diff
-    })
+  // Filtra una lista de eventos por los 4 status (active próximo, active pasado, paused, cancelled)
+  const filterByTab = (list: EventWithStats[]) => {
+    const active = list
+      .filter(e => e.event_status === 'active' && isUpcoming(e))
+      .sort((a, b) => {
+        const diff = getEventDateTime(a).getTime() - getEventDateTime(b).getTime()
+        return sortAsc ? diff : -diff
+      })
+    const past = list
+      .filter(e => e.event_status === 'active' && !isUpcoming(e))
+      .sort((a, b) => getEventDateTime(b).getTime() - getEventDateTime(a).getTime())
+    const paused = list
+      .filter(e => e.event_status === 'paused')
+      .sort((a, b) => getEventDateTime(b).getTime() - getEventDateTime(a).getTime())
+    const cancelled = list
+      .filter(e => e.event_status === 'cancelled')
+      .sort((a, b) => getEventDateTime(b).getTime() - getEventDateTime(a).getTime())
+    return { active, past, paused, cancelled }
+  }
 
-  const pastEvents = [...events]
-    .filter(e => e.event_status === 'active' && !isUpcoming(e))
-    .sort((a, b) => getEventDateTime(b).getTime() - getEventDateTime(a).getTime())
+  const myFiltered = filterByTab(myEvents)
+  const sharedFiltered = filterByTab(sharedEvents)
 
-  const pausedEvents = [...events]
-    .filter(e => e.event_status === 'paused')
-    .sort((a, b) => getEventDateTime(b).getTime() - getEventDateTime(a).getTime())
+  // Eventos a renderizar según el tab activo
+  const currentMy =
+    activeTab === 'activos'    ? myFiltered.active :
+    activeTab === 'pasados'    ? myFiltered.past :
+    activeTab === 'pausados'   ? myFiltered.paused :
+    myFiltered.cancelled
 
-  const cancelledEvents = [...events]
-    .filter(e => e.event_status === 'cancelled')
-    .sort((a, b) => getEventDateTime(b).getTime() - getEventDateTime(a).getTime())
+  const currentShared =
+    activeTab === 'activos'    ? sharedFiltered.active :
+    activeTab === 'pasados'    ? sharedFiltered.past :
+    activeTab === 'pausados'   ? sharedFiltered.paused :
+    sharedFiltered.cancelled
 
-  const nextEvent = activeEvents.length > 0 ? activeEvents[0] : null
+  // Próximo evento destacado: incluye compartidos solo si soy admin o editor (no viewer)
+  const nextCandidates = [
+    ...myFiltered.active,
+    ...sharedFiltered.active.filter(e => e.shared_role !== 'viewer'),
+  ].sort((a, b) => getEventDateTime(a).getTime() - getEventDateTime(b).getTime())
+
+  const nextEvent = nextCandidates[0] || null
 
   const sameDay = nextEvent
-    ? activeEvents.filter(e =>
+    ? nextCandidates.filter(e =>
         e.id !== nextEvent.id &&
         e.event_date?.split('T')[0] === nextEvent.event_date?.split('T')[0]
       )
     : []
 
+  // Conteos en los tabs: suma de propios + compartidos
   const tabs: { key: Tab; label: string; count: number }[] = [
-    { key: 'activos',    label: 'Activos',    count: activeEvents.length },
-    { key: 'pasados',    label: 'Pasados',    count: pastEvents.length },
-    { key: 'pausados',   label: 'Pausados',   count: pausedEvents.length },
-    { key: 'cancelados', label: 'Cancelados', count: cancelledEvents.length },
+    { key: 'activos',    label: 'Activos',    count: myFiltered.active.length    + sharedFiltered.active.length    },
+    { key: 'pasados',    label: 'Pasados',    count: myFiltered.past.length      + sharedFiltered.past.length      },
+    { key: 'pausados',   label: 'Pausados',   count: myFiltered.paused.length    + sharedFiltered.paused.length    },
+    { key: 'cancelados', label: 'Cancelados', count: myFiltered.cancelled.length + sharedFiltered.cancelled.length },
   ]
-
-  const currentEvents =
-    activeTab === 'activos'    ? activeEvents :
-    activeTab === 'pasados'    ? pastEvents :
-    activeTab === 'pausados'   ? pausedEvents :
-    cancelledEvents
 
   const getMenuOptions = (event: EventWithStats) => {
     const all: { label: string; status: EventStatus; color?: string }[] = [
@@ -268,13 +428,17 @@ export default function Dashboard() {
 
   const totalReminders = reminders.length
 
+  // Marcar un recordatorio como hecho. Solo afecta eventos propios (los reminders solo son de propios).
   const markDone = async (id: string) => {
     await supabase.from('event_timeline_tasks').update({ is_completed: true }).eq('id', id)
+    const target = reminders.find(r => r.id === id)
     setReminders(prev => prev.filter(x => x.id !== id))
-    setEvents(prev => prev.map(e => ({
-      ...e,
-      pendingReminders: e.pendingReminders - (reminders.find(r => r.id === id && r.event_id === e.id) ? 1 : 0)
-    })))
+    if (target) {
+      setMyEvents(prev => prev.map(e => ({
+        ...e,
+        pendingReminders: e.id === target.event_id ? Math.max(0, e.pendingReminders - 1) : e.pendingReminders,
+      })))
+    }
   }
 
   const markAllDone = async () => {
@@ -283,9 +447,10 @@ export default function Dashboard() {
       .update({ is_completed: true })
       .in('id', reminders.map(r => r.id))
     setReminders([])
-    setEvents(prev => prev.map(e => ({ ...e, pendingReminders: 0 })))
+    setMyEvents(prev => prev.map(e => ({ ...e, pendingReminders: 0 })))
   }
 
+  // Card individual de evento. Reutilizada para propios y compartidos.
   const EventCard = ({ event }: { event: EventWithStats }) => {
     const pct = confirmPct(event)
     const isNext = event.id === nextEvent?.id
@@ -299,8 +464,14 @@ export default function Dashboard() {
       >
         <div className="mb-3 flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex flex-wrap items-center gap-2">
               <p className="truncate text-sm font-semibold text-[#1D1E20]">{event.name}</p>
+              {/* Badge de rol para compartidos */}
+              {event.is_shared && event.shared_role && (
+                <span className={'rounded px-1.5 py-0.5 text-[10px] font-semibold ' + (ROLE_STYLES[event.shared_role] || '')}>
+                  {ROLE_LABEL[event.shared_role] || event.shared_role}
+                </span>
+              )}
               {event.pendingReminders > 0 && (
                 <span className="flex items-center gap-1 rounded-full border border-[#48C9B0]/40 bg-[#f0fdfb] px-2 py-0.5 text-[10px] font-semibold text-[#1a9e88]">
                   <Bell size={10} className="text-[#48C9B0]" />
@@ -313,31 +484,38 @@ export default function Dashboard() {
               {event.event_time && ' · ' + formatTime(event.event_time)}
               {event.venue && ' · ' + event.venue}
             </p>
-          </div>
-          <div data-menu className="relative shrink-0" onClick={e => e.stopPropagation()}>
-            <button
-              onClick={e => { e.stopPropagation(); setOpenMenuId(menuOpen ? null : event.id) }}
-              className={'flex h-7 w-7 items-center justify-center rounded-lg text-[#bbb] transition hover:bg-[#f0f0f0] hover:text-[#555] ' + (menuOpen ? 'bg-[#f0f0f0] text-[#555]' : '')}
-            >
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
-                <circle cx="7" cy="2.5" r="1.2"/>
-                <circle cx="7" cy="7" r="1.2"/>
-                <circle cx="7" cy="11.5" r="1.2"/>
-              </svg>
-            </button>
-            {menuOpen && (
-              <div className="absolute right-0 top-full z-50 mt-1 w-44 overflow-hidden rounded-xl border border-[#e8e8e8] bg-white shadow-lg">
-                <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-[#bbb]">Cambiar estado</div>
-                {getMenuOptions(event).map(opt => (
-                  <button key={opt.status} onClick={e => handleStatusChange(event, opt.status, e)}
-                    className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs transition hover:bg-[#f8f8f8]"
-                    style={{ color: opt.color || '#555' }}>
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
+            {/* Owner si es compartido */}
+            {event.is_shared && event.owner_name && (
+              <p className="mt-0.5 text-[11px] text-[#aaa]">por {event.owner_name}</p>
             )}
           </div>
+          {/* Menú de cambio de status: solo en eventos propios. El owner controla el status global. */}
+          {!event.is_shared && (
+            <div data-menu className="relative shrink-0" onClick={e => e.stopPropagation()}>
+              <button
+                onClick={e => { e.stopPropagation(); setOpenMenuId(menuOpen ? null : event.id) }}
+                className={'flex h-7 w-7 items-center justify-center rounded-lg text-[#bbb] transition hover:bg-[#f0f0f0] hover:text-[#555] ' + (menuOpen ? 'bg-[#f0f0f0] text-[#555]' : '')}
+              >
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor">
+                  <circle cx="7" cy="2.5" r="1.2"/>
+                  <circle cx="7" cy="7" r="1.2"/>
+                  <circle cx="7" cy="11.5" r="1.2"/>
+                </svg>
+              </button>
+              {menuOpen && (
+                <div className="absolute right-0 top-full z-50 mt-1 w-44 overflow-hidden rounded-xl border border-[#e8e8e8] bg-white shadow-lg">
+                  <div className="px-3 py-2 text-[10px] font-semibold uppercase tracking-wide text-[#bbb]">Cambiar estado</div>
+                  {getMenuOptions(event).map(opt => (
+                    <button key={opt.status} onClick={e => handleStatusChange(event, opt.status, e)}
+                      className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-xs transition hover:bg-[#f8f8f8]"
+                      style={{ color: opt.color || '#555' }}>
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="mb-3 grid grid-cols-4 gap-2">
@@ -460,12 +638,10 @@ export default function Dashboard() {
                     <div className="max-h-64 overflow-y-auto">
                       {reminders.map(r => (
                         <div key={r.id} className="flex items-center gap-3 border-b border-[#f5f5f5] px-4 py-2.5 last:border-0">
-                          {/* Ícono categoría */}
                           <div className="flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-lg border border-[#e8e8e8] bg-[#f8f8f8]">
                             <ReminderCategoryIcon category={r.category} />
                           </div>
 
-                          {/* Texto */}
                           <div className="min-w-0 flex-1">
                             <p className="truncate text-xs font-semibold text-[#1D1E20]">{r.title}</p>
                             <p className="truncate text-[11px] text-[#aaa]">
@@ -476,7 +652,6 @@ export default function Dashboard() {
                             </p>
                           </div>
 
-                          {/* Acciones */}
                           <div className="flex flex-shrink-0 items-center gap-1.5">
                             <button
                               title="Marcar como hecha"
@@ -531,20 +706,31 @@ export default function Dashboard() {
             </button>
           </div>
 
+          {/* Card del próximo evento. Si es compartido, agregamos el badge de rol y el nombre del owner. */}
           {!loading && nextEvent && (
             <div onClick={() => window.location.href = '/events/' + nextEvent.id}
               className="mb-5 cursor-pointer rounded-2xl border border-[#48C9B0]/30 bg-white p-4 shadow-[0_2px_16px_rgba(72,201,176,0.1)] transition hover:shadow-[0_4px_24px_rgba(72,201,176,0.18)] sm:mb-6">
               <div className="flex items-stretch gap-4">
                 <div className="min-w-0 flex-1">
-                  <span className="mb-1.5 inline-block rounded-full bg-[#e8f7f3] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#48C9B0]">
-                    Próximo evento
-                  </span>
+                  <div className="mb-1.5 flex flex-wrap items-center gap-2">
+                    <span className="inline-block rounded-full bg-[#e8f7f3] px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#48C9B0]">
+                      Próximo evento
+                    </span>
+                    {nextEvent.is_shared && nextEvent.shared_role && (
+                      <span className={'rounded px-1.5 py-0.5 text-[10px] font-semibold ' + (ROLE_STYLES[nextEvent.shared_role] || '')}>
+                        {ROLE_LABEL[nextEvent.shared_role] || nextEvent.shared_role}
+                      </span>
+                    )}
+                  </div>
                   <h2 className="truncate text-sm font-bold text-[#1D1E20] sm:text-base">{nextEvent.name}</h2>
                   <p className="mt-0.5 text-xs text-[#888]">
                     {formatDate(nextEvent.event_date)}
                     {nextEvent.event_time && ' · ' + formatTime(nextEvent.event_time)}
                     {nextEvent.venue && ' · ' + nextEvent.venue}
                   </p>
+                  {nextEvent.is_shared && nextEvent.owner_name && (
+                    <p className="mt-0.5 text-[11px] text-[#aaa]">por {nextEvent.owner_name}</p>
+                  )}
                   <div className="mt-3 rounded-xl bg-[#f8f5f0] px-3 py-2">
                     <p className="text-[10px] font-semibold uppercase tracking-wide text-[#aaa]">Faltan</p>
                     <p className="font-mono text-xl font-bold text-[#48C9B0] sm:text-2xl">{getCountdown(nextEvent)}</p>
@@ -591,7 +777,7 @@ export default function Dashboard() {
             </div>
             {activeTab === 'activos' && (
               <button onClick={() => setSortAsc(!sortAsc)}
-                className="shrink-0 flex items-center gap-1.5 rounded-lg border border-[#e0e0e0] bg-white px-3 py-1.5 text-xs text-[#888] transition hover:border-[#48C9B0] hover:text-[#48C9B0]">
+                className="flex shrink-0 items-center gap-1.5 rounded-lg border border-[#e0e0e0] bg-white px-3 py-1.5 text-xs text-[#888] transition hover:border-[#48C9B0] hover:text-[#48C9B0]">
                 <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
                   <path d="M2 4l4-3 4 3M2 8l4 3 4-3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
@@ -606,14 +792,19 @@ export default function Dashboard() {
       <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-4xl px-4 pb-8 sm:px-6 lg:px-8">
           {loading ? (
-            <div className="text-sm text-[#888]">Cargando...</div>
-          ) : events.length === 0 ? (
+            // Skeleton state mientras cargan los datos
+            <div className="flex flex-col gap-3">
+              {[1,2,3].map(i => <SkeletonCard key={i} />)}
+            </div>
+          ) : (myEvents.length === 0 && sharedEvents.length === 0) ? (
+            // Empty state global: usuario sin ningún evento
             <div className="rounded-xl border border-dashed border-[#e0e0e0] px-6 py-16 text-center sm:py-20">
               <div className="mb-4 text-4xl">💍</div>
               <p className="text-sm text-[#888] sm:text-base">Aún no tienes eventos</p>
               <p className="mt-1 text-xs text-[#bbb] sm:text-sm">Crea tu primer evento para empezar</p>
             </div>
-          ) : currentEvents.length === 0 ? (
+          ) : (currentMy.length === 0 && currentShared.length === 0) ? (
+            // Empty state por tab: hay eventos pero ninguno cae en este tab
             <div className="rounded-xl border border-dashed border-[#e0e0e0] px-6 py-16 text-center sm:py-20">
               <p className="text-sm text-[#888]">
                 {activeTab === 'activos'    && 'No tienes eventos activos'}
@@ -623,8 +814,31 @@ export default function Dashboard() {
               </p>
             </div>
           ) : (
-            <div className="flex flex-col gap-3">
-              {currentEvents.map(event => <EventCard key={event.id} event={event} />)}
+            <div className="flex flex-col gap-6">
+              {/* Sección Mis eventos */}
+              {currentMy.length > 0 && (
+                <section>
+                  <div className="mb-3 flex items-center gap-2">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-[#888]">Mis eventos</h3>
+                    <span className="rounded-full bg-[#e8e8e8] px-1.5 py-0.5 text-[10px] font-bold text-[#666]">{currentMy.length}</span>
+                  </div>
+                  <div className="flex flex-col gap-3">
+                    {currentMy.map(event => <EventCard key={event.id} event={event} />)}
+                  </div>
+                </section>
+              )}
+              {/* Sección Compartidos conmigo */}
+              {currentShared.length > 0 && (
+                <section>
+                  <div className="mb-3 flex items-center gap-2">
+                    <h3 className="text-xs font-semibold uppercase tracking-wide text-[#888]">Compartidos conmigo</h3>
+                    <span className="rounded-full bg-[#e8e8e8] px-1.5 py-0.5 text-[10px] font-bold text-[#666]">{currentShared.length}</span>
+                  </div>
+                  <div className="flex flex-col gap-3">
+                    {currentShared.map(event => <EventCard key={event.id} event={event} />)}
+                  </div>
+                </section>
+              )}
             </div>
           )}
         </div>
